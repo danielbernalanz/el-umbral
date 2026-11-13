@@ -48,7 +48,22 @@ ninguna vive más de 4 h. CORS abierto sin cookies.
 - Consultas impuras del motor (`getOffer`, `unlockNotices`, `studyOptions`, `encounterStart`) se materializan en `Game.refresh`;
   `buildView` es puro (verificado en `test/pure.test.js`).
 
+## Cliente en línea (F3)
+
+El cliente (`public/`, copia de la fuente única `www`) tiene dos modos. **Local**: `U = window.UMBRAL` (el motor en el móvil), idéntico a antes.
+**En línea**: `public/net.js` (`window.UmbralNet`) ofrece un `OnlineBackend` con las mismas firmas que usa `ui.js`; sin motor: las consultas
+salen de la vista filtrada (`q.*`) y cada mutación es un `POST /cmd` que devuelve una Promise (la respuesta lleva la vista del jugador, con `ver`,
+y se descartan vistas más viejas que la ya recibida). `ui.js` solo cambia en `run()/mut()` (síncrono en local) y en un bloque «EN LÍNEA».
+
+- Lobby en el inicio: «Jugar local» / «Jugar en línea», crear sala o unirse con código, sala de espera con código grande, lista y «Iniciar» (anfitrión, hora de fin).
+- URL del servidor: mismo origen si la página va por http(s); desde `file://`/APK (sin permiso INTERNET) el botón abre `ONLINE_URL` (constante en `net.js`) en el navegador. Para pruebas: «Servidor (avanzado)» o `?server=http://localhost:3000`. `?sala=ABCDE` rellena el código.
+- Reconexión: token en `localStorage` (clave `umbral_online_session`), `EventSource` con reapertura propia, ping cada 20 s y aviso «Sin conexión».
+- Privacidad: el cliente solo guarda la vista propia; nunca registra el token; log e historia solo tras el desenlace (`storyList` lo añade el servidor).
+- Servidor, cambios de F3: `ver` en cada vista, la respuesta de `/cmd` incluye `view`, y `storyList` en el desenlace.
+- Pruebas E2E: `test/e2e/` (ver su README).
+
 ## Estado
 
-F1 (vista) y F2 (servidor y salas) hechas. Pendiente: F3 cliente (`net.js`, lobby), F4 simultaneidad/relojes/votación de tiempo,
-F5 reconexión y ausencia, F6 E2E con Playwright, F7 Render (`render.yaml`).
+F1 (vista), F2 (servidor y salas) y F3 (cliente en línea, lobby, E2E) hechas. Pendiente: F4 simultaneidad/relojes del servidor/votación de tiempo
+(la interfaz ya muestra `v.votes`, `v.wait` y `v.timeAsk`; «Añadir tiempo» del aviso de fin está oculto en línea hasta que exista en el servidor),
+F5 ausencia/anfitrión, F6 E2E con bots y desconexiones, F7 Render (`render.yaml`).

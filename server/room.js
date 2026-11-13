@@ -21,6 +21,7 @@ class Room {
     this.code = code; this.mgr = mgr;
     this.createdAt = mgr.now(); this.lastActivity = this.createdAt; this.endedAt = null;
     this.status = "lobby";            /* lobby | playing | ended */
+    this.ver = 0;                     /* contador monotónico de difusiones: el cliente descarta vistas más viejas que la que ya tiene */
     this.players = [];                /* { slot, name, tokenHash, host, conns:Set<res>, lastJson, lastSeen, left } */
     this.game = null;
   }
@@ -80,8 +81,11 @@ class Room {
     const res = this.game.exec(p.slot, cmd, args, { isHost: p.host });
     if (this.game.ended() && this.status === "playing") { this.status = "ended"; this.endedAt = this.mgr.now(); }
     this.broadcast();
+    /* F3: la respuesta lleva la vista del propio jugador (con `ver`) para que el cliente no dependa del orden entre SSE y POST */
+    if (res && typeof res === "object") { try { return Object.assign({}, res, { view: JSON.parse(this.withVer(JSON.stringify(this.viewFor(p)))) }); } catch (e) { return res; } }
     return res;
   }
+  withVer(json) { return json.length > 2 ? '{"ver":' + this.ver + "," + json.slice(1) : json; }
   syncPresence() {
     if (!this.game) return;
     const online = {};
@@ -122,10 +126,10 @@ class Room {
     try { json = JSON.stringify(this.viewFor(p)); } catch (e) { json = JSON.stringify({ phase: "error", msg: "Error interno de la sala." }); }
     if (json === p.lastJson) return;
     p.lastJson = json;
-    const msg = "event: view\ndata: " + json + "\n\n";
+    const msg = "event: view\ndata: " + this.withVer(json) + "\n\n";
     p.conns.forEach((r) => { try { r.write(msg); } catch (e) { /* se limpia en close */ } });
   }
-  broadcast() { this.players.forEach((p) => this.sendTo(p)); }
+  broadcast() { this.ver++; this.players.forEach((p) => this.sendTo(p)); }
   heartbeat() { this.players.forEach((p) => p.conns.forEach((r) => { try { r.write(":hb\n\n"); } catch (e) { /* idem */ } })); }
   destroy() {
     this.players.forEach((p) => { closeAll(p); this.mgr.dropToken(p.tokenHash); });

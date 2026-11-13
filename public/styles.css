@@ -469,3 +469,35 @@ button.primary.big:disabled{opacity:.45}
   header:has(#btnStatus:not(.hidden)) .brand > span:last-child{display:none}
   header:has(#btnStatus:not(.hidden)) .headright{margin-left:auto}
 }
+
+/* ---------- en línea (net.js) ---------- */
+.modeswitch{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0 2px}
+.modeswitch button{min-height:48px;font-weight:700}
+.modeswitch button.on{background:linear-gradient(#3a2e22,#2a2019);border-color:var(--gold);color:var(--gold2);box-shadow:0 0 0 1px rgba(220,178,114,.25) inset}
+.codein{text-transform:uppercase;letter-spacing:.35em;text-align:center;font-weight:800;font-size:20px}
+.roomcode{font:800 clamp(38px,12vw,64px)/1 Georgia,"Times New Roman",serif;letter-spacing:.18em;padding-left:.18em;color:var(--gold2);text-shadow:0 2px 14px rgba(220,150,70,.35);user-select:all;-webkit-user-select:all}
+.roomplayers{grid-template-columns:1fr}
+.rplayer{margin-bottom:0}
+.rplayer .prow .ic{width:24px;height:24px;color:var(--gold);flex:none}
+.onmsg:empty,.onwake:empty{display:none}
+.onmsg.bad,.onwake.bad{color:var(--c-danger)}
+.onwake.ok{color:#a3dcba}
+.onadv summary{cursor:pointer;display:flex;align-items:center;gap:8px;min-height:40px}
+.onadv .ic{width:18px;height:18px;color:var(--gold)}
+.netbanner{position:fixed;left:0;right:0;top:0;z-index:90;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;padding:8px 12px;background:#4a1f2a;border-bottom:1px solid #a24e58;color:#ffd7db;font-size:13px;text-align:center}
+.netbanner button{min-height:36px;padding:4px 10px;font-size:13px}
+.netbusy button{pointer-events:none;opacity:.75}
+.waitlist{text-align:left}
+.waitlist .wrow{display:flex;align-items:center;gap:10px;padding:7px 9px;border:1px solid var(--line);border-radius:12px;background:#15111a}
+.waitlist .wrow b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.waitlist .wrow .medal{--ms:30px}
+
+/* escritorio: columna centrada algo más ancha y el ancho extra para cuadrículas */
+@media(min-width:900px){
+  header,main{max-width:1000px}
+  #start .modeswitch,#start>.card,#start>details{max-width:640px;margin-left:auto;margin-right:auto}
+  #start .modeswitch{display:grid}
+  .actions.grid3{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .roomplayers{grid-template-columns:1fr 1fr}
+  #game>.card{max-width:880px;margin-left:auto;margin-right:auto}
+}

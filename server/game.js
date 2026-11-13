@@ -176,6 +176,7 @@ class Game {
   ended() { return this.phase === "ending"; }
   endLog() { if (!this._endCache) this._endCache = { log: this.U.exportLog(), story: this.U.exportStory(true) }; return this._endCache.log; }
   endStory() { this.endLog(); return this._endCache.story; }
+  endStoryList() { this.endLog(); if (!this._endCache.list) this._endCache.list = JSON.parse(JSON.stringify(this.U.buildStory() || [])); return this._endCache.list; }
 }
 
 /* ---------- tabla de comandos: fase, validación de argumentos, ejecución ---------- */

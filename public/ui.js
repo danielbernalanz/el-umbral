@@ -2,13 +2,19 @@
 (function () {
   "use strict";
 
-  const U = window.UMBRAL;
+  let U = window.UMBRAL;        /* local: EXACTAMENTE window.UMBRAL. En línea se cambia por UmbralNet.backend (net.js) */
+  let NET = false;
   const D = window.UMBRAL_DATA;
   const $ = function (id) { return document.getElementById(id); };
   const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return ESC[c]; }); }
   function signed(n) { return (n >= 0 ? "+ " : "- ") + Math.abs(n); }
   function pad2(n) { return (n < 10 ? "0" : "") + n; }
+
+  /* Mutaciones: en local la respuesta es síncrona y cb corre en el acto (comportamiento idéntico); en línea es una Promise
+     (la vista ya está actualizada cuando llega) y un doble toque en vuelo se ignora. */
+  function run(res, cb) { if (!res || typeof res.then !== "function") return cb(res); res.then(function (r) { if (!(r && r.dup)) cb(r); }); }
+  function mut(res) { run(res, function (r) { toast(r.msg, !r.ok); renderPrivate(); }); }
 
   /* ---------------- iconos (sprites incrustados en index.html; ver img/sprites-map.js) ---------------- */
   function ic(key, cls) { try { return typeof window.icon === "function" && key ? window.icon(key, cls) : ""; } catch (e) { return ""; } }
@@ -277,9 +283,9 @@
   function timeOverlayOpen() { const o = $("timeOverlay"); return !!o && !o.classList.contains("hidden"); }
   function hideTimeOverlay() { const o = $("timeOverlay"); if (o) o.classList.add("hidden"); }
   /* Hora de fin elegida -> minutos y marca de tiempo. Hoy si queda por delante; si ya pasó, mañana (solo vale si queda a <= 120 min, p. ej. cruzar la medianoche). */
-  function parseEnd(nowTs) {
+  function parseEnd(nowTs, inputId) {
     const now = new Date(nowTs || Date.now());
-    const m = /^(\d{1,2}):(\d{2})/.exec(String($("gameEnd").value || "").trim());
+    const m = /^(\d{1,2}):(\d{2})/.exec(String($(inputId || "gameEnd").value || "").trim());
     if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return { ok: false, now: now, msg: "Elige la hora a la que queréis terminar." };
     const t = new Date(now.getFullYear(), now.getMonth(), now.getDate(), Number(m[1]), Number(m[2]), 0, 0);
     if (t.getTime() <= now.getTime()) t.setDate(t.getDate() + 1);
@@ -310,26 +316,29 @@
     b.innerHTML = '<div class="tag">' + ic("ui_reloj", "ic-tag") + 'AVISO PARA TODA LA MESA</div><h2>La noche se acaba</h2>' +
       '<p class="small">Quedan unos 2 minutos. La ronda en curso se juega siempre entera; después la mesa decidirá si quiere más rondas o el desenlace.</p>' +
       '<div class="stack"><button class="primary" id="btnTwKeep">' + ic("ui_continuar") + '<span class="lbl">Seguir</span></button>' +
-      '<button class="ghost" id="btnTwAdd">' + ic("ui_reloj") + '<span class="lbl">Añadir tiempo</span></button></div>';
+      (NET ? '' : '<button class="ghost" id="btnTwAdd">' + ic("ui_reloj") + '<span class="lbl">Añadir tiempo</span></button>') + '</div>'; /* en línea «Añadir tiempo» llega con F4 (votación en el servidor) */
     $("btnTwKeep").onclick = function () { U.dismissWarn(); hideTimeOverlay(); };
-    $("btnTwAdd").onclick = function () { const ok = U.addTime(); hideTimeOverlay(); toast(ok ? "Tiempo añadido: la partida podrá alargarse una ronda." : "Ya se había añadido tiempo.", !ok); updateClock(); };
+    if ($("btnTwAdd")) $("btnTwAdd").onclick = function () { const ok = U.addTime(); hideTimeOverlay(); toast(ok ? "Tiempo añadido: la partida podrá alargarse una ronda." : "Ya se había añadido tiempo.", !ok); updateClock(); };
     o.classList.remove("hidden");
   }
   function showTimeAsk() {
     const s = U.getState(); if (!s || !s.timeAsk) return;
     const o = timeOverlayEl(), b = $("timeBody"), ta = s.timeAsk;
     b.innerHTML = '<div class="tag">' + ic("ui_reloj", "ic-tag") + 'SE ACABÓ EL TIEMPO</div><h2>¿Cómo seguís?</h2>' +
-      '<p class="small">Habéis jugado ' + s.round + ' ronda' + (s.round === 1 ? "" : "s") + '. Cada ronda añadida es una ronda normal completa. Duraciones estimadas según vuestro ritmo.</p>' +
+      '<p class="small">Habéis jugado ' + s.round + ' ronda' + (s.round === 1 ? "" : "s") + '. Cada ronda añadida es una ronda normal completa. Duraciones estimadas según vuestro ritmo.</p>' + (NET ? netVotesHTML(s) : "") +
       '<div class="stack">' + ta.opts.map(function (x) { return '<button class="primary" data-k="' + x.k + '">' + ic("ui_ronda") + '<span class="lbl">Añadir ' + x.k + ' ronda' + (x.k > 1 ? "s" : "") + ' (≈ ' + x.min + ' min' + (U.extEnd(x.k) ? ' · nueva hora de fin estimada: ' + U.hhmm(U.extEnd(x.k)) : '') + ')</span></button>'; }).join("") +
       '<button class="ghost" data-k="end">' + ic("ph_desenlace") + '<span class="lbl">Terminar ahora (desenlace)</span></button></div>';
     Array.prototype.forEach.call(b.querySelectorAll("button[data-k]"), function (btn) {
       btn.onclick = function () {
-        const k = btn.getAttribute("data-k"), r = U.answerTime(k === "end" ? "end" : Number(k));
-        if (!r.ok) return; /* doble toque */
-        hideTimeOverlay();
-        if (r.ended) { renderEnding(r.ending); return; }
-        toast("Se añade" + (r.added > 1 ? "n " : " ") + r.added + " ronda" + (r.added > 1 ? "s" : "") + ".", false);
-        updateClock(); onNextRound();
+        const k = btn.getAttribute("data-k");
+        run(U.answerTime(k === "end" ? "end" : Number(k)), function (r) {
+          if (!r.ok) { if (NET && r.msg) toast(r.msg, true); return; } /* doble toque */
+          if (NET && !r.ended && r.added === undefined) { toast("Voto enviado: decide el anfitrión.", false); showTimeAsk(); return; }
+          hideTimeOverlay();
+          if (r.ended) { renderEnding(r.ending || U.getEnding()); return; }
+          toast("Se añade" + (r.added > 1 ? "n " : " ") + r.added + " ronda" + (r.added > 1 ? "s" : "") + ".", false);
+          updateClock(); if (NET) routeNet(); else onNextRound();
+        });
       };
     });
     o.classList.remove("hidden");
@@ -361,14 +370,16 @@
     if (!$("prepPanel").classList.contains("hidden")) { toast("Se acabó el tiempo de tu turno: se omite la declaración.", false); onPrepSkip(); return; }
     pendingAction = null; pendingStake = null; pendingItem = null; pendingMode = null; pendingSpell = null; pendingStudy = null;
     if (!p.acted) {
-      const r = U.act(p.id, "meditar", null, null);
-      if (r.ok) {
-        toast("Se acabó el tiempo de tu turno: has meditado (acción segura).", false); endTurn();
-        /* Si aún queda un paso del mismo turno (declaración o encuentro), se completa también tras una breve cortesía de 15 s. */
-        if (U.getState().phase === "private" && !U.getState().handoff && (!$("prepPanel").classList.contains("hidden") || !$("overlay").classList.contains("hidden"))) { turnAuto = false; turnDeadline = Date.now() - 10000; }
-        return;
-      }
-      toast("Tiempo agotado: elige una acción cuanto antes.", true); return;
+      run(U.act(p.id, "meditar", null, null), function (r) {
+        if (r.ok) {
+          toast("Se acabó el tiempo de tu turno: has meditado (acción segura).", false); endTurn();
+          /* Si aún queda un paso del mismo turno (declaración o encuentro), se completa también tras una breve cortesía de 15 s. */
+          if (U.getState().phase === "private" && !U.getState().handoff && (!$("prepPanel").classList.contains("hidden") || !$("overlay").classList.contains("hidden"))) { turnAuto = false; turnDeadline = Date.now() - 10000; }
+          return;
+        }
+        toast("Tiempo agotado: elige una acción cuanto antes.", true);
+      });
+      return;
     }
     endTurn();
   }
@@ -405,6 +416,7 @@
   function route() {
     const s = U.getState();
     if (!s) return;
+    if (NET) { routeNet(); return; }
     $("roundLabel").textContent = "RONDA " + s.round + "/" + U.maxRounds();
     updateClock();
     updateStatus();
@@ -507,6 +519,7 @@
     renderSheet(p);
     renderActions(p);
     updateStatus();
+    renderedSig = U.sig;
     fxTurn(p, p.dead ? null : U.getOffer(p.id));
   }
 
@@ -573,8 +586,8 @@
         '<p class="small"><b>Pierdes</b></p>' + o.losses.map(function (g) { return '<div class="stline"><span class="f-danger" style="color:var(--ic)">' + ic("ui_fallo") + '</span><span>− ' + esc(g) + '</span></div>'; }).join("") +
         '<p class="small muted">Sin responder, cuenta como rechazo.</p>' +
         '<div class="row"><button class="danger smallbtn" id="offerYes">' + ic("t_asesino") + 'Convertirme en Asesino</button><button class="primary smallbtn" id="offerNo">' + ic("a_resistir") + 'Rechazar</button></div>';
-      $("offerYes").onclick = function () { const r = U.answerOffer(p.id, true); toast(r.msg, !r.ok); renderPrivate(); };
-      $("offerNo").onclick = function () { const r = U.answerOffer(p.id, false); toast(r.msg, !r.ok); renderPrivate(); };
+      $("offerYes").onclick = function () { mut(U.answerOffer(p.id, true)); };
+      $("offerNo").onclick = function () { mut(U.answerOffer(p.id, false)); };
       return;
     }
     const pressure = p.pressure || 0;
@@ -584,8 +597,8 @@
       '<p class="small muted">Aceptar tiene un precio oculto. ' + refuse +
       ' Sin responder, cuenta como rechazo.</p>' +
       '<div class="row"><button class="primary smallbtn" id="offerYes">' + ic("ui_ok") + 'Aceptar</button><button class="ghost smallbtn" id="offerNo">' + ic("ui_cerrar") + 'Rechazar</button></div>';
-    $("offerYes").onclick = function () { const r = U.answerOffer(p.id, true); toast(r.msg, !r.ok); renderPrivate(); };
-    $("offerNo").onclick = function () { const r = U.answerOffer(p.id, false); toast(r.msg, !r.ok); renderPrivate(); };
+    $("offerYes").onclick = function () { mut(U.answerOffer(p.id, true)); };
+    $("offerNo").onclick = function () { mut(U.answerOffer(p.id, false)); };
   }
 
   let showMagicHelp = false;
@@ -740,10 +753,11 @@
   ];
   function doCast(spellId, targetId, mode) {
     const p = U.currentPlayer();
-    const res = U.cast(p.id, spellId, targetId, mode);
-    if (!res.ok) { $("actionHint").textContent = res.msg; return; }
-    pendingSpell = null;
-    showRoll({ title: "CONJURO", icon: "a_conjurar", result: res, text: res.outcome, buttons: [{ label: "Continuar", cls: "primary", onClick: endTurn }] });
+    run(U.cast(p.id, spellId, targetId, mode), function (res) {
+      if (!res.ok) { if (NET && U.currentPlayer().acted) { endTurn(); return; } $("actionHint").textContent = res.msg; return; }
+      pendingSpell = null;
+      showRoll({ title: "CONJURO", icon: "a_conjurar", result: res, text: res.outcome, buttons: [{ label: "Continuar", cls: "primary", onClick: endTurn }] });
+    });
   }
   function spellLine(sp, info) {
     return '<span class="small">' + (sp.kind === "off" ? "Ofensivo" : "Defensivo") + ' · ' + esc(sp.desc) + '</span>' +
@@ -822,7 +836,7 @@
         const btn = document.createElement("button");
         btn.className = "choice";
         btn.innerHTML = medal("a_perfeccionar", "md") + '<span class="cbody"><b>Perfeccionar «' + esc(sp.name) + '»</b><span class="small">En vez de aprender uno nuevo, subes este conjuro de nivel (ahora: ' + esc(pr.label) + '). ' + esc(pr.next) + '</span><span class="minis">' + medal("m_" + pr.level, "sm") + '</span></span>';
-        btn.onclick = function () { const r = U.improveSpell(p.id, sp.id); toast(r.msg, !r.ok); pendingStudy = null; renderPrivate(); };
+        btn.onclick = function () { pendingStudy = null; mut(U.improveSpell(p.id, sp.id)); };
         box.appendChild(btn);
       });
     } else {
@@ -831,7 +845,7 @@
         const btn = document.createElement("button");
         btn.className = "choice";
         btn.innerHTML = medal(o[3], "md", o[4]) + '<span class="cbody"><b>' + o[1] + '</b><span class="small">' + o[2] + '</span></span>';
-        btn.onclick = function () { const r = U.learnSpell(p.id, st.pick, o[0]); toast(r.msg, !r.ok); pendingStudy = null; renderPrivate(); };
+        btn.onclick = function () { const pk = st.pick; pendingStudy = null; mut(U.learnSpell(p.id, pk, o[0])); };
         box.appendChild(btn);
       });
     }
@@ -864,17 +878,23 @@
     box.innerHTML = tagH("UNA MANO TENDIDA", "a_tender") + '<p class="small">' + esc(o.from) + ' te ofrece su ayuda en secreto. Si confías en su palabra, se abrirá una ventana a tu favor, pero deberás guardar silencio. Si lo cuentas, la ventana se cerrará.</p>' +
       '<p class="small">Si eliges una acción sin responder, la mano se rechaza.</p>' +
       '<div class="row"><button class="primary smallbtn" id="handYes">' + ic("a_tender") + 'Confiar y callar</button><button class="ghost smallbtn" id="handNo">' + ic("ui_cerrar") + 'Rechazar</button></div>';
-    $("handYes").onclick = function () { const r = U.answerHand(p.id, true); toast(r.msg, !r.ok); renderPrivate(); };
-    $("handNo").onclick = function () { const r = U.answerHand(p.id, false); toast(r.msg, !r.ok); renderPrivate(); };
+    $("handYes").onclick = function () { mut(U.answerHand(p.id, true)); };
+    $("handNo").onclick = function () { mut(U.answerHand(p.id, false)); };
   }
 
+  /* Objetivos válidos de una acción. En línea los calcula el servidor (canTarget mira campos ocultos del objetivo). */
+  function targetsOf(a, p) {
+    const ps = U.getState().players;
+    if (NET) return U.targetsFor(a.id).map(function (id) { return ps[id]; });
+    return ps.filter(function (x) { return x.id !== p.id && (a.id === "alzar" ? true : !x.dead) && (!a.canTarget || a.canTarget(x, p)); });
+  }
   function renderTargetPicker(p) {
-    $("actionHint").textContent = "Elige a quién afecta «" + pendingAction.name + "»." + (pendingAction.canTarget && !U.getState().players.some(function (x) { return x.id !== p.id && (pendingAction.id === "alzar" ? true : !x.dead) && pendingAction.canTarget(x, p); }) ? " Ahora mismo no hay nadie a quien se pueda aplicar." : "");
+    $("actionHint").textContent = "Elige a quién afecta «" + pendingAction.name + "»." + (pendingAction.canTarget && !targetsOf(pendingAction, p).length ? " Ahora mismo no hay nadie a quien se pueda aplicar." : "");
     $("actionHint").classList.remove("hidden");
     const box = $("actionChoices");
     box.className = "actions";
     box.innerHTML = "";
-    U.getState().players.filter(function (x) { return x.id !== p.id && (pendingAction.id === "alzar" ? true : !x.dead) && (!pendingAction.canTarget || pendingAction.canTarget(x, p)); }).forEach(function (t) {
+    targetsOf(pendingAction, p).forEach(function (t) {
       const btn = document.createElement("button");
       btn.className = "choice";
       btn.innerHTML = playerMedal(t) + '<span class="cbody"><b>' + esc(t.name) + '</b><span class="small">' + esc(U.visibleHealth(t)) + '</span></span>';
@@ -913,12 +933,7 @@
       const btn = document.createElement("button");
       btn.className = "choice";
       btn.innerHTML = playerMedal(t) + '<span class="cbody"><b>' + esc(t.name) + '</b><span class="small">' + esc(U.visibleHealth(t)) + '</span></span>';
-      btn.onclick = function () {
-        const r = U.useItem(p.id, pendingItem, t.id);
-        pendingItem = null;
-        toast(r.ok ? r.msg : r.msg, !r.ok);
-        renderPrivate();
-      };
+      btn.onclick = function () { const ix = pendingItem; pendingItem = null; mut(U.useItem(p.id, ix, t.id)); };
       box.appendChild(btn);
     });
     addCancel(box);
@@ -948,23 +963,25 @@
     const p = U.currentPlayer();
     if (!p) { toast("La partida no está en un turno válido.", true); return; }
     const hp0 = p.hp;
-    const res = U.act(p.id, a.id, targetId, stakeId);
-    if (!res.ok) { $("actionHint").textContent = res.msg; return; }
-    fxSelf(p, hp0);
-    pendingAction = null; pendingStake = null; pendingItem = null; pendingMode = null; pendingSpell = null; pendingStudy = null;
-    const buttons = res.pushable ? [
-      { label: "Quedarme con esto", cls: "", onClick: endTurn },
-      { label: "Forzar el destino", cls: "danger", onClick: function () { doPush(p.id); } }
-    ] : [{ label: "Continuar", cls: "primary", onClick: endTurn }];
-    showRoll({ title: a.name.toUpperCase(), icon: "a_" + a.id, result: res, text: res.outcome, buttons: buttons });
+    run(U.act(p.id, a.id, targetId, stakeId), function (res) {
+      if (!res.ok) { if (NET && U.currentPlayer().acted) { endTurn(); return; } $("actionHint").textContent = res.msg; return; }
+      fxSelf(U.currentPlayer(), hp0);
+      pendingAction = null; pendingStake = null; pendingItem = null; pendingMode = null; pendingSpell = null; pendingStudy = null;
+      const buttons = res.pushable ? [
+        { label: "Quedarme con esto", cls: "", onClick: endTurn },
+        { label: "Forzar el destino", cls: "danger", onClick: function () { doPush(p.id); } }
+      ] : [{ label: "Continuar", cls: "primary", onClick: endTurn }];
+      showRoll({ title: a.name.toUpperCase(), icon: "a_" + a.id, result: res, text: res.outcome, buttons: buttons });
+    });
   }
 
   function doPush(actorId) {
     const hp0 = U.currentPlayer().hp;
-    const r = U.pushLuck(actorId);
-    if (!r.ok) { endTurn(); return; }
-    fxSelf(U.currentPlayer(), hp0);
-    showRoll({ title: "FORZAR EL DESTINO", icon: "ui_critico", result: r, text: r.outcome, buttons: [{ label: "Continuar", cls: "primary", onClick: endTurn }] });
+    run(U.pushLuck(actorId), function (r) {
+      if (!r.ok) { endTurn(); return; }
+      fxSelf(U.currentPlayer(), hp0);
+      showRoll({ title: "FORZAR EL DESTINO", icon: "ui_critico", result: r, text: r.outcome, buttons: [{ label: "Continuar", cls: "primary", onClick: endTurn }] });
+    });
   }
 
   function onUseItem(index) {
@@ -977,10 +994,11 @@
     const p = U.currentPlayer();
     const def = D.ITEMS[p.items[index].id];
     if (def.kind === "tome") {
-      const so = U.studyOptions(p.id, index);
-      if (!so.ok) { toast(so.msg, true); return; }
-      pendingStudy = { idx: index, opts: so.options, pick: null };
-      renderPrivate();
+      run(U.studyOptions(p.id, index), function (so) {
+        if (!so.ok) { toast(so.msg, true); return; }
+        pendingStudy = { idx: index, opts: so.options, pick: null };
+        renderPrivate();
+      });
       return;
     }
     if (def.kind === "clue" || def.kind === "dust") {
@@ -988,9 +1006,7 @@
       renderPrivate();
       return;
     }
-    const r = U.useItem(p.id, index, null);
-    toast(r.ok ? r.msg : r.msg, !r.ok);
-    renderPrivate();
+    mut(U.useItem(p.id, index, null));
   }
 
   function showEncounter(p, e) {
@@ -998,10 +1014,11 @@
       const hint = o.attr && o.label.indexOf("(" + o.attr) === -1 ? " (" + o.attr + ")" : "";
       return { label: o.label + hint, cls: o.id === "irse" ? "" : "primary", onClick: function () {
         const hp0 = p.hp;
-        const r = U.encounterAct(p.id, o.id);
-        if (!r.ok) { toast(r.msg, true); endTurn(); return; }
-        fxSelf(p, hp0);
-        showRoll({ title: e.name.toUpperCase(), icon: "e_viajero", result: r, text: r.outcome, buttons: [{ label: "Continuar", cls: "primary", onClick: endTurn }] });
+        run(U.encounterAct(p.id, o.id), function (r) {
+          if (!r.ok) { toast(r.msg, true); endTurn(); return; }
+          fxSelf(U.currentPlayer(), hp0);
+          showRoll({ title: e.name.toUpperCase(), icon: "e_viajero", result: r, text: r.outcome, buttons: [{ label: "Continuar", cls: "primary", onClick: endTurn }] });
+        });
       } };
     });
     showRoll({ title: "ENCUENTRO: " + e.name.toUpperCase(), icon: "e_viajero", result: {}, text: e.intro + " ¿Qué haces? Tu forma de tratarla y tus habilidades decidirán qué pasa.", buttons: buttons });
@@ -1016,9 +1033,11 @@
     leaveTurn();
   }
   function leaveTurn() {
-    U.finishTurn();
-    if (U.getState().phase === "ending") { renderEnding(U.getEnding()); return; }
-    renderHandoff("turn");
+    run(U.finishTurn(), function (r) {
+      if (NET && r && !r.ok) { showRoll({ title: "SIN CONEXIÓN", icon: "ui_fallo", result: {}, text: (r.msg || "No se pudo enviar tu turno.") + " Pulsa para reintentarlo.", buttons: [{ label: "Reintentar", cls: "primary", ik: "ui_continuar", onClick: leaveTurn }] }); return; }
+      if (U.getState().phase === "ending") { renderEnding(U.getEnding()); return; }
+      if (NET) routeNet(); else renderHandoff("turn");
+    });
   }
 
   /* ---------------- entrega ---------------- */
@@ -1107,6 +1126,7 @@
     if (!councilTimerStarted) startCouncilTimer();
     renderTimer();
     updateStatus();
+    if (NET) netWait($("btnEndCouncil"), "ph_resolucion", "Estoy listo: cerrar el Consejo");
   }
 
   function startCouncilTimer() {
@@ -1219,11 +1239,12 @@
     if (!prepSel) { onPrepSkip(); return; }
     const type = prepSel === "pacto" ? $("prepKind").value : prepSel;
     if ($("prepTarget").value === "") { $("prepHint").textContent = "No hay nadie a quien dirigirlo."; return; }
-    const r = U.declare(p.id, type, Number($("prepTarget").value));
-    if (!r.ok) { $("prepHint").textContent = r.msg; return; }
-    leaveTurn();
+    run(U.declare(p.id, type, Number($("prepTarget").value)), function (r) {
+      if (!r.ok) { $("prepHint").textContent = r.msg; return; }
+      leaveTurn();
+    });
   }
-  function onPrepSkip() { U.declare(U.currentPlayer().id, "ninguna", null); leaveTurn(); }
+  function onPrepSkip() { run(U.declare(U.currentPlayer().id, "ninguna", null), leaveTurn); }
 
   function renderPactOffers(p) {
     const box = $("privatePact");
@@ -1235,12 +1256,13 @@
         '<div class="row"><button class="primary smallbtn" data-pact="' + o.idx + '" data-yes="1">' + ic("ui_ok") + 'Aceptar</button><button class="ghost smallbtn" data-pact="' + o.idx + '">' + ic("ui_cerrar") + 'Rechazar</button></div>';
     }).join("") + '<p class="small">Si eliges una acción sin responder, se rechaza.</p>';
     Array.prototype.forEach.call(box.querySelectorAll("[data-pact]"), function (b) {
-      b.onclick = function () { const r = U.answerPact(p.id, Number(b.getAttribute("data-pact")), !!b.getAttribute("data-yes")); toast(r.msg, !r.ok); renderPrivate(); };
+      b.onclick = function () { mut(U.answerPact(p.id, Number(b.getAttribute("data-pact")), !!b.getAttribute("data-yes"))); };
     });
   }
 
   function onEndCouncil() {
     if (U.getState().phase !== "council") return;
+    if (NET) { run(U.councilReady(), function (r) { if (r && !r.ok) toast(r.msg, true); routeNet(); }); return; }
     stopTimer();
     const decl = U.resolveCouncil();
     showCouncilResults(decl, 0);
@@ -1282,9 +1304,11 @@
     setLbl($("btnNextRound"), s.round >= U.maxRounds() ? "Ver el desenlace" : "Siguiente ronda");
     { const nb = $("btnNextRound"); if (!nb.querySelector(".ic")) nb.insertAdjacentHTML("afterbegin", ic(s.round >= U.maxRounds() ? "ph_desenlace" : "ui_continuar")); else nb.querySelector(".ic").outerHTML = ic(s.round >= U.maxRounds() ? "ph_desenlace" : "ui_continuar"); }
     updateStatus();
+    if (NET) netWait($("btnNextRound"), s.round >= U.maxRounds() ? "ph_desenlace" : "ui_continuar", s.round >= U.maxRounds() ? "Ver el desenlace" : "Siguiente ronda");
   }
 
   function onNextRound() {
+    if (NET) { run(U.nextRound(), function (r) { if (r && !r.ok) toast(r.msg, true); routeNet(); }); return; }
     const e = U.nextRound();
     if (e) { renderEnding(e); return; }
     if (U.getState() && U.getState().timeAsk) { showTimeAsk(); return; } /* la mesa decide; doble toque seguro */
@@ -1402,7 +1426,8 @@
       return '<div class="clue small">' + ic("st_pistas") + '<span>' + esc(c.text) + '</span></div>';
     }).join("") : '<p class="small">Aún no hay pruebas públicas.</p>';
     const living = s.players.filter(function (p) { return !p.dead; });
-    const avg = living.length ? Math.round(living.reduce(function (a, p) { return a + p.corr; }, 0) / living.length) : 100;
+    const known = living.filter(function (p) { return typeof p.corr === "number"; }); /* en línea solo se conoce la propia */
+    const avg = known.length ? Math.round(known.reduce(function (a, p) { return a + p.corr; }, 0) / known.length) : 100;
     const exposedAss = s.players.filter(function (p) { return p.alignment === "asesino" && p.exposed && !p.dead; });
     if (exposedAss.length) { $("worldState").textContent = (exposedAss.length > 1 ? "Asesinos identificados: " : "Asesino identificado: ") + exposedAss.map(function (p) { return p.name; }).join(", ") + "."; return; }
     $("worldState").textContent = avg < 15 ? "El aire aún conserva algo de esperanza."
@@ -1486,6 +1511,88 @@
     document.body.appendChild(t);
     setTimeout(function () { t.remove(); }, Math.min(6000, 2600 + Math.max(0, String(msg).length - 60) * 30));
   }
+
+  /* ================= EN LÍNEA (net.js) =================
+     Aquí vive todo lo que solo existe con servidor: pantalla de espera, ruta de pantallas según la fase de la vista y el enganche con net.js.
+     En local (NET = false) nada de este bloque se ejecuta. */
+  let lastKey = "", renderedSig = "";
+  function netKey(s) { return s.phase + ":" + s.round + ":" + (s.timeAsk ? "t" : ""); }
+  /* Botón «listo» de una fase compartida: se desactiva y lista a quién se espera (F4: el servidor cerrará la fase por tiempo). */
+  function netWait(btn, iconKey, label) {
+    const s = U.getState(), me = U.currentPlayer();
+    const wl = s.players.filter(function (x) { return !x.dead && !x.ready; }).map(function (x) { return x.name; });
+    btn.classList.toggle("hidden", !!me.dead);
+    btn.disabled = !!me.ready;
+    setIcoBtn(btn, iconKey, me.ready ? "Esperando a: " + (wl.join(", ") || "…") : label);
+  }
+  function netVotesHTML(s) {
+    const host = s.players.find(function (p) { return p.host; }), V = { 1: "+1 ronda", 2: "+2 rondas", end: "terminar" };
+    const vs = Object.keys(s.votes || {}).filter(function (id) { return s.players[id]; }).map(function (id) { return esc(s.players[id].name) + ": " + (V[s.votes[id]] || "?"); });
+    return '<p class="small">Decide el anfitrión' + (host ? " (" + esc(host.name) + ")" : "") + '. ' + (vs.length ? "Votos: " + vs.join(" · ") + "." : "Aún no hay votos.") + '</p>';
+  }
+  function renderWaiting() {
+    stopTimer(); hideAll();
+    $("handoff").classList.remove("hidden");
+    const s = U.getState(), me = U.currentPlayer();
+    $("phaseTag").textContent = "TURNO PRIVADO"; setPhaseIcon("ph_privado");
+    $("screenTitle").textContent = "Esperando a los demás"; setStep("");
+    { const sg = $("handoffSigil"); sg.className = "bigmedal f-mist"; sg.innerHTML = ic("ph_privado"); }
+    $("handoffTitle").textContent = me.dead ? "Has caído" : (s.skipped || []).indexOf(me.id) !== -1 ? "Esta ronda no actúas" : "Decisión sellada";
+    $("handoffText").textContent = me.dead ? "Observas la partida: ya no puedes actuar, pero seguirás viendo el Consejo."
+      : (s.skipped || []).indexOf(me.id) !== -1 ? "Estás aturdido o inconsciente. Espera a que los demás terminen su turno."
+      : "Tu decisión queda en secreto. Cuando todos hayan terminado se abrirá el Consejo.";
+    $("handoffMood").textContent = "";
+    $("btnHandoff").classList.add("hidden");
+    const wl = $("waitList"), alive = s.players.filter(function (x) { return !x.dead; });
+    wl.classList.remove("hidden");
+    wl.innerHTML = '<div class="tag">' + ic("ui_jugadores", "ic-tag") + 'Quedan por terminar: ' + alive.filter(function (x) { return !x.ready; }).length + ' de ' + alive.length + '</div>' +
+      alive.map(function (x) { return '<div class="wrow">' + playerMedal(x) + '<b>' + esc(x.name) + (x.id === me.id ? " (tú)" : "") + '</b><span class="chip ' + (x.ready ? "good" : "mid") + '">' + (x.ready ? "listo" : (x.online === false ? "sin conexión" : "decidiendo…")) + '</span></div>'; }).join("");
+    updateStatus();
+  }
+  /* Pantalla que toca según la vista. Se llama al cambiar de fase/ronda y tras cada mutación propia. */
+  function routeNet() {
+    const s = U.getState(), me = U.currentPlayer(), prev = lastKey;
+    lastKey = netKey(s);
+    if (prev !== lastKey) ["overlay", "actionOverlay", "secretOverlay"].forEach(function (id) { $(id).classList.add("hidden"); });
+    $("roundLabel").textContent = "RONDA " + s.round + "/" + U.maxRounds();
+    updateClock(); updateStatus();
+    if (s.phase === "ending") { hideTimeOverlay(); renderEnding(s.ending || U.getEnding()); return; }
+    if (!s.timeAsk) hideTimeOverlay();
+    if (s.phase === "private") { if (me.ready) renderWaiting(); else if (me.acted) endTurn(); else renderPrivate(); return; }
+    if (s.phase === "council") { renderCouncil(); return; }
+    if (s.timeAsk) { renderResolution(s.lastResolution); showTimeAsk(); return; }   /* F4: voto de tiempo (v.timeAsk, v.votes) */
+    if (prev.indexOf("council:" + s.round) === 0 && (s.councilResults || []).length) { showCouncilResults(s.councilResults, 0); return; }
+    renderResolution(s.lastResolution);
+  }
+  /* Vista nueva del servidor: cambio de fase -> ruta; mismo paso -> se refresca lo que no estorbe a quien está jugando. */
+  function onNetView() {
+    const s = U.getState(); if (!s) return;
+    if (netKey(s) !== lastKey) { routeNet(); return; }
+    const me = U.currentPlayer(), idle = ["overlay", "actionOverlay", "secretOverlay", "storyOverlay", "logOverlay"].every(function (id) { return $(id).classList.contains("hidden"); }) && !timeOverlayOpen();
+    $("roundLabel").textContent = "RONDA " + s.round + "/" + U.maxRounds();
+    updateClock(); updateStatus();
+    if (s.phase === "ending") return;
+    if (s.timeAsk) { if (timeOverlayOpen()) showTimeAsk(); return; }
+    if (s.phase === "private") {
+      if (me.ready) { renderWaiting(); return; }
+      const pend = pendingAction || pendingStake || pendingMode || pendingSpell || pendingStudy || pendingItem !== null;
+      if (U.isBusy()) return; /* hay una orden propia en vuelo: su respuesta decide la pantalla */
+      /* Otro jugador te dejó sin turno (aturdir/grillete) o caíste moribundo: el motor te marca «acted» sin que hayas elegido. F4: lo cierra el servidor. */
+      if (idle && !pend && me.acted && !me.dead && !$("privatePanel").classList.contains("hidden")) { toast(me.dying ? "Caes inconsciente: esta ronda ya no actúas." : "Pierdes tu turno de esta ronda.", true); endTurn(); return; }
+      if (idle && !pend && !$("privatePanel").classList.contains("hidden") && U.sig !== renderedSig) renderPrivate();
+    } else if (idle && s.phase === "council") renderCouncil();
+    else if (idle && !$("resolutionPanel").classList.contains("hidden")) renderResolution(s.lastResolution);
+  }
+  window.UmbralUI = {
+    toast: toast, parseEnd: parseEnd, hm: hm,
+    attach: function (backend) {
+      U = backend; NET = true; $("start").classList.add("hidden");
+      setIcoBtn($("btnSaveExit"), "ui_salir", "Salir (puedes volver a la sala)"); setIcoBtn($("btnBackExit"), "ui_salir", "Salir (puedes volver a la sala)");
+      $("backOverlay").querySelector("p.small").textContent = "Seguirás en la sala: al volver a abrir el juego en este móvil te reconectas solo.";
+      enterGame(true); routeNet();
+    },
+    onView: onNetView
+  };
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();

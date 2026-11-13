@@ -2,3 +2,4 @@ node_modules/
 *.log
 .env
 tmp/
+test/e2e/shots/

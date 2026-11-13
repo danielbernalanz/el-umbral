@@ -8,7 +8,7 @@
    encounterStart) las materializa el servidor en game.js (refresh) y aquí solo se lee su resultado. */
 
 const PUBLIC_PLAYER_KEYS = ["id", "name", "dead", "dying", "exposed", "visibleHealth", "ready", "online", "host"];
-const TOP_KEYS = ["youId", "serverNow", "phase", "round", "maxRounds", "endAt", "durationMin", "event", "timeAsk", "publicClues", "chronicle", "skipped", "players", "me", "q", "wait", "votes", "councilResults", "lastResolution", "umbralAbierto", "ending", "reveal", "log", "story", "host"];
+const TOP_KEYS = ["ver", "youId", "serverNow", "phase", "round", "maxRounds", "endAt", "durationMin", "event", "timeAsk", "publicClues", "chronicle", "skipped", "players", "me", "q", "wait", "votes", "councilResults", "lastResolution", "umbralAbierto", "ending", "reveal", "log", "story", "storyList", "host"];
 /* Campos del jugador propio que guardan IDENTIDADES AJENAS (quién me socorrió, quién me alzó, quién me protege). */
 const ME_EXCLUDE = ["socBy", "risenBy", "protection", "lastSeen"];
 const MODES = ["cauto", "normal", "desatado"];
@@ -161,7 +161,7 @@ function buildView(game, pid) {
   if (ending) {
     v.ending = clone(S.ending);
     v.reveal = { assassinId: S.assassinId, shadow: clone(S.shadow || null), players: S.players.map((x) => { const o = clone(x); o.wounds = x.wounds; return o; }) };
-    v.log = game.endLog(); v.story = game.endStory();
+    v.log = game.endLog(); v.story = game.endStory(); v.storyList = game.endStoryList();
   }
   return v;
 }

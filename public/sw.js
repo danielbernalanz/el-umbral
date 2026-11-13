@@ -7,6 +7,7 @@ const ASSETS = [
   "./engine.js",
   "./fx.js",
   "./ui.js",
+  "./net.js",
   "./manifest.webmanifest",
   "./icon.svg",
   "./img/sprites.svg",
@@ -29,6 +30,8 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
+  /* En línea: la API, el SSE y /healthz nunca pasan por la caché (el SSE es un flujo sin fin). */
+  { const u = new URL(e.request.url); if (u.pathname === "/events" || u.pathname === "/cmd" || u.pathname === "/healthz" || u.pathname.indexOf("/api/") === 0) return; }
   e.respondWith(
     caches.match(e.request).then((hit) => {
       const net = fetch(e.request)

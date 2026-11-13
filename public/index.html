@@ -39,7 +39,61 @@
       </div>
     </div>
 
-    <div class="card stack">
+    <div class="modeswitch" id="modeSwitch" role="group" aria-label="Modo de juego">
+      <button type="button" class="ghost on" id="btnModeLocal" aria-pressed="true" data-ic="ui_jugador">Jugar local</button>
+      <button type="button" class="ghost" id="btnModeOnline" aria-pressed="false" data-ic="ui_jugadores">Jugar en línea</button>
+    </div>
+
+    <!-- ============ EN LÍNEA (net.js) ============ -->
+    <div class="card stack hidden" id="onlineCard">
+      <h2 class="h2i" data-ic="ui_jugadores">Jugar en línea</h2>
+      <div id="onHome" class="stack">
+        <p class="muted">Cada jugador usa su propio móvil. Una persona crea la sala y comparte el código de 5 letras; los demás se unen con él (de 3 a 10 jugadores).</p>
+        <label class="fl" data-ic="ui_jugador">Tu nombre<input id="onName" maxlength="16" autocomplete="off" placeholder="Tu nombre"></label>
+        <button class="primary big" id="btnOnCreate" data-ic="ui_nuevo">Crear sala</button>
+        <p class="small muted center">— o únete a una sala —</p>
+        <label class="fl" data-ic="ui_pasar">Código de la sala<input id="onCode" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCDE" class="codein"></label>
+        <button class="primary" id="btnOnJoin" data-ic="ui_continuar">Unirme</button>
+        <p class="small onwake" id="onWake"></p>
+        <p class="small muted">El servidor gratuito puede tardar ~1 min en despertar la primera vez.</p>
+      </div>
+      <div id="onExternal" class="stack hidden">
+        <p class="muted">Para jugar en línea se abre el juego en el navegador de tu móvil (esta versión no tiene acceso a internet por sí misma). Allí creas o te unes a una sala.</p>
+        <button class="primary big" id="btnExtOpen" data-ic="ui_compartir">Abrir en el navegador</button>
+        <p class="small center" id="onExtUrl"></p>
+        <button class="ghost" id="btnExtCopy" data-ic="ui_copiar">Copiar el enlace</button>
+      </div>
+      <div id="onRoom" class="stack hidden">
+        <div class="center stack tight">
+          <div class="tag">CÓDIGO DE LA SALA</div>
+          <div class="roomcode" id="roomCode" aria-live="polite">·····</div>
+          <div class="row" style="justify-content:center">
+            <button class="ghost smallbtn" id="btnOnCopy" data-ic="ui_copiar">Copiar código</button>
+            <button class="ghost smallbtn" id="btnOnShare" data-ic="ui_compartir">Compartir enlace</button>
+          </div>
+        </div>
+        <p class="small center muted hidden" id="roomConnecting">Conectando con la sala…</p>
+        <p class="small center" id="roomCount"></p>
+        <div id="roomPlayers" class="stack tight roomplayers"></div>
+        <p class="small center muted" id="roomNeed"></p>
+        <div id="roomHost" class="stack hidden">
+          <label class="fl" data-ic="ui_reloj">¿A qué hora queréis terminar?<input id="netEnd" type="time" step="60" value="20:00"></label>
+          <p class="small endinfo" id="netEndInfo" aria-live="polite"></p>
+          <button class="primary big" id="btnOnStart" data-ic="ui_nuevo">Iniciar partida</button>
+        </div>
+        <p class="small center muted hidden" id="roomGuest">Esperando a que el anfitrión inicie la partida…</p>
+        <button class="ghost" id="btnOnLeave" data-ic="ui_salir">Salir de la sala</button>
+      </div>
+      <p class="small onmsg" id="onMsg" aria-live="polite"></p>
+      <details class="onadv">
+        <summary data-ic="ui_ajustes">Servidor (avanzado)</summary>
+        <label class="fl">Dirección del servidor<input id="onServer" autocomplete="off" spellcheck="false" placeholder="http://localhost:3000 (vacío = este servidor)"></label>
+        <div class="row"><button class="ghost smallbtn" id="btnOnServerSave">Guardar</button><button class="ghost smallbtn" id="btnOnServerReset">Restablecer</button></div>
+        <p class="small muted" id="onServerInfo"></p>
+      </details>
+    </div>
+
+    <div class="card stack" id="localCard">
       <h2 class="h2i" data-ic="ui_nuevo">Preparad la partida</h2>
       <p class="muted">Elige a qué hora queréis terminar y el juego ajustará las rondas para acabar a tiempo (entre 5 y 120 minutos desde ahora). Puedes jugar de 3 a 10 personas, pero está equilibrado para 3 a 5; con más gente cada ronda dura más, así que dad más tiempo. Un solo móvil, tiradas de dado y un Consejo por ronda.</p>
       <label class="fl" data-ic="ui_reloj">¿A qué hora queréis terminar?<input id="gameEnd" type="time" step="60" value="20:00"></label>
@@ -162,6 +216,7 @@
       <p id="handoffText" class="muted"></p>
       <p id="handoffMood" class="mood" aria-live="off"></p>
       <button class="primary big" id="btnHandoff" data-ic="ui_continuar"><span class="lbl">Continuar</span></button>
+      <div id="waitList" class="stack tight waitlist hidden"></div>
     </div>
   </section>
 
@@ -358,5 +413,6 @@
 <script src="engine.js"></script>
 <script src="fx.js"></script>
 <script src="ui.js"></script>
+<script src="net.js"></script>
 </body>
 </html>
