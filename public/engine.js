@@ -410,8 +410,8 @@
   }
   /* ---------- Aprendizaje: acciones y atributos se desbloquean con la práctica ---------- */
   /* Cuanto menos tiempo (rondas) queda, más fácil es aprender. */
-  function ease() { return state ? clamp(roundsLeftInclCurrent() / 7, 0.3, 1) : 1; }
-  function need(n) { return Math.max(1, Math.round(n * ease())); }
+  /* v1.6.1: el DESBLOQUEO de acciones ya no depende del reloj (solo de lo que haces). Solo el crecimiento de atributos conserva el ajuste por rondas. */
+  function xpNeed(n) { return Math.max(1, Math.round(n * (state ? clamp(roundsLeftInclCurrent() / 7, 0.3, 1) : 1))); }
   function didN(p, id) { return (p.did && p.did[id]) || 0; }
   function hasItemId(p, id) { return p.items.some(function (i) { return i.id === id; }); }
   const UNLOCK_HINT = {
@@ -427,19 +427,26 @@
     sombra_espia: "Acción nueva: Sombras espías. Tu sombra se alarga sola por el suelo; quizá puedas mandarla a cotillear.",
     sombra_guarda: "Acción nueva: Sombras guardianas. Tus sombras ya te escuchan y pueden hacerte de escolta.",
     sombra_hostiga: "Acción nueva: Sombras hostigadoras. Tus sombras aprenden a acosar a quien tú señales.",
+    bendecir: "Acción nueva: Bendecir. A fuerza de curar has aprendido a invocar una bendición que limpia la oscuridad.",
     alzar: "Acción nueva: Alzar a un caído. Los muertos de estas ruinas escuchan, y tu sombra sabe cómo ponerlos a trabajar."
   };
   const ATTR_HINT = { cuerpo: "Tus pasos son más firmes de lo que recordabas.", mente: "Las ideas encajan con menos esfuerzo.", sombra: "La oscuridad te resulta más familiar." };
   const BASE_ACTIONS = ["investigar", "explorar", "proteger", "meditar"];
+  /* Desbloqueo SOLO por acciones (v1.6.1): contadores fijos, sin reloj. Mismas condiciones para todos. */
+  const CORR_GATE = 12;
+  function healCount(p) { return (p.healN || 0) + didN(p, "socorrer") + didN(p, "descansar"); }
+  function lvl1Did(p) { return ["descansar", "apostar", "tender", "resistir", "robar", "hechizar", "ceder", "sombra_espia", "sombra_guarda", "sombra_hostiga", "bendecir"].reduce(function (n, id) { return n + didN(p, id); }, 0); }
+  function baseDid(p) { return BASE_ACTIONS.reduce(function (n, id) { return n + didN(p, id); }, 0); }
   const UNLOCK = {
     descansar: function (p) { return !!p.wasHurt; },
-    entrenar: function (p, late) { return late || didN(p, "explorar") + didN(p, "investigar") >= need(2); },
-    apostar: function (p) { return didN(p, "explorar") >= need(1); },
-    tender: function (p, late) { return late || didN(p, "proteger") >= need(1) || (p.pactsSealed || 0) >= 1 || p.keptPacts >= 1; },
-    resistir: function (p, late) { return late || (p.refused || 0) >= 1 || didN(p, "meditar") >= need(2); },
-    robar: function (p) { return hasPassive(p, "stealDiscount") || p.corr >= Math.max(5, Math.round(12 * ease())) || didN(p, "explorar") >= need(2); },
-    hechizar: function (p) { return hasPassive(p, "spellDiscount") || p.corr >= Math.max(5, Math.round(12 * ease())) || hasItemId(p, "reliquia") || hasItemId(p, "fragmento"); },
-    ceder: function (p) { return p.corr >= Math.max(5, Math.round(12 * ease())) || (p.dealt || 0) >= 1; },
+    entrenar: function (p) { return didN(p, "explorar") + didN(p, "investigar") >= 3 || (lvl1Did(p) >= 1 && baseDid(p) >= 1); },
+    apostar: function (p) { return didN(p, "explorar") >= 1; },
+    tender: function (p) { return didN(p, "proteger") >= 1 || (p.pactsSealed || 0) >= 1 || (p.keptPacts || 0) >= 1; },
+    resistir: function (p) { return (p.refused || 0) >= 1 || didN(p, "meditar") >= 2; },
+    robar: function (p) { return hasPassive(p, "stealDiscount") || p.corr >= CORR_GATE || didN(p, "explorar") >= 2; },
+    hechizar: function (p) { return hasPassive(p, "spellDiscount") || p.corr >= CORR_GATE || hasItemId(p, "reliquia") || hasItemId(p, "fragmento"); },
+    ceder: function (p) { return p.corr >= CORR_GATE || (p.dealt || 0) >= 1; },
+    bendecir: function (p) { return healCount(p) >= 3; },
     apunalar: function (p) { return hasItemId(p, "daga"); },
     envenenar: function (p) { return hasItemId(p, "frasco"); },
     maldecir: function (p) { return hasItemId(p, "pergamino"); },
@@ -448,14 +455,49 @@
     cazar: function (p) { return isAssassin(p); },
     conjurar: function (p) { return !!(p.spells && p.spells.length); },
     socorrer: function (p) { return !!state && !p.dying && state.players.some(function (x) { return x.id !== p.id && x.dying && !x.dead; }); },
-    sombra_espia: function (p, late) { return isAssassin(p) || late || (state.round >= 3 && (p.stats.sombra >= 3 || p.corr >= 12)); },
-    sombra_guarda: function (p, late) { return domLevel(p) >= 1 && (late || state.round >= 3 || assassinAge(p) >= 1); },
-    sombra_hostiga: function (p, late) { return domLevel(p) >= 1 && (late || (isAssassin(p) ? assassinAge(p) >= 2 : p.corr >= 25 && state.round >= 3)); },
-    alzar: function (p, late) {
-      if (!(isAssassin(p) ? (late || assassinAge(p) >= 2) : (domLevel(p) >= 2 && p.corr >= 40))) return false;
+    sombra_espia: function (p) { return isAssassin(p) || p.corr >= CORR_GATE || didN(p, "ceder") + didN(p, "hechizar") + didN(p, "robar") >= 1; },
+    sombra_guarda: function (p) { return domLevel(p) >= 1; },
+    sombra_hostiga: function (p) { return domLevel(p) >= 1 && (isAssassin(p) || p.corr >= 25); },
+    alzar: function (p) {
+      if (!(isAssassin(p) ? domLevel(p) >= 1 : (domLevel(p) >= 2 && p.corr >= 40))) return false;
       return state.players.some(function (x) { return x.id !== p.id && ((x.dead && (x.risenBy === undefined || x.risenBy === null) && x.cause !== "devorado") || (x.dying && !x.dead && isAssassin(p))); });
     }
   };
+  /* Requisitos visibles (para la UI): ramas alternativas {req, have, need}; se muestra la más avanzada. Sin pistas sobre roles. */
+  function cnt(req, have, need) { return { req: req, have: Math.min(have, need), need: need }; }
+  const LOCK_REQ = {
+    descansar: function (p) { return [cnt("Resultar herido", p.wasHurt ? 1 : 0, 1)]; },
+    entrenar: function (p) { return [cnt("Explorar o Investigar", didN(p, "explorar") + didN(p, "investigar"), 3), cnt("Una acción básica y una de las que abras", Math.min(1, lvl1Did(p)) + Math.min(1, baseDid(p)), 2)]; },
+    apostar: function (p) { return [cnt("Explorar", didN(p, "explorar"), 1)]; },
+    tender: function (p) { return [cnt("Proteger a alguien", didN(p, "proteger"), 1), cnt("Sellar un pacto", Math.min(1, (p.pactsSealed || 0) + (p.keptPacts || 0)), 1)]; },
+    resistir: function (p) { return [cnt("Rechazar una tentación", Math.min(1, p.refused || 0), 1), cnt("Meditar", didN(p, "meditar"), 2)]; },
+    robar: function (p) { return [cnt("Explorar", didN(p, "explorar"), 2), cnt("Acumular oscuridad", p.corr, CORR_GATE)]; },
+    hechizar: function (p) { return [cnt("Acumular oscuridad", p.corr, CORR_GATE), cnt("Una reliquia o un fragmento", hasItemId(p, "reliquia") || hasItemId(p, "fragmento") ? 1 : 0, 1)]; },
+    ceder: function (p) { return [cnt("Acumular oscuridad", p.corr, CORR_GATE), cnt("Cerrar un trato con el Umbral", Math.min(1, p.dealt || 0), 1)]; },
+    bendecir: function (p) { return [cnt("Curar: vendajes, hierbas, descansos o socorros", healCount(p), 3)]; },
+    apunalar: function (p) { return [cnt("Tener una daga ritual", hasItemId(p, "daga") ? 1 : 0, 1)]; },
+    envenenar: function (p) { return [cnt("Tener un frasco de veneno", hasItemId(p, "frasco") ? 1 : 0, 1)]; },
+    maldecir: function (p) { return [cnt("Tener un pergamino maldito", hasItemId(p, "pergamino") ? 1 : 0, 1)]; },
+    aturdir: function (p) { return [cnt("Tener una porra de plomo", hasItemId(p, "porra") ? 1 : 0, 1)]; },
+    sombra_espia: function (p) { return [cnt("Robar, hechizar o ceder", Math.min(1, didN(p, "ceder") + didN(p, "hechizar") + didN(p, "robar")), 1), cnt("Acumular oscuridad", p.corr, CORR_GATE)]; },
+    sombra_guarda: function (p) { return [cnt("Un éxito con las sombras espías", domLevel(p) >= 1 ? 1 : 0, 1)]; },
+    sombra_hostiga: function (p) { return [cnt("Un éxito con las sombras", domLevel(p) >= 1 ? 1 : 0, 1), cnt("Acumular oscuridad", p.corr, 25)]; },
+    alzar: function (p) { return [cnt("Dominio de las sombras (dos éxitos)", Math.min(2, (p.dom && p.dom.wins) || 0), 2), cnt("Acumular oscuridad", p.corr, 40)]; }
+  };
+  /* lockInfo(p, id): null si ya está abierta o no es consultable; si no, {id, req, have, need, alt:[...]} con la rama más avanzada. */
+  function lockInfo(p, id) {
+    const a = D.ACTIONS.find(function (x) { return x.id === id; });
+    if (!p || !a || a.assassinOnly || !LOCK_REQ[id] || isUnlocked(p, a)) return null;
+    const br = LOCK_REQ[id](p);
+    /* condiciones compuestas (hostigar, alzar): se muestra la primera sin cumplir; en las alternativas, la más avanzada */
+    const both = id === "alzar" || id === "sombra_hostiga";
+    const best = both ? (br.filter(function (b) { return b.have < b.need; })[0] || br[0]) : br.slice().sort(function (x, y) { return (y.have / y.need) - (x.have / x.need); })[0];
+    return { id: id, req: best.req, have: best.have, need: best.need, all: both, alt: br };
+  }
+  function lockedList(p) {
+    if (!p || !state) return [];
+    return D.ACTIONS.filter(function (a) { return !a.assassinOnly && LOCK_REQ[a.id] && !isUnlocked(p, a); }).map(function (a) { return lockInfo(p, a.id); }).filter(Boolean);
+  }
   /* ---------- Dominio de las sombras (progresión por éxitos, como la maestría de magia: 1 / 2 / 4) ---------- */
   const SOMBRAS = ["sombra_espia", "sombra_guarda", "sombra_hostiga", "alzar"];
   const DOM_NAMES = ["Sombra mansa", "Susurrador", "Domador de sombras", "Señor de las sombras"];
@@ -466,8 +508,7 @@
     "Dominio máximo."
   ];
   function domLevel(p) { const w = (p && p.dom && p.dom.wins) || 0; return w >= 4 ? 3 : w >= 2 ? 2 : w >= 1 ? 1 : 0; }
-  function assassinAge(p) { return isAssassin(p) && p.asesinoRound ? state.round - p.asesinoRound : -1; }
-  function riseMax(p) { return domLevel(p) >= 3 ? 2 : 1; }
+    function riseMax(p) { return domLevel(p) >= 3 ? 2 : 1; }
   function riseCount(p) { return (p.risen || []).filter(function (id) { return state.players[id] && state.players[id].risenBy === p.id; }).length; }
   /* Suma éxitos de dominio; devuelve el texto de subida de nivel (o ""). */
   function domWin(p, n) {
@@ -496,11 +537,11 @@
   function isUnlocked(p, a) {
     if (BASE_ACTIONS.indexOf(a.id) !== -1) return true;
     const f = UNLOCK[a.id];
-    return !!(f && f(p, roundsLeftInclCurrent() <= 2));
+    return !!(f && f(p));
   }
   /* Agrupación de acciones para la UI: lo esencial a la vista y lo demás plegado por familias. */
   const ACTION_GROUPS = [
-    { id: "recuperacion", label: "Recuperarte", ids: ["descansar", "resistir", "entrenar", "socorrer"] },
+    { id: "recuperacion", label: "Recuperarte", ids: ["descansar", "resistir", "entrenar", "socorrer", "bendecir"] },
     { id: "pactos", label: "Pactos", ids: ["tender"] },
     { id: "sucias", label: "Oscuras y de azar", ids: ["robar", "hechizar", "apostar", "ceder", "devorar"] },
     { id: "armas", label: "Con arma", ids: ["apunalar", "envenenar", "maldecir", "aturdir"] },
@@ -535,7 +576,7 @@
   function xpInfo(p) {
     const out = {};
     ["cuerpo", "mente", "sombra"].forEach(function (k) {
-      out[k] = { have: Math.min((p.xp && p.xp[k]) || 0, need(3)), need: need(3), grown: (p.grown && p.grown[k]) || 0, capped: ((p.grown && p.grown[k]) || 0) >= 2 || p.stats[k] >= MAX_STAT };
+      out[k] = { have: Math.min((p.xp && p.xp[k]) || 0, xpNeed(3)), need: xpNeed(3), grown: (p.grown && p.grown[k]) || 0, capped: ((p.grown && p.grown[k]) || 0) >= 2 || p.stats[k] >= MAX_STAT };
     });
     return out;
   }
@@ -543,7 +584,7 @@
     p.xp = p.xp || {}; p.grown = p.grown || {};
     if ((p.grown[attr] || 0) >= 2 || p.stats[attr] >= MAX_STAT) return;
     p.xp[attr] = (p.xp[attr] || 0) + amt;
-    const nd = need(3);
+    const nd = xpNeed(3);
     if (p.xp[attr] >= nd) {
       p.xp[attr] -= nd; p.grown[attr] = (p.grown[attr] || 0) + 1; p.stats[attr] += 1;
       const ah = ATTR_HINT[attr];
@@ -903,7 +944,7 @@
   /* ---------- hambre del Umbral (corrupción que presiona) ---------- */
   const UMBRAL_MID = 28, UMBRAL_HIGH = 45;
   const DARK_ACTS = ["robar", "hechizar", "apostar", "ceder", "cazar", "apunalar", "envenenar", "maldecir", "aturdir", "devorar", "sombra_espia", "sombra_guarda", "sombra_hostiga", "alzar"];
-  const ANTI_ACTS = ["resistir", "meditar"];
+  const ANTI_ACTS = ["resistir", "meditar", "bendecir"];
   function umbralLevel(p) { return !p || isAssassin(p) ? 0 : p.corr >= UMBRAL_HIGH ? 2 : p.corr >= UMBRAL_MID ? 1 : 0; }
   function umbralDmg(p) { const l = umbralLevel(p); return l === 0 ? 0 : l === 1 ? 1 : p.corr >= 70 ? 3 : 2; }
   function darkAct(p) { if (p && state) p.darkRound = state.round; }
@@ -974,7 +1015,7 @@
   function dropStatus(p, id) { p.status = (p.status || []).filter(function (s) { return s.id !== id; }); }
   function statusMod(p) {
     if (!p) return 0;
-    return (hasStatus(p, "fortalecido") ? 1 : 0) - (hasStatus(p, "maldito") ? 1 : 0) - (shockOf(p) ? 1 : 0);
+    return (hasStatus(p, "fortalecido") ? 1 : 0) - (hasStatus(p, "maldito") ? 1 : 0) - (shockOf(p) ? 1 : 0) - ((state && p.blunder === state.round) ? 1 : 0);
   }
   /* Explicación de los modificadores de estado (vigor, maldición, conmoción por heridas). */
   function statusWhy(p) {
@@ -2094,6 +2135,15 @@
         p.virtue = clamp(p.virtue - 3, 0, 100);
         return { text: t.name + " se niega a levantarse, con muy mala educación. El ritual te cuesta +4 de oscuridad y −3 de virtud." + swTxt, log: null };
       }
+      case "bendecir": {
+        if (!r.success) { p.virtue = clamp(p.virtue + 3, 0, 100); return { text: "La oración se te queda corta: no pasa nada, salvo un poco de calma (+3 virtud).", log: null }; }
+        const bh = heal(p, 3), before = p.corr;
+        p.corr = clamp(p.corr - (r.crit ? 14 : 10), 0, 100);
+        p.virtue = clamp(p.virtue + 8, 0, 100);
+        dropStatus(p, "maldito");
+        if (r.crit) p.focus = Math.min(2, p.focus + 1);
+        return { text: "Invocas una bendición: la oscuridad se aparta (−" + (before - p.corr) + "), +8 virtud" + (bh > 0 ? ", +" + bh + " de vitalidad" : "") + ", y se va cualquier maldición" + (r.crit ? " y ganas +1 foco" : "") + ".", log: null };
+      }
       case "entrenar": {
         giveStatus(p, "fortalecido", 2);
         return { text: "Entrenas con rabia contenida. Fortalecido durante dos rondas (+1 a tus tiradas).", log: null };
@@ -2248,6 +2298,7 @@
     }
     if (def.uses && def.uses > 1) { it.left = (it.left === undefined ? def.uses : it.left) - 1; msg += " (" + (it.left > 0 ? "le quedan " + it.left + " uso" + (it.left > 1 ? "s" : "") : "ya no sirve") + ")"; if (it.left <= 0) p.items.splice(index, 1); }
     else p.items.splice(index, 1);
+    if (def.kind === "heal" || def.kind === "cleanse" || def.kind === "elixir") p.healN = (p.healN || 0) + 1;
     p.usedItem = true;
     glog("objeto", { a: p.id, x: def.name + " → " + msg.slice(0, 90) });
     save();
@@ -2558,8 +2609,18 @@
       (hasPassive(target, "defenseBonus") ? 2 : 0) + (target.protection !== null ? 2 : 0) - target.wounds - legPen(target);
     const a = rollRaw(atkBonus, 0);
     const d = rollRaw(defBonus, 0);
-    const attackerWins = !!target.dying || a.total > d.total || (a.total === d.total && a.die > d.die);
+    /* Moribundo ya antes de esta ronda: victoria automática y muerte (regla clásica). Si cayó en ESTA ronda por un enfrentamiento, se tira normal y no se le remata. */
+    const droppedNow = !!target.dying && target.ambDy === state.round;
+    const attackerWins = (!!target.dying && !droppedNow) || a.total > d.total || (a.total === d.total && a.die > d.die);
     noteAggr(actor, "ambush", attackerWins ? 4 : 3);
+    /* Coste del error: enfrentar sin ninguna pista sobre el objetivo (ni pista propia ni Asesino ya expuesto). Los Asesinos no pagan este recargo. */
+    const blind = !isAssassin(actor) && !target.exposed && !actor.clues.some(function (c) { return c.about === target.id; });
+    if (blind) {
+      actor.corr = clamp(actor.corr + 4, 0, 100); darkAct(actor);
+      actor.virtue = clamp(actor.virtue - 4, 0, 100);
+      actor.notes.push("Ronda " + state.round + ": actuaste a ciegas contra " + target.name + ": el peso de esa decisión te marca.");
+      actor.blunder = state.round + 1; /* siempre a ciegas, sea o no Asesino el objetivo: así el desglose no delata quién era */
+    }
 
     const duel = { attacker: { die: a.die, bonus: atkBonus, total: a.total, name: actor.name }, defender: { die: d.die, bonus: defBonus, total: d.total, name: target.name } };
 
@@ -2574,21 +2635,26 @@
         target.notes.push("Ronda " + state.round + ": " + actor.name + " te emboscó.");
       }
       const wasDying = !!target.dying;
-      const ares = damage(target, (isAssassin(actor) || isAssassin(target)) ? rr(5, 6) : rr(3, 4), {});
+      /* Tope por ronda: ≤ ceil(0,6 × vitalidad máx.) de daño por enfrentamientos a un mismo objetivo. Si ya cayó esta ronda, no se le remata. */
+      if (!target.ambAcc || target.ambAcc.round !== state.round) target.ambAcc = { round: state.round, dmg: 0 };
+      const room = wasDying && !droppedNow ? 99 : Math.max(0, Math.ceil(0.6 * maxHp(target)) - target.ambAcc.dmg);
+      const want = (isAssassin(actor) || isAssassin(target)) ? rr(5, 6) : rr(3, 4);
+      const ares = (droppedNow || room <= 0) ? { dealt: 0, zone: null, dying: false, died: false, capped: true } : damage(target, Math.min(want, room), {});
+      if (!ares.capped && !wasDying) { target.ambAcc.dmg += ares.dealt; if (ares.dying) target.ambDy = state.round; }
       if (target.dead) {
         target.notes.push("Ronda " + state.round + ": has caído y quedas fuera de la partida.");
       }
       actor.corr = clamp(actor.corr + 8, 0, 100); darkAct(actor);
       actor.virtue = clamp(actor.virtue - 3, 0, 100);
       target.virtue = clamp(target.virtue + 2, 0, 100);
-      target.notes.push("Ronda " + state.round + ": " + actor.name + " te emboscó en el Consejo y te hirió" + hitNote(ares) + ".");
+      target.notes.push("Ronda " + state.round + ": " + actor.name + " te emboscó en el Consejo" + (ares.capped ? ", pero ya no quedaba nada que hacerte." : " y te hirió" + hitNote(ares) + "."));
       if (target.protection !== null) {
         const prot = state.players[target.protection];
         if (prot) { prot.virtue = clamp(prot.virtue + 5, 0, 100); prot.notes.push("Ronda " + state.round + ": tu protección sobre " + target.name + " no bastó, pero no lo abandonaste."); }
       }
       return {
         success: true, roll: a, duel: duel,
-        text: actor.name + " cae sobre " + target.name + "." + loot + " " + target.name + (target.dead ? " ha sido eliminado." : target.dying ? " cae moribundo." : " queda " + visibleHealth(target).split(" · ")[0].toLowerCase() + "."),
+        text: actor.name + " cae sobre " + target.name + "." + loot + " " + target.name + (target.dead ? " ha sido eliminado." : (target.dying && droppedNow) ? " ya yace caído." : target.dying ? " cae moribundo." : ares.capped ? " resiste en pie." : " queda " + visibleHealth(target).split(" · ")[0].toLowerCase() + "."),
         log: target.name + " ha sido emboscado en la oscuridad."
       };
     }
@@ -2946,6 +3012,7 @@
     proteger: ["{a} juró proteger a {t}", "{a} no logró proteger a {t}"],
     explorar: ["{a} registró las ruinas y salió con un botín", "{a} volvió de las ruinas con las manos vacías"],
     meditar: ["{a} pasó la noche meditando", "{a} pasó la noche meditando"],
+    bendecir: ["{a} invocó una bendición", "{a} rezó una oración que no obtuvo respuesta"],
     robar: ["{a} le robó algo a {t}", "{a} fue descubierto intentando robar a {t}"],
     hechizar: ["{a} marcó a {t} con magia prohibida", "{a} perdió el control de una magia prohibida"],
     apostar: ["{a} apostó contra el Umbral y ganó", "{a} apostó contra el Umbral y perdió"],
@@ -2980,6 +3047,9 @@
         if (e.k === "act" && e.ok) {
           const ar = String(e.a).split(","), a = nm(ar[0]), tmpl = ACT_STORY[ar[1]];
           if (tmpl) parts.push(tmpl[e.win === 0 ? 1 : 0].replace("{a}", function () { return a; }).replace("{t}", function () { return ar[2] && ar[2] !== "-" ? nm(ar[2]) : "alguien"; }));
+        } else if ((e.k === "cast" || e.k === "learnSpell" || e.k === "improveSpell") && e.ok) {
+          const a0 = nm(String(e.a).split(",")[0]);
+          parts.push(e.k === "cast" ? a0 + " lanzó un conjuro" : a0 + " estudió un conjuro entre las sombras");
         } else if (e.k === "encounterAct" && e.ok && e.n) {
           const ar = String(e.a).split(",");
           parts.push(nm(ar[0]) + " se topó en las ruinas con " + e.n.toLowerCase() + (ar[1] === "irse" ? " y siguió su camino" : " (optó por «" + ar[1] + "») y " + (e.win === 0 ? "salió mal parado" : "salió airoso")));
@@ -3142,7 +3212,7 @@
         name: p.name, role: p.role.name, affinity: p.affinity.name,
         virtue: p.virtue, corr: p.corr, wounds: p.wounds, hp: p.hp, maxHp: maxHp(p), dying: !!p.dying && !p.dead, dead: !!p.dead, cause: p.dead ? (p.cause || "heridas") : null, umbral: !!p.dyingByUmbral, alignment: p.alignment || "superviviente",
         items: p.items.map(function (i) { return itemName(i.id); }),
-        clues: p.clues.length, secret: (sec && sec.text) || p.secret.text, secretTitle: sec ? sec.title : "", secretWhy: sec && sec.why ? sec.why(p, state, fulfilled) : "", fulfilled: fulfilled,
+        clues: p.clues.length, secret: (sec && sec.text) || p.secret.text, secretTitle: sec ? sec.title : "", secretWhy: (sec && sec.why ? sec.why(p, state, fulfilled) : "") + (!fulfilled && p.secretPaid && sec && sec.reward ? " Lo cumpliste a mitad de partida y cobraste el premio, aunque lo perdiste al final: " + sec.reward.title + "." : ""), fulfilled: fulfilled,
         rewardTitle: sec && sec.reward ? sec.reward.title : "", rewardText: sec && sec.reward ? sec.reward.text : "", rewardPaid: !!p.secretPaid,
         betrayals: p.betrayals, keptPacts: p.keptPacts,
         risenBy: p.risenBy !== undefined && p.risenBy !== null && ps[p.risenBy] ? ps[p.risenBy].name : null, via: p.asesinoVia || null
@@ -3198,7 +3268,7 @@
           const other = nm(e.a === p.id ? e.b : e.a), o = outcomeOf(e, i);
           let t = (e.a === p.id ? "Selló con " : "Aceptó de ") + other + " un pacto de " + lbl(e.x) + " (ronda " + e.r + ")";
           if (!o) t += ", que la partida acabó antes de comprobar";
-          else if (o.k === "cumple") t += " y se respetó hasta el final";
+          else if (o.k === "cumple") t += " y se respetó mientras estuvo vigente (una ronda)";
           else t += o.a === p.id ? " y acabó rompiéndolo" : " y " + other + " lo rompió a sus espaldas";
           S.push(t);
         } else if (e.k === "pacto_no" && e.a === p.id) S.push(nm(e.b) + " rechazó su pacto de " + lbl(e.x));
@@ -3302,7 +3372,7 @@
     declareOptions: declareOptions, getPactOffers: getPactOffers, answerPact: wrapLog("answerPact", answerPact),
     nextRound: nextRound, computeEnding: computeEnding,
     getEnding: function () { return state ? state.ending : null; },
-    pSuccess: pSuccess, statusMod: statusMod, hasStatus: hasStatus, getOffer: getOffer, answerOffer: wrapLog("answerOffer", answerOffer), getHandOffer: getHandOffer, xpInfo: xpInfo, _makeClue: makeClue, timeUp: timeUp, forceEnd: forceEnd, timeWarn: timeWarn, dismissWarn: dismissWarn, addTime: addTime, answerTime: answerTime, turnSeconds: turnSeconds, cast: wrapLog("cast", cast), studyOptions: studyOptions, learnSpell: wrapLog("learnSpell", learnSpell), improveSpell: wrapLog("improveSpell", improveSpell), spellProgress: spellProgress, isUnlocked: isUnlocked, activePacts: activePacts, pactTerms: pactTerms, encounterStart: encounterStart, encounterAct: wrapLog("encounterAct", encounterAct), _npcs: NPCS, unlockNotices: unlockNotices, answerHand: wrapLog("answerHand", answerHand),
+    pSuccess: pSuccess, statusMod: statusMod, hasStatus: hasStatus, getOffer: getOffer, answerOffer: wrapLog("answerOffer", answerOffer), getHandOffer: getHandOffer, xpInfo: xpInfo, _makeClue: makeClue, timeUp: timeUp, forceEnd: forceEnd, timeWarn: timeWarn, dismissWarn: dismissWarn, addTime: addTime, answerTime: answerTime, turnSeconds: turnSeconds, cast: wrapLog("cast", cast), studyOptions: studyOptions, learnSpell: wrapLog("learnSpell", learnSpell), improveSpell: wrapLog("improveSpell", improveSpell), spellProgress: spellProgress, isUnlocked: isUnlocked, lockInfo: lockInfo, lockedList: lockedList, activePacts: activePacts, pactTerms: pactTerms, encounterStart: encounterStart, encounterAct: wrapLog("encounterAct", encounterAct), _npcs: NPCS, unlockNotices: unlockNotices, answerHand: wrapLog("answerHand", answerHand),
     elapsedMin: function () { return state ? Math.floor(playedMs() / 60000) : 0; },
     domInfo: domInfo, riseCount: riseCount, aggrSummary: aggrSummary, DOM_NAMES: DOM_NAMES, declare: wrapLog("declare", declare),
     maxRounds: maxRounds, tick: tick, timeLeftMs: timeLeftMs, councilSeconds: councilSeconds, behindSchedule: behindSchedule

@@ -34,6 +34,7 @@
  "a_robar": "ic-robber-hand",
  "a_romper": "ic-broken-heart",
  "a_socorrer": "ic-hospital-cross",
+ "a_bendecir": "ic-shieldcomb",
  "a_sombra_espia": "ic-periscope",
  "a_sombra_guarda": "ic-guards",
  "a_sombra_hostiga": "ic-ghost",

@@ -223,6 +223,7 @@
       if (!a) return { main: [], more: [], total: 0, hidden: 0 };
       return { main: a.main.map(byId), more: a.more.map(function (g) { return { id: g.id, label: g.label, acts: g.acts.map(byId) }; }), total: a.total, hidden: a.hidden };
     },
+    lockedList: function () { return qv().locked || []; },
     targetsFor: function (actionId) { return (qv().targets || {})[actionId] || []; },
     actionOdds: function (pid, aid) { return (qv().odds || {})[aid] || null; },
     spellInfo: function (pid, sid, tid, mode) { const e = (qv().spells || {})[sid], m = e && e.info[tid == null ? "-" : tid]; return (m && m[mode]) || null; },

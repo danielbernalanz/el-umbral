@@ -59,13 +59,20 @@ window.__csp=[];document.addEventListener('securitypolicyviolation',e=>window.__
 window.EventSource=function(u,o){const e=new E(u,o);e.addEventListener('view',ev=>{window.__sse.push(ev.data);if(window.__sse.length>80)window.__sse.shift();});return e;};
 window.EventSource.prototype=E.prototype;window.EventSource.CLOSED=2;window.EventSource.CONNECTING=0;window.EventSource.OPEN=1;})();"""
 
+# Textos de «pasar el móvil» que NO deben verse nunca en línea (cada jugador tiene su dispositivo).
+HAND_RE = r"pas(a|ar|ad)\s+(el|tu|este)\s+m[óo]vil|entreg(a|ar|ad)\s+(el|tu|este)\s+(m[óo]vil|dispositivo|turno)|traspaso|que nadie mire|nadie\s+(m[aá]s\s+)?(debe|puede)\s+mirar|al pasarlo|ense\u00f1a el m[óo]vil|oiga el zumbido|Soy [A-ZÁÉÍÓÚ]\w+$"
+HAND_HITS = []
+HAND_JS = "(()=>{const re=new RegExp(%s,'i'),seen={};setInterval(()=>{try{const t=[document.body.innerText||''].concat([].map.call(document.querySelectorAll('.toast'),e=>e.textContent)).join('\\n');t.split('\\n').forEach(l=>{if(re.test(l)&&!seen[l]){seen[l]=1;window.__handhit(l.slice(0,160))}})}catch(e){}},250)})();" % json.dumps(HAND_RE)
+
 class Client:
     def __init__(self, browser, name, vw=390, vh=844, csp=False):
         self.name = name
         # bypass_csp: wait_for_function de Playwright usa eval; la CSP real se comprueba en el escenario «csp» (csp=True)
         self.ctx = browser.new_context(viewport={"width": vw, "height": vh}, bypass_csp=not csp)
         self.ctx.add_init_script(SSE_HOOK)
+        self.ctx.add_init_script(HAND_JS)
         self.pg = self.ctx.new_page()
+        self.pg.expose_function("__handhit", lambda t, n=name: HAND_HITS.append((n, t)))
         self.errors = []; self.cmds = []; self.resp = []
         self.pg.on("pageerror", lambda e: self.errors.append("PAGEERR " + str(e)[:200]))
         self.pg.on("console", lambda m: self.errors.append("CONSOLE " + m.text[:200]) if m.type == "error" and "Failed to load resource" not in m.text and "ERR_" not in m.text and "navigator.vibrate" not in m.text else None)
@@ -283,6 +290,10 @@ def scenario_game(pw, restart_test=False):
         cs[0].pg.fill("#netEnd", end_time(A.mins)); cs[0].pg.click("#btnOnStart")
         for c in cs: c.pg.wait_for_selector("#privatePanel", state="visible", timeout=15000)
         cs[1].shot("00_private_390x844")
+        # textos fijos (ayuda, Consejo, botones) aunque estén ocultos: tampoco deben hablar de pasar el móvil
+        static = cs[1].pg.evaluate("[document.getElementById('helpOverlay').textContent,document.getElementById('councilPanel').textContent,document.getElementById('prepPanel').textContent,document.getElementById('screenTitle').textContent].join('\\n')")
+        hs = [l[:80] for l in static.split("\n") if re.search(HAND_RE, l, re.I)]
+        check("game: ayuda/Consejo/preparación sin textos de pasar el móvil", not hs, "; ".join(hs[:3]))
         # token guardado y no expuesto en la URL ni en consola
         check("game: token en localStorage y no en la URL visible", all("token" in (c.pg.evaluate("localStorage.getItem('umbral_online_session')") or "") and "t=" not in c.pg.url for c in cs))
         if restart_test:
@@ -715,6 +726,7 @@ with sync_playwright() as pw:
         print("== escenario", k, flush=True)
         try: f(pw)
         except Exception as e: check(k + ": excepción del escenario", False, repr(e)[:300])
+check("sin textos de «pasar el móvil» en ninguna pantalla en línea", not HAND_HITS, "; ".join("%s: %s" % h for h in HAND_HITS[:5]))
 bad = [r for r in RESULTS if not r[1]]
 print("\nRESUMEN: %d comprobaciones, %d fallos" % (len(RESULTS), len(bad)))
 sys.exit(1 if bad else 0)

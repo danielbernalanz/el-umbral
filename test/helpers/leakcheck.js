@@ -2,7 +2,7 @@
 /* Detector de fugas: construye cadenas sensibles ajenas a partir del estado REAL y las busca en la vista serializada. */
 const { PUBLIC_PLAYER_KEYS, TOP_KEYS } = require("../../server/view");
 
-const Q_KEYS = ["maxRounds", "turnSeconds", "councilSeconds", "councilPrompt", "behindSchedule", "timeWarn", "timeLeftMs", "extEnd", "health", "xp", "dom", "secret", "umbral", "pacts", "risen", "since", "offer", "unlocks", "encounter", "handOffer", "declare", "pactOffers", "unlocked", "actions", "odds", "targets", "itemTargets", "spellTargets", "spells"];
+const Q_KEYS = ["maxRounds", "turnSeconds", "councilSeconds", "councilPrompt", "behindSchedule", "timeWarn", "timeLeftMs", "extEnd", "health", "xp", "dom", "secret", "umbral", "pacts", "risen", "since", "offer", "unlocks", "encounter", "handOffer", "declare", "pactOffers", "unlocked", "locked", "actions", "odds", "targets", "itemTargets", "spellTargets", "spells"];
 const ME_FORBIDDEN = ["socBy", "risenBy", "lastSeen"];
 
 function strings(o, out, minLen) {

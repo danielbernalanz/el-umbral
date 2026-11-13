@@ -112,3 +112,21 @@ test("control negativo: sin retención de notas el detector de retención salta"
   });
   assert.ok(probs > 0, "sin retención debe haber problemas de retención detectados");
 });
+
+test("q.locked (acciones por desbloquear): misma forma para todos y sin acciones de Asesino", () => {
+  const game = newGame(4242, 5);
+  const D = game.D;
+  const asesino = D.ACTIONS.filter((a) => a.assassinOnly).map((a) => a.id);
+  assert.ok(asesino.length > 0);
+  for (let pid = 0; pid < 5; pid++) {
+    const v = game.view(pid);
+    const list = v.q.locked;
+    assert.ok(Array.isArray(list));
+    list.forEach((x) => {
+      assert.ok(!asesino.includes(x.id), "acción de Asesino en la lista: " + x.id);
+      assert.ok(!["cazar", "devorar"].includes(x.id));
+      assert.deepStrictEqual(Object.keys(x).sort(), ["alt", "all", "have", "id", "need", "req"].sort());
+      assert.ok(typeof x.req === "string" && typeof x.have === "number" && typeof x.need === "number");
+    });
+  }
+});

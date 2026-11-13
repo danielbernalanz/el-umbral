@@ -21,7 +21,7 @@
   const FAMS = {
     a_investigar: "lore", a_proteger: "guard", a_explorar: "ember", a_meditar: "lore", a_robar: "dark", a_hechizar: "dark", a_apostar: "ember", a_ceder: "dark", a_resistir: "guard",
     a_cazar: "danger", a_apunalar: "danger", a_envenenar: "dark", a_maldecir: "dark", a_aturdir: "danger", a_devorar: "danger", a_descansar: "heal", a_conjurar: "lore", a_tender: "heal",
-    a_socorrer: "heal", a_sombra_espia: "dark", a_sombra_guarda: "dark", a_sombra_hostiga: "dark", a_alzar: "dark", a_entrenar: "ember", a_acusar: "danger", a_enfrentar: "danger",
+    a_socorrer: "heal", a_bendecir: "heal", a_sombra_espia: "dark", a_sombra_guarda: "dark", a_sombra_hostiga: "dark", a_alzar: "dark", a_entrenar: "ember", a_acusar: "danger", a_enfrentar: "danger",
     a_romper: "danger", a_pacto: "gold", a_estudiar: "lore", a_aprender: "lore", a_perfeccionar: "lore", a_abstener: "mist",
     sp_rayo: "danger", sp_plaga: "dark", sp_marchitar: "danger", sp_grillete: "dark", sp_maleficio: "dark", sp_drenar: "dark", sp_pesadilla: "dark", sp_egida: "guard", sp_sanar: "heal", sp_velo: "guard", sp_purga: "heal", sp_reflejo: "guard", sp_presagio: "lore",
     as_fuego: "ember", as_hielo: "lore", as_luz: "gold", as_sangre: "danger", as_sombra: "dark", as_vacio: "dark",
@@ -488,8 +488,9 @@
     const s = U.getState();
     const p = U.currentPlayer();
     $("phaseTag").textContent = "TURNO PRIVADO"; setPhaseIcon("ph_privado");
-    $("screenTitle").textContent = "Turno de " + p.name;
-    setStep((s.round === 1 ? "Información privada: que nadie mire. Elige UNA acción; antes de confirmar verás qué hace." : "Información privada: que nadie mire.") + (NET && U.readLeft && U.readLeft() > 0 ? " Lee la ronda: unos segundos antes de poder actuar sobre otros." : ""));
+    $("screenTitle").textContent = NET ? "Tu turno" : "Turno de " + p.name;
+    setStep(NET ? "Tu vista es privada." + (s.round === 1 ? " Elige UNA acción; antes de confirmar verás qué hace." : "")
+      : (s.round === 1 ? "Información privada: que nadie mire. Elige UNA acción; antes de confirmar verás qué hace." : "Información privada: que nadie mire.") + (NET && U.readLeft && U.readLeft() > 0 ? " Lee la ronda: unos segundos antes de poder actuar sobre otros." : ""));
     $("privateName").textContent = p.name;
     $("privateAvatar").innerHTML = medal("r_" + p.role.id, "lg");
     $("privateRole").innerHTML = ic("r_" + p.role.id) + esc(p.role.name) + " · " + ic("f_" + p.affinity.id) + esc(p.affinity.name);
@@ -640,7 +641,24 @@
     if (mh) mh.onclick = function () { showMagicHelp = !showMagicHelp; const wasOpen = $("playerInteractions").open; renderSheet(p); $("playerInteractions").open = wasOpen; };
   }
 
-  const SHORT = { investigar: "Pistas sobre alguien", proteger: "Cubres a otro", explorar: "Objetos y pistas", meditar: "Calma la oscuridad y repone un conjuro", robar: "Quitas un objeto", hechizar: "Magia sucia, con pista", apostar: "Riesgo por premio", ceder: "Poder a cambio de alma", resistir: "Rechazas el poder", cazar: "Ataque secreto", apunalar: "Golpe con tu daga", envenenar: "Veneno lento", maldecir: "Estorba sus tiradas", aturdir: "Pierde su turno", devorar: "Canibalismo", descansar: "Recuperas vitalidad", entrenar: "+1 a tus tiradas", tender: "Ayuda secreta", conjurar: "Lanzas un conjuro", socorrer: "Salvas a un moribundo", sombra_espia: "Una pista, por la vía de las sombras", sombra_guarda: "Defensa con sombras", sombra_hostiga: "Maldices y manchas a alguien", alzar: "Un caído trabaja para ti" };
+  const SHORT = { investigar: "Pistas sobre alguien", proteger: "Cubres a otro", explorar: "Objetos y pistas", meditar: "Calma la oscuridad y repone un conjuro", robar: "Quitas un objeto", hechizar: "Magia sucia, con pista", apostar: "Riesgo por premio", ceder: "Poder a cambio de alma", resistir: "Rechazas el poder", cazar: "Ataque secreto", apunalar: "Golpe con tu daga", envenenar: "Veneno lento", maldecir: "Estorba sus tiradas", aturdir: "Pierde su turno", devorar: "Canibalismo", descansar: "Recuperas vitalidad", entrenar: "+1 a tus tiradas", tender: "Ayuda secreta", conjurar: "Lanzas un conjuro", socorrer: "Salvas a un moribundo", bendecir: "Limpias oscuridad y te curas", sombra_espia: "Una pista, por la vía de las sombras", sombra_guarda: "Defensa con sombras", sombra_hostiga: "Maldices y manchas a alguien", alzar: "Un caído trabaja para ti" };
+
+  /* Acciones aún cerradas (misma lista y requisitos para todos los jugadores; solo lo que el motor declara consultable). */
+  function lockedRows(p) {
+    if (!U.lockedList) return [];
+    const out = [];
+    (U.lockedList(p) || []).forEach(function (x) {
+      const a = D.ACTIONS.find(function (q) { return q.id === x.id; }); if (!a) return;
+      const row = document.createElement("div"); row.className = "lockrow small";
+      const pr = function (r) { return esc(r.req) + " " + r.have + "/" + r.need; };
+      let det = x.all && x.alt && x.alt.length > 1 ? x.alt.map(pr).join(" y ") : pr(x);
+      if (x.id === "alzar") det += " · y hace falta un caído al que alzar";
+      row.style.cssText = "opacity:.6;display:flex;gap:8px;align-items:center;padding:6px 8px;border:1px dashed currentColor;border-radius:8px;margin:4px 0";
+      row.innerHTML = medal("a_" + a.id, "sm") + '<span><b>' + esc(a.name) + '</b> — ' + det + '</span>';
+      out.push(row);
+    });
+    return out;
+  }
 
   function renderActions(p) {
     const box = $("actionChoices");
@@ -676,10 +694,11 @@
     grid.className = "actions grid3";
     va.main.forEach(function (a) { grid.appendChild(mkTile(a)); });
     box.appendChild(grid);
-    if (va.hidden) {
+    const locked = lockedRows(p);
+    if (va.hidden || locked.length) {
       const tog = document.createElement("button");
       tog.className = "ghost smallbtn";
-      tog.innerHTML = va.more.map(function (g) { return ic(GROUP_ICON[g.id]); }).join("") + '<span>' + (showMoreActs ? "Ocultar" : "Más acciones") + " (" + va.hidden + ")</span>";
+      tog.innerHTML = va.more.map(function (g) { return ic(GROUP_ICON[g.id]); }).join("") + '<span>' + (showMoreActs ? "Ocultar" : va.hidden ? "Más acciones" : "Por desbloquear") + " (" + (va.hidden || locked.length) + ")</span>";
       tog.onclick = function () { showMoreActs = !showMoreActs; renderPrivate(); };
       box.appendChild(tog);
       if (showMoreActs) {
@@ -689,6 +708,10 @@
           g.acts.forEach(function (a) { gg.appendChild(mkTile(a)); });
           box.appendChild(gg);
         });
+        if (locked.length) {
+          const h = document.createElement("div"); h.className = "grouphead"; h.innerHTML = '<div class="tag">POR DESBLOQUEAR</div>'; box.appendChild(h);
+          locked.forEach(function (r) { box.appendChild(r); });
+        }
       }
     }
     $("actionHint").textContent = "";
@@ -756,7 +779,7 @@
   function doCast(spellId, targetId, mode) {
     const p = U.currentPlayer();
     run(U.cast(p.id, spellId, targetId, mode), function (res) {
-      if (!res.ok) { if (NET && U.currentPlayer().acted) { endTurn(); return; } $("actionHint").textContent = res.msg; return; }
+      if (!res.ok) { if (NET && U.currentPlayer().acted) { endTurn(); return; } $("actionHint").textContent = onl(res.msg); return; }
       pendingSpell = null;
       showRoll({ title: "CONJURO", icon: "a_conjurar", result: res, text: res.outcome, buttons: [{ label: "Continuar", cls: "primary", onClick: endTurn }] });
     });
@@ -966,7 +989,7 @@
     if (!p) { toast("La partida no está en un turno válido.", true); return; }
     const hp0 = p.hp;
     run(U.act(p.id, a.id, targetId, stakeId), function (res) {
-      if (!res.ok) { if (NET && U.currentPlayer().acted) { endTurn(); return; } $("actionHint").textContent = res.msg; return; }
+      if (!res.ok) { if (NET && U.currentPlayer().acted) { endTurn(); return; } $("actionHint").textContent = onl(res.msg); return; }
       fxSelf(U.currentPlayer(), hp0);
       pendingAction = null; pendingStake = null; pendingItem = null; pendingMode = null; pendingSpell = null; pendingStudy = null;
       const buttons = res.pushable ? [
@@ -1505,7 +1528,13 @@
   }
 
   /* ---------------- avisos ---------------- */
+  /* En línea no hay traspaso del móvil: los avisos del motor que lo mencionan se reescriben para dispositivo propio. */
+  function onl(m) {
+    if (!NET || typeof m !== "string") return m;
+    return m.replace(/Primero entrega el móvil\.?/i, "Espera un momento: se está cerrando el paso anterior.").replace(/Debes resolver tu acción antes de entregar el turno\.?/i, "Primero resuelve tu acción.");
+  }
   function toast(msg, bad) {
+    msg = onl(msg);
     Array.prototype.forEach.call(document.querySelectorAll(".toast"), function (o) { o.remove(); });
     const t = document.createElement("div");
     t.className = "toast" + (bad ? " bad" : "");
@@ -1563,6 +1592,18 @@
       alive.map(function (x) { return '<div class="wrow">' + playerMedal(x) + '<b>' + esc(x.name) + (x.id === me.id ? " (tú)" : "") + '</b>' + (x.absent ? '<span class="chip mid">ausente</span>' : x.online === false ? '<span class="chip mid">sin conexión</span>' : '') + (x.host ? '<span class="chip good">anfitrión</span>' : '') + '</div>'; }).join("");
     updateStatus();
   }
+  /* Textos fijos de index.html que hablan de pasar el móvil: solo en línea se reescriben (en local el HTML queda intacto). */
+  function netTexts() {
+    $("screenTitle").textContent = "Tu turno";
+    setIcoBtn($("btnPrepSave"), "ui_guardar", "Guardar declaración");
+    const fix = function (root, pairs) { if (!root) return; Array.prototype.forEach.call(root.querySelectorAll("p,li"), function (el) { pairs.forEach(function (pr) { if (el.innerHTML.indexOf(pr[0]) !== -1) el.innerHTML = el.innerHTML.split(pr[0]).join(pr[1]); }); }); };
+    fix($("helpOverlay"), [
+      ["elige UNA acción en secreto y pasa el móvil.", "elige UNA acción en secreto en su propio móvil; todos juegan a la vez y el Consejo se abre cuando terminan."],
+      ["La vibración solo se dispara cuando el móvil ya está en manos de quien afecta, nunca al pasarlo.", "Tu móvil es solo tuyo: la vibración solo avisa de lo que te afecta a ti."],
+      [" úsalo si os preocupa que alguien oiga el zumbido.", " úsalo si no quieres que se note nada."]
+    ]);
+    fix($("councilPanel"), [["se enseña el móvil si queréis", "se enseña lo que queráis"]]);
+  }
   /* Pantalla que toca según la vista. Se llama al cambiar de fase/ronda y tras cada mutación propia. */
   function routeNet() {
     const s = U.getState(), me = U.currentPlayer(), prev = lastKey;
@@ -1603,6 +1644,7 @@
       U = backend; NET = true; $("start").classList.add("hidden");
       setIcoBtn($("btnSaveExit"), "ui_salir", "Salir (puedes volver a la sala)"); setIcoBtn($("btnBackExit"), "ui_salir", "Salir (puedes volver a la sala)");
       $("backOverlay").querySelector("p.small").textContent = "Seguirás en la sala: al volver a abrir el juego en este móvil te reconectas solo.";
+      netTexts();
       enterGame(true); routeNet();
     },
     onView: onNetView

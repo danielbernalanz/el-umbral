@@ -82,6 +82,7 @@ function queriesFor(game, pid) {
   /* propuestas de pacto: idx LOCAL (el índice global delataría cuántas propuestas hay en la mesa) */
   q.pactOffers = asPlayer(game, pid, () => U.getPactOffers(pid)).map((o, i) => ({ idx: i, from: o.from, type: o.type, label: o.label, terms: o.terms }));
   q.unlocked = {}; D.ACTIONS.forEach((a) => { q.unlocked[a.id] = !!U.isUnlocked(p, a) && !(a.assassinOnly && p.alignment !== "asesino"); });
+  q.locked = U.lockedList(p);                                     /* acciones cerradas + requisito/progreso (mismas reglas para todos; sin acciones de Asesino) */
   const vis = U.visibleActions(p);
   q.actions = { main: vis.main.map((a) => a.id), more: vis.more.map((g) => ({ id: g.id, label: g.label, acts: g.acts.map((a) => a.id) })), total: vis.total, hidden: vis.hidden };
   q.odds = {};
