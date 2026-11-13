@@ -1,4 +1,4 @@
-/* EL UMBRAL — interfaz (v1.5.0) */
+/* EL UMBRAL — interfaz (v1.6.0) */
 (function () {
   "use strict";
 

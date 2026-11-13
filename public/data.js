@@ -1,4 +1,4 @@
-/* EL UMBRAL — datos del juego (v1.5.0)
+/* EL UMBRAL — datos del juego (v1.6.0)
    Roles, afinidades, objetos, acciones, eventos, secretos y pistas. */
 (function (g) {
   "use strict";
@@ -225,7 +225,7 @@
     fortalecido: { name: "Fortalecido", desc: "+1 a todas las tiradas (dos rondas)." }
   };
 
-  const D = { VERSION: "1.5.0", STATUS, ROLES, AFFINITIES, ITEMS, LOOT_ITEMS, DARK_ITEMS, UTIL_ITEMS, MEDIC_ITEMS, ACTIONS, STAKES, EVENTS, CLUES, ASSASSIN_CLUES, SECRETS };
+  const D = { VERSION: "1.6.0", STATUS, ROLES, AFFINITIES, ITEMS, LOOT_ITEMS, DARK_ITEMS, UTIL_ITEMS, MEDIC_ITEMS, ACTIONS, STAKES, EVENTS, CLUES, ASSASSIN_CLUES, SECRETS };
   g.UMBRAL_DATA = D;
   if (typeof module !== "undefined") module.exports = D;
 })(typeof globalThis !== "undefined" ? globalThis : this);
