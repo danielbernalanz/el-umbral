@@ -1,4 +1,4 @@
-/* EL UMBRAL — motor de juego (v1.6.1)
+/* EL UMBRAL — motor de juego (v1.6.2)
    Sin DOM. Toda la lógica vive aquí para poder probarla con Node. */
 (function (g) {
   "use strict";
@@ -410,7 +410,7 @@
   }
   /* ---------- Aprendizaje: acciones y atributos se desbloquean con la práctica ---------- */
   /* Cuanto menos tiempo (rondas) queda, más fácil es aprender. */
-  /* v1.6.1: el DESBLOQUEO de acciones ya no depende del reloj (solo de lo que haces). Solo el crecimiento de atributos conserva el ajuste por rondas. */
+  /* v1.6.2: el DESBLOQUEO de acciones ya no depende del reloj (solo de lo que haces). Solo el crecimiento de atributos conserva el ajuste por rondas. */
   function xpNeed(n) { return Math.max(1, Math.round(n * (state ? clamp(roundsLeftInclCurrent() / 7, 0.3, 1) : 1))); }
   function didN(p, id) { return (p.did && p.did[id]) || 0; }
   function hasItemId(p, id) { return p.items.some(function (i) { return i.id === id; }); }
@@ -432,7 +432,7 @@
   };
   const ATTR_HINT = { cuerpo: "Tus pasos son más firmes de lo que recordabas.", mente: "Las ideas encajan con menos esfuerzo.", sombra: "La oscuridad te resulta más familiar." };
   const BASE_ACTIONS = ["investigar", "explorar", "proteger", "meditar"];
-  /* Desbloqueo SOLO por acciones (v1.6.1): contadores fijos, sin reloj. Mismas condiciones para todos. */
+  /* Desbloqueo SOLO por acciones (v1.6.2): contadores fijos, sin reloj. Mismas condiciones para todos. */
   const CORR_GATE = 12;
   function healCount(p) { return (p.healN || 0) + didN(p, "socorrer") + didN(p, "descansar"); }
   function lvl1Did(p) { return ["descansar", "apostar", "tender", "resistir", "robar", "hechizar", "ceder", "sombra_espia", "sombra_guarda", "sombra_hostiga", "bendecir"].reduce(function (n, id) { return n + didN(p, id); }, 0); }

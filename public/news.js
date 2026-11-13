@@ -5,12 +5,15 @@
 (function (w) {
   "use strict";
   w.UMBRAL_NEWS = [
-    { version: "1.6.1", fecha: "2026-11-13", titulo: "Más claridad y animaciones con sentido", puntos: [
+    { version: "1.6.2", fecha: "2026-11-13", titulo: "Animaciones y novedades", puntos: [
+      "Animaciones breves ligadas a lo que ocurre: tajo al apuñalar, destello del conjuro, luz al curar, escudo al protegerte, temblor al recibir daño y sello de los pactos. Se apagan si tu móvil pide reducir el movimiento.",
+      "Nuevo apartado «Novedades» en el menú principal, con el historial de cambios de cada versión."
+    ] },
+    { version: "1.6.1", fecha: "2026-11-13", titulo: "Más claridad al desbloquear acciones", puntos: [
       "Las acciones nuevas se desbloquean solo por lo que haces en la partida, no porque pase el tiempo. Un apartado «Por desbloquear» te dice qué te falta.",
       "Bendecir ya forma parte de las acciones de ayuda.",
       "Enfrentar tiene un tope por ronda y su coste se paga a ciegas, igual para todos.",
-      "En línea cada uno juega en su propio dispositivo.",
-      "Animaciones breves ligadas a lo que ocurre (tajo, destello del conjuro, luz al curar, temblor al recibir daño, sello de los pactos). Se apagan si tu móvil pide reducir el movimiento."
+      "En línea cada uno juega en su propio dispositivo."
     ] },
     { version: "1.6.0", fecha: "2026-11-13", titulo: "Modo en línea", puntos: [
       "Crea una sala y comparte el código: cada jugador usa su propio móvil.",
