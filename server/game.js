@@ -1,0 +1,253 @@
+"use strict";
+/* Una partida: motor en su contexto vm + capa de comandos por jugador (cambio de contexto de turno),
+   barreras de fase, retención de notas/crónica ajenas y vista filtrada. Sin red: lo usa room.js y los tests. */
+const { loadEngine } = require("./engine_vm");
+const view = require("./view");
+
+const GENERIC_BAD_TARGET = "Objetivo no válido.";
+const NOT_NOW = "Ahora no puedes hacer eso.";
+const bad = (msg) => ({ ok: false, msg });
+const isInt = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+const isStr = (v, max) => typeof v === "string" && v.length > 0 && v.length <= (max || 40);
+const isIdOrNull = (v) => v === null || v === undefined || isInt(v, 0, 9);
+const isIdStr = (v) => isStr(v, 40) || isInt(v, 0, 1e9);
+
+class Game {
+  /* names: nombres de los jugadores (índice = id de jugador). opts: { engineDir, endAt, now, rng } */
+  constructor(names, opts) {
+    opts = opts || {};
+    this.now = opts.now || Date.now;
+    const eng = loadEngine({ dir: opts.engineDir, rng: opts.rng, now: this.now });
+    this.U = eng.U; this.D = eng.D; this.ctx = eng.ctx;
+    const endAt = Number(opts.endAt);
+    const minutes = Math.round((endAt - this.now()) / 60000);
+    if (!isFinite(endAt) || minutes < 5 || minutes > 120) throw new Error("La hora de fin debe estar entre 5 y 120 minutos desde ahora.");
+    if (!Array.isArray(names) || names.length < 3 || names.length > 10) throw new Error("La partida admite de 3 a 10 jugadores.");
+    this.U.createGame(names, { minutes, endAt });
+    this.presence = { online: {}, host: 0 };
+    this.errors = [];
+    this.votes = {};
+    this.councilResults = null;
+    this._endCache = null;
+    this.afterRoundStart();
+    this.advance();
+  }
+
+  S() { return this.U.getState(); }
+  get phase() { return this.S().phase; }
+  playerCount() { return this.S().players.length; }
+
+  /* ---------- hooks de fase ---------- */
+  afterRoundStart() {
+    const S = this.S();
+    this.pctx = {};                       /* pendingPush por jugador (la tirada que se puede empujar) */
+    this.ready = new Set();               /* han entregado el turno privado */
+    this.councilReady = new Set();
+    this.contReady = new Set();
+    this.held = {};                       /* notas retenidas por jugador: Set de índices */
+    this.fresh = {};                      /* avisos de desbloqueo de la ronda */
+    this.votes = {};
+    this.councilResults = null;
+    this.chronVisible = S.chronicle.length; /* crónica publicable durante la fase privada */
+    if (S.phase === "private") {
+      S.players.forEach((p) => { if (p.dead || p.acted) this.ready.add(p.id); });
+      S.players.forEach((p) => this.refresh(p.id));
+    } else this.onLeavePrivate();
+  }
+  onLeavePrivate() { this.held = {}; this.chronVisible = Infinity; }
+
+  /* Consultas IMPURAS del motor: se materializan aquí, en momentos conocidos, para que la vista sea pura.
+     getOffer (genera la oferta con azar), unlockNotices (marca avisos y añade notas), encounterStart (tira el encuentro). */
+  refresh(pid) {
+    const S = this.S(), U = this.U, p = S.players[pid];
+    if (!p || S.phase !== "private" || p.dead) return;
+    view.asPlayer(this, pid, () => {
+      if (!p.acted && !p.dying) U.getOffer(pid);
+      const f = U.unlockNotices(p);
+      if (f.length) this.fresh[pid] = (this.fresh[pid] || []).concat(f);
+      if (p.acted && p.action === "explorar" && !this.pctx[pid]) U.encounterStart(pid);
+    });
+  }
+
+  /* ---------- ejecución de comandos ---------- */
+  /* Ejecuta fn como el jugador pid: fija turn/handoff/pendingPush, guarda el contexto y retiene lo que otros reciben. */
+  _runAs(pid, fn) {
+    const S = this.S(), U = this.U;
+    const lens = S.players.map((p) => p.notes.length);
+    const wasPrivate = S.phase === "private";
+    const sv = { turn: S.turn, handoff: S.handoff };
+    S.turn = pid; S.handoff = false; S.pendingPush = this.pctx[pid] || null;
+    let res;
+    try { res = fn(); }
+    catch (e) { this.errors.push(String(e && e.stack || e)); res = bad("Error interno."); }
+    this.pctx[pid] = S.pendingPush && S.pendingPush.actorId === pid ? S.pendingPush : null;
+    S.pendingPush = null; S.turn = sv.turn; S.handoff = sv.handoff;
+    if (wasPrivate && S.phase === "private") {
+      S.players.forEach((q, i) => {
+        if (q.id === pid) return;
+        for (let k = lens[i]; k < q.notes.length; k++) (this.held[q.id] || (this.held[q.id] = new Set())).add(k);
+      });
+    } else if (S.phase !== "private") this.onLeavePrivate();
+    return res === undefined ? { ok: true } : JSON.parse(JSON.stringify(res));
+  }
+
+  /* cmd: nombre; args: array. meta: { isHost }. Devuelve {ok,...}. Los errores son genéricos respecto a otros jugadores. */
+  exec(pid, cmd, args, meta) {
+    const S = this.S();
+    if (!S || !isInt(pid, 0, 9) || !S.players[pid]) return bad("Jugador desconocido.");
+    const spec = COMMANDS[cmd];
+    if (!spec || !Array.isArray(args)) return bad("Comando desconocido.");
+    if (spec.phase !== S.phase) return bad(NOT_NOW);
+    if (!spec.check(this, pid, args)) return bad("Argumentos no válidos.");
+    const res = spec.run(this, pid, args, meta || {});
+    this.afterCommand(pid);
+    return res;
+  }
+
+  afterCommand(pid) {
+    const S = this.S();
+    if (S.phase === "private") { this.invalidateStale(); this.refresh(pid); }
+    this.advance();
+  }
+
+  /* Las ofertas se materializan al empezar la ronda (el motor las generaba al llegar el turno). Si otro jugador
+     acepta la tentación mientras tanto, las ofertas de Asesino ya pendientes dejan de existir: así nadie recibe
+     «El Umbral ya tiene un Asesino» (que delataría que alguien lo es). */
+  invalidateStale() {
+    const S = this.S();
+    if (!S.players.some((p) => p.alignment === "asesino")) return;
+    S.players.forEach((p) => { if (p.offer && p.offer.id === "asesino" && !p.offer.done) p.offer = false; });
+  }
+
+  /* ---------- barreras ---------- */
+  advance() {
+    const S = this.S(), U = this.U;
+    for (let guard = 0; guard < 8; guard++) {
+      const ph = S.phase;
+      if (ph === "private") {
+        if (!S.players.every((p) => p.dead || this.ready.has(p.id))) return;
+        const ord = S.order || S.players.map((p) => p.id);
+        S.turn = ord[ord.length - 1]; S.handoff = false; S.pendingPush = null;
+        const r = U.nextTurn();
+        if (r === "blocked") { this.errors.push("barrera bloqueada"); return; }
+        if (S.phase === "private") return;
+        this.onLeavePrivate();
+        this.councilReady = new Set(S.players.filter((p) => p.dead).map((p) => p.id));
+        this.councilResults = null;
+        S.turn = 0;
+      } else if (ph === "council") {
+        if (!S.players.every((p) => p.dead || this.councilReady.has(p.id))) return;
+        this.closeCouncil();
+        this.contReady = new Set(S.players.filter((p) => p.dead).map((p) => p.id));
+      } else if (ph === "resolution") {
+        if (S.timeAsk) return;
+        if (!S.players.every((p) => p.dead || this.contReady.has(p.id))) return;
+        this.nextRound();
+      } else return;
+    }
+  }
+  closeCouncil() {
+    const U = this.U;
+    const list = U.resolveCouncil();
+    this.councilResults = JSON.parse(JSON.stringify(list || []));
+    U.endCouncil();
+    this.chronVisible = Infinity;
+  }
+  nextRound() {
+    const S = this.S(), U = this.U;
+    const e = U.nextRound();
+    if (S.phase === "ending") return e;
+    if (S.timeAsk) { this.votes = {}; return null; }
+    this.afterRoundStart();
+    return null;
+  }
+
+  /* Cierre forzado por tiempo/anfitrión (los temporizadores de F4 usarán esto). */
+  forceAdvance() {
+    const S = this.S();
+    if (S.phase === "private") S.players.forEach((p) => { if (!p.dead) this.ready.add(p.id); });
+    else if (S.phase === "council") S.players.forEach((p) => this.councilReady.add(p.id));
+    else if (S.phase === "resolution" && !S.timeAsk) S.players.forEach((p) => this.contReady.add(p.id));
+    this.advance();
+  }
+
+  /* ---------- salida ---------- */
+  view(pid) { return view.buildView(this, pid); }
+  ended() { return this.phase === "ending"; }
+  endLog() { if (!this._endCache) this._endCache = { log: this.U.exportLog(), story: this.U.exportStory(true) }; return this._endCache.log; }
+  endStory() { this.endLog(); return this._endCache.story; }
+}
+
+/* ---------- tabla de comandos: fase, validación de argumentos, ejecución ---------- */
+const priv = (check, run) => ({ phase: "private", check, run });
+const COMMANDS = {
+  act: priv(
+    (g, pid, a) => isStr(a[0]) && isIdOrNull(a[1]) && (a[2] == null || isIdStr(a[2])),
+    (g, pid, a) => {
+      const D = g.D, act = D.ACTIONS.find((x) => x.id === a[0]);
+      if (act && act.target) {
+        const ok = (view.targetsFor(g, pid)[act.id] || []).indexOf(a[1]) !== -1;
+        if (!ok) return bad(GENERIC_BAD_TARGET);
+      }
+      return g._runAs(pid, () => g.U.act(pid, a[0], act && act.target ? a[1] : null, a[2] == null ? null : a[2]));
+    }),
+  pushLuck: priv((g, pid, a) => a.length === 0, (g, pid) => g._runAs(pid, () => g.U.pushLuck(pid))),
+  cast: priv(
+    (g, pid, a) => isIdStr(a[0]) && isIdOrNull(a[1]) && (a[2] == null || isStr(a[2], 12)),
+    (g, pid, a) => {
+      const sp = (g.S().players[pid].spells || []).find((s) => s.id === a[0]);
+      if (sp && sp.target && view.aliveOthers(g, pid).indexOf(a[1]) === -1) return bad(GENERIC_BAD_TARGET);
+      return g._runAs(pid, () => g.U.cast(pid, a[0], sp && sp.target ? a[1] : null, a[2] || "normal"));
+    }),
+  useItem: priv(
+    (g, pid, a) => isInt(a[0], 0, 30) && isIdOrNull(a[1]),
+    (g, pid, a) => {
+      if (a[1] != null && view.aliveOthers(g, pid).indexOf(a[1]) === -1) return bad(GENERIC_BAD_TARGET);
+      return g._runAs(pid, () => g.U.useItem(pid, a[0], a[1] == null ? null : a[1]));
+    }),
+  study: priv((g, pid, a) => isInt(a[0], 0, 30), (g, pid, a) => g._runAs(pid, () => g.U.studyOptions(pid, a[0]))),
+  learnSpell: priv((g, pid, a) => isInt(a[0], 0, 5) && isStr(a[1], 12), (g, pid, a) => g._runAs(pid, () => g.U.learnSpell(pid, a[0], a[1]))),
+  improveSpell: priv((g, pid, a) => isIdStr(a[0]), (g, pid, a) => g._runAs(pid, () => g.U.improveSpell(pid, a[0]))),
+  answerOffer: priv((g, pid, a) => typeof a[0] === "boolean", (g, pid, a) => g._runAs(pid, () => g.U.answerOffer(pid, a[0]))),
+  answerHand: priv((g, pid, a) => typeof a[0] === "boolean", (g, pid, a) => g._runAs(pid, () => g.U.answerHand(pid, a[0]))),
+  answerPact: priv(
+    (g, pid, a) => isInt(a[0], 0, 20) && typeof a[1] === "boolean",
+    (g, pid, a) => {
+      /* idx local -> índice global del motor */
+      const offers = view.asPlayer(g, pid, () => g.U.getPactOffers(pid));
+      const o = offers[a[0]];
+      if (!o) return bad("Esa propuesta ya no está disponible.");
+      const gi = o.idx;
+      return g._runAs(pid, () => g.U.answerPact(pid, gi, a[1]));
+    }),
+  declare: priv(
+    (g, pid, a) => isStr(a[0], 24) && isIdOrNull(a[1]),
+    (g, pid, a) => {
+      if (a[0] !== "ninguna" && view.aliveOthers(g, pid).indexOf(a[1]) === -1) return bad(GENERIC_BAD_TARGET);
+      if (a[0] === "romper") { const d = view.asPlayer(g, pid, () => g.U.declareOptions(pid)); if (!d || d.romper.indexOf(a[1]) === -1) return bad(GENERIC_BAD_TARGET); }
+      return g._runAs(pid, () => g.U.declare(pid, a[0], a[0] === "ninguna" ? null : a[1]));
+    }),
+  encounterAct: priv((g, pid, a) => isStr(a[0], 24), (g, pid, a) => g._runAs(pid, () => g.U.encounterAct(pid, a[0]))),
+  finishTurn: priv((g, pid, a) => a.length === 0, (g, pid) => {
+    const r = g._runAs(pid, () => g.U.finishTurn());
+    if (r && r.ok !== false) { g.ready.add(pid); return { ok: true }; }
+    return r;
+  }),
+  councilReady: { phase: "council", check: (g, pid, a) => a.length === 0, run: (g, pid) => { g.councilReady.add(pid); return { ok: true }; } },
+  continue: { phase: "resolution", check: (g, pid, a) => a.length === 0, run: (g, pid) => { g.contReady.add(pid); return { ok: true }; } },
+  /* Pregunta de tiempo: voto visible; decide el anfitrión (esqueleto: la regla de 30 s/mayoría es de F4). */
+  vote: {
+    phase: "resolution", check: (g, pid, a) => a[0] === 1 || a[0] === 2 || a[0] === "end",
+    run: (g, pid, a, meta) => {
+      const S = g.S();
+      if (!S.timeAsk) return bad(NOT_NOW);
+      g.votes[pid] = a[0];
+      if (!meta.isHost) return { ok: true };
+      const r = JSON.parse(JSON.stringify(g.U.answerTime(a[0])));
+      if (r.ok && !r.ended) g.nextRound();
+      return r;
+    }
+  }
+};
+
+module.exports = { Game, COMMANDS, GENERIC_BAD_TARGET };

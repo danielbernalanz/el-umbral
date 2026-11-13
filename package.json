@@ -1,0 +1,12 @@
+{
+  "name": "el-umbral-online",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Servidor online de El Umbral (sin dependencias)",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node --test test/",
+    "sync-client": "node scripts/sync-client.js"
+  }
+}
