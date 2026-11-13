@@ -1,0 +1,21 @@
+{
+  "name": "EL UMBRAL",
+  "short_name": "El Umbral",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "lang": "es",
+  "background_color": "#100e13",
+  "theme_color": "#17131b",
+  "description": "Juego de fantasía oscura, deducción social y apuestas de 3 a 10 jugadores en un mismo móvil.",
+  "categories": ["games"],
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

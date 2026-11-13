@@ -1,0 +1,25 @@
+ICONOS: game-icons.net
+Los iconos de El Umbral provienen de https://game-icons.net, usados con la licencia Creative Commons Attribution 3.0 (CC BY 3.0): https://creativecommons.org/licenses/by/3.0/
+Los iconos de Zeromancer son CC0 (dominio público). Se han recolorado (color por CSS) y recortado el fondo; por lo demás no se han modificado.
+
+Icons made by Lorc (http://lorcblog.blogspot.com) from https://game-icons.net — CC BY 3.0
+  (111): ankh, anvil, backstab, bandage-roll, bandaged, bleeding-wound, bolt-shield, book-cover, brain, broken-bone, broken-heart, burning-book, burning-embers, campfire, candle-holder, circle-sparks, coffin, cog, compass, conversation, cross-mark, crossed-chains, crossed-swords, crown, crystal-ball, cursed-star, curvy-knife, domino-mask, dread-skull, dripping-knife, droplets, eclipse-flare, evil-moon, eyeball, feather, fire-ring, fire-zone, folded-paper, fountain, gavel, gem-pendant, ghost, hand, haunting, heart-drop, hidden, holy-grail, holy-symbol, hood, hospital-cross, hourglass, hunting-horn, key, lantern-flame, laurel-crown, life-tap, lightning-helix, lightning-shout, lightning-storm, lotus-flower, magic-gate, magic-palm, magic-swirl, magnifying-glass, meditation, mirror-mirror, muscle-up, open-book, padlock, papers, plain-dagger, pointing, poison-bottle, poison-gas, potion-ball, powder, prayer, quill, quill-ink, relic-blade, ringing-bell, round-bottom-flask, rune-stone, salt-shaker, scroll-unfurled, shadow-follower, shield-reflect, shieldcomb, silence, skull-crack, sleepy, small-fire, snowflake-1, snowflake-2, spiked-mace, stopwatch, sun, swap-bag, temptation, third-eye, tombstone, tooth, treasure-map, uncertainty, virus, voodoo-doll, vortex, wax-seal, wheat, wolf-howl, wolf-trap
+
+Icons made by Delapouite (http://delapouite.com) from https://game-icons.net — CC BY 3.0
+  (65): angry-eyes, archive-research, arm-bandage, baby-face, backpack, biceps, bread, bread-slice, cape, card-exchange, cardboard-box, carnival-mask, check-mark, chest, chest-armor, contract, crystal-shrine, devil-mask, dice-fire, dice-six-faces-five, dice-twenty-faces-twenty, exit-door, eye-target, first-aid-kit, fog, guards, healing, health-potion, heart-armor, herbs-bundle, holy-water, leg-armor, lockpicks, meeple-group, megaphone, monk-face, notebook, periscope, person, pilgrim-hat, player-next, robber-mask, rope-coil, save-arrow, shaking-hands, share, shop, shopping-bag, sitting-dog, sound-off, sound-on, sparkles, spartan-helmet, spell-book, star-altar, sunrise, thermometer-hot, torch, upgrade, vibrating-smartphone, village, watchtower, weight-lifting-up, well, wood-club
+
+Icons made by Skoll from https://game-icons.net — CC BY 3.0
+  (4): blood, footsteps, open-treasure-chest, raise-zombie
+
+Icons made by Zeromancer from https://game-icons.net — CC0 1.0 (dominio público)
+  (1): heart-plus
+
+Icons made by DarkZaitzev (http://darkzaitzev.deviantart.com) from https://game-icons.net — CC BY 3.0
+  (1): robber-hand
+
+Icons made by Sbed (http://opengameart.org/content/95-game-icons) from https://game-icons.net — CC BY 3.0
+  (1): cancel
+
+Icons made by Lucas from https://game-icons.net — CC BY 3.0
+  (1): cloak
+
