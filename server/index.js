@@ -6,6 +6,7 @@ const path = require("node:path");
 const { Rooms } = require("./room");
 
 const MAX_BODY = 8 * 1024;
+const MAX_RESTORE_BODY = 1536 * 1024; /* solo /api/restore (blob de instantánea) */
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".ico": "image/x-icon", ".json": "application/json; charset=utf-8", ".webmanifest": "application/manifest+json; charset=utf-8", ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8" };
 
 /* Cabeceras de seguridad para TODAS las respuestas (estáticos, API y SSE). La CSP permite lo que usa el cliente:
@@ -41,9 +42,12 @@ function createServer(opts) {
   const publicDir = opts.publicDir || path.join(__dirname, "..", "public");
   const engineDir = opts.engineDir || process.env.ENGINE_DIR || publicDir;
   ["data.js", "engine.js"].forEach((f) => { if (!fs.existsSync(path.join(engineDir, f))) throw new Error("No se encuentra " + f + " en ENGINE_DIR (" + engineDir + "). Copia el cliente a public/ o define ENGINE_DIR."); });
-  const rooms = new Rooms({ engineDir, maxRooms: opts.maxRooms || Number(process.env.MAX_ROOMS) || 50, now, idleMs: opts.idleMs, endedMs: opts.endedMs, readMs: opts.readMs, timeScale: opts.timeScale });
+  const rooms = new Rooms({ engineDir, maxRooms: opts.maxRooms || Number(process.env.MAX_ROOMS) || 50, now, idleMs: opts.idleMs, endedMs: opts.endedMs, readMs: opts.readMs, timeScale: opts.timeScale,
+    snapshotKey: opts.snapshotKey !== undefined ? opts.snapshotKey : process.env.SNAPSHOT_KEY, restoreWindowMs: opts.restoreWindowMs, restoreGraceTurnMs: opts.restoreGraceTurnMs, restoreGraceMs: opts.restoreGraceMs, log: opts.log });
   const joinLimit = limiter(opts.joinPerMin || 20, 60000, now);   /* crear/unirse por IP */
   const cmdLimit = limiter(opts.cmdPerSec || 10, 1000, now);      /* comandos por token */
+  const restoreLimit = limiter(opts.restorePerMin || 12, 60000, now); /* restauraciones por IP */
+  const restoreTokLimit = limiter(6, 60000, now);                  /* y por token */
   const startedAt = now();
 
   function clientIp(req) {
@@ -52,7 +56,7 @@ function createServer(opts) {
   }
   function cors(res) {
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Headers", "content-type, x-token");
+    res.setHeader("Access-Control-Allow-Headers", "content-type, x-token, x-room");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     res.setHeader("Access-Control-Max-Age", "600");
   }
@@ -61,12 +65,13 @@ function createServer(opts) {
     res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "Content-Length": Buffer.byteLength(body), "X-Content-Type-Options": "nosniff" });
     res.end(body);
   }
-  function readJson(req, res, cb) {
+  function readJson(req, res, cb, maxBody) {
+    const lim = maxBody || MAX_BODY;
     let size = 0; const chunks = []; let done = false;
     req.on("data", (c) => {
       if (done) return;
       size += c.length;
-      if (size > MAX_BODY) { done = true; send(res, 413, { ok: false, msg: "Petición demasiado grande." }); req.destroy(); return; }
+      if (size > lim) { done = true; send(res, 413, { ok: false, msg: "Petición demasiado grande." }); req.destroy(); return; }
       chunks.push(c);
     });
     req.on("end", () => {
@@ -80,6 +85,13 @@ function createServer(opts) {
   }
   const tokenOf = (req, url) => String(req.headers["x-token"] || url.searchParams.get("t") || "");
   const BAD_TOKEN = { ok: false, msg: "Sesión no válida." };
+  /* Token desconocido: si el cliente dice a qué sala pertenece y esa sala NO existe (servidor reiniciado), 404 «sala desconocida»
+     (el cliente puede restaurarla con su instantánea); en otro caso 401. */
+  function unknownToken(req, url, res) {
+    const rc = String(req.headers["x-room"] || url.searchParams.get("room") || "").toUpperCase();
+    if (/^[A-Z]{5}$/.test(rc) && !rooms.rooms.has(rc)) return send(res, 404, { ok: false, unknownRoom: true, restorable: rooms.snap.enabled, msg: "Sala desconocida." });
+    return send(res, 401, BAD_TOKEN);
+  }
 
   function api(req, res, url) {
     const p = url.pathname;
@@ -87,7 +99,7 @@ function createServer(opts) {
 
     if (req.method === "GET" && p === "/events") {
       const who = rooms.byToken(tokenOf(req, url));
-      if (!who) return send(res, 401, BAD_TOKEN);
+      if (!who) return unknownToken(req, url, res);
       who.room.connect(who.player, res);
       return;
     }
@@ -102,9 +114,16 @@ function createServer(opts) {
         send(res, 200, room.join(b.name));
       });
     }
+    if (p === "/api/restore") {
+      const tok = tokenOf(req, url);
+      if (!restoreLimit(clientIp(req)) || !restoreTokLimit(tok.slice(0, 32))) return send(res, 429, { ok: false, msg: "Demasiados intentos. Espera un minuto." });
+      return readJson(req, res, (b) => {
+        rooms.restore(b.room, b.blob, tok).then((r) => { try { send(res, r.status, r.json); } catch (e) { /* conexión cerrada */ } });
+      }, MAX_RESTORE_BODY);
+    }
     if (p === "/cmd" || p === "/api/leave" || p === "/api/start" || p === "/api/ping") {
       const who = rooms.byToken(tokenOf(req, url));
-      if (!who) return send(res, 401, BAD_TOKEN);
+      if (!who) return unknownToken(req, url, res);
       if (!cmdLimit(who.player.tokenHash)) return send(res, 429, { ok: false, msg: "Demasiados comandos por segundo." });
       return readJson(req, res, (b) => {
         const { room, player } = who;
@@ -166,6 +185,8 @@ function createServer(opts) {
   function shutdown(cb) {
     let done = false; const fin = () => { if (!done) { done = true; cb && cb(); } };
     server.close(fin); try { server.closeIdleConnections(); } catch (e) { /* idem */ }
+    /* instantánea final de cada sala a sus jugadores conectados, ANTES de cerrar los SSE (se escribe y luego se cierra: el cierre vacía el búfer) */
+    try { const n = rooms.snapshotAll(); if (n) rooms.log("apagado: instantánea enviada de " + n + " sala(s)"); } catch (e) { /* idem */ }
     try { rooms.closeAll(); } catch (e) { /* idem */ }
     setTimeout(() => { try { server.closeAllConnections(); } catch (e) { /* idem */ } }, 1500).unref();
     setTimeout(fin, 4000).unref();

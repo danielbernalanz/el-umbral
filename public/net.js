@@ -11,7 +11,7 @@
 
   /* Servidor público (Render). Para pruebas: «Servidor (avanzado)» en el menú, o ?server=http://localhost:3000 */
   const ONLINE_URL = "https://el-umbral-h1ki.onrender.com";
-  const K_SESSION = "umbral_online_session", K_SERVER = "umbral_server", K_NAME = "umbral_online_name";
+  const K_SESSION = "umbral_online_session", K_SERVER = "umbral_server", K_NAME = "umbral_online_name", K_SNAP = "umbral_online_snap_";
   const LOCAL = window.UMBRAL;
   const $ = function (id) { return document.getElementById(id); };
   const esc = function (s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
@@ -20,6 +20,12 @@
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* sin almacenamiento */ } }
   function lsDel(k) { try { localStorage.removeItem(k); } catch (e) { /* idem */ } }
+
+  /* Instantánea cifrada de la sala (blob opaco que manda el servidor): solo la última, por código de sala. Si el servidor se reinicia
+     (despliegue), se sube a /api/restore y la partida continúa. No contiene nada legible: está cifrada con una clave que solo tiene el servidor. */
+  function snapGet(room) { return room ? lsGet(K_SNAP + room) : null; }
+  function snapSet(room, blob) { if (room && typeof blob === "string" && blob.length > 40 && blob.length < 1500000 && /^U\d+\.[A-Za-z0-9_-]+$/.test(blob)) lsSet(K_SNAP + room, blob); }
+  function snapDel(room) { if (room) lsDel(K_SNAP + room); }
 
   /* ---------- servidor ---------- */
   /* "" = mismo origen (página servida por http/https); null = sin servidor directo (file:// o APK): se abre ONLINE_URL fuera. */
@@ -39,7 +45,7 @@
     try { ctl = typeof AbortController === "function" ? new AbortController() : null; } catch (e) { ctl = null; }
     if (ctl) timer = setTimeout(function () { try { ctl.abort(); } catch (e) { /* nada */ } }, timeoutMs || 20000);
     const headers = { "Content-Type": "application/json" };
-    if (token) headers["x-token"] = token;
+    if (token) { headers["x-token"] = token; if (session && session.room) headers["x-room"] = session.room; }
     return fetch(base + path, { method: "POST", headers: headers, body: JSON.stringify(body || {}), signal: ctl ? ctl.signal : undefined, cache: "no-store" })
       .then(function (r) { return r.json().catch(function () { return { ok: false, msg: "Respuesta no válida del servidor." }; }).then(function (j) { j.status = r.status; return j; }); })
       .catch(function () { return { ok: false, net: true, msg: "No hay conexión con el servidor. Inténtalo de nuevo." }; })
@@ -50,11 +56,11 @@
   let session = null;           /* { server, room, pid, token } */
   let es = null, reopenT = null, backoff = 2000, pingT = null, connected = true;
   let lastVer = -1, lobby = null, cur = null, st = null, offset = 0, busy = false, attached = false, lost = false;
-  let warnOff = false, taken = false, noteSeq = 0;
+  let warnOff = false, taken = false, noteSeq = 0, restoreState = 0, restoreTries = 0, restoreT = null; /* restoreState: 0 no, 1 restaurando, 2 fallida (reintentable) */
   const seenUnlock = {};
 
   function saveSession() { if (session) lsSet(K_SESSION, JSON.stringify(session)); }
-  function clearSession() { session = null; taken = false; noteSeq = 0; lsDel(K_SESSION); }
+  function clearSession() { if (session) snapDel(session.room); session = null; taken = false; noteSeq = 0; restoreState = 0; restoreTries = 0; clearTimeout(restoreT); restoreT = null; lsDel(K_SESSION); }
   function closeStream() { clearTimeout(reopenT); reopenT = null; if (es) { try { es.close(); } catch (e) { /* nada */ } es = null; } clearInterval(pingT); pingT = null; }
 
   function banner() {
@@ -63,7 +69,7 @@
       b = document.createElement("div"); b.id = "netBanner"; b.className = "netbanner hidden"; b.setAttribute("role", "status");
       b.innerHTML = '<span id="netBannerTxt"></span><button class="ghost smallbtn" id="netBannerBtn"></button>';
       document.body.appendChild(b);
-      $("netBannerBtn").onclick = function () { if (lost) { location.reload(); } else if (taken) { taken = false; backoff = 2000; openStream(); } else leaveRoom(true); };
+      $("netBannerBtn").onclick = function () { if (lost) { location.reload(); } else if (restoreState === 2) { startRestore(); } else if (taken) { taken = false; backoff = 2000; openStream(); } else leaveRoom(true); };
     }
     return b;
   }
@@ -72,23 +78,59 @@
     const b = banner();
     if (ok && !lost) { b.classList.add("hidden"); return; }
     if (!session && !lost) { b.classList.add("hidden"); return; }
-    $("netBannerTxt").textContent = text || (lost ? "La sala ya no existe (el servidor se reinició o caducó)." : "Sin conexión con el servidor. Reintentando…");
-    $("netBannerBtn").textContent = lost ? "Volver al inicio" : taken ? "Usar aquí" : "Abandonar sala";
+    $("netBannerTxt").textContent = text || (lost ? "La sala ya no existe (el servidor se reinició o caducó)." : "Sin conexión con el servidor. Reconectando…");
+    $("netBannerBtn").textContent = lost ? "Volver al inicio" : restoreState === 2 ? "Reintentar" : taken ? "Usar aquí" : "Abandonar sala";
     b.classList.remove("hidden");
   }
-  function sessionLost() {
+  function sessionLost(msg) {
     closeStream(); clearSession();
-    if (attached) { lost = true; setConn(false); }
-    else { lost = false; banner().classList.add("hidden"); lobby = null; showHome("La sala ya no existe (el servidor se reinició o caducó).", true); }
+    if (attached) { lost = true; setConn(false, msg); }
+    else { lost = false; banner().classList.add("hidden"); lobby = null; showHome(msg || "La sala ya no existe (el servidor se reinició o caducó).", true); }
+  }
+  /* El servidor responde «sala desconocida» (404): se reinició. Si hay instantánea, se restaura la partida; si no, la sala se perdió. */
+  function isUnknownRoom(r) { return !!r && r.status === 404 && r.unknownRoom === true; }
+  function roomGone(r) {
+    if (!session) return;
+    if (r && r.status === 401) { sessionLost(); return; }
+    if (!snapGet(session.room)) { sessionLost(); return; }
+    closeStream(); startRestore();
+  }
+  function startRestore() {
+    if (!session || (restoreState === 1)) return;
+    restoreState = 1; restoreTries = 0; clearTimeout(restoreT); restoreT = null;
+    setConn(false, "Restaurando la partida… (el servidor se acaba de actualizar)");
+    tryRestore();
+  }
+  function tryRestore() {
+    const s = session; if (!s) { restoreState = 0; return; }
+    const blob = snapGet(s.room);
+    if (!blob) { restoreState = 0; sessionLost(); return; }
+    post("/api/restore", { room: s.room, blob: blob }, s.token, 45000).then(function (r) {
+      if (session !== s) { return; }
+      if (r.ok) { restoreState = 0; restoreTries = 0; backoff = 2000; openStream(); return; }
+      /* definitivo: el servidor cambió de versión, la instantánea caducó o no es válida, o la restauración está desactivada */
+      if (r.status === 400 || r.status === 401 || r.status === 404 || r.status === 409 || r.status === 410) {
+        restoreState = 0; sessionLost(r.status === 409 ? "El servidor se actualizó y no pudo recuperar esta partida." : "No se pudo recuperar la partida (la sala ya no existe).");
+        return;
+      }
+      /* transitorio (sin red, servidor despertando, 429/5xx/503): reintento con espera creciente */
+      restoreTries++;
+      if (restoreTries >= 8) { restoreState = 2; setConn(false, "No se pudo restaurar la partida. Comprueba la conexión e inténtalo de nuevo."); return; }
+      setConn(false, "Restaurando la partida… (reintento " + restoreTries + ")");
+      restoreT = setTimeout(function () { restoreT = null; tryRestore(); }, Math.min(15000, Math.round(2000 * Math.pow(1.6, restoreTries))));
+    });
   }
 
   function openStream() {
     if (!session || taken) return;
     closeStream();
-    const url = session.server + "/events?t=" + encodeURIComponent(session.token);
+    if (restoreState) return;
+    lastVer = -1; /* tras reiniciar el servidor `ver` salta: la primera vista de una conexión nueva siempre vale */
+    const url = session.server + "/events?t=" + encodeURIComponent(session.token) + "&room=" + encodeURIComponent(session.room);
     try { es = new EventSource(url); } catch (e) { scheduleReopen(); return; }
     es.addEventListener("view", function (ev) { try { onView(JSON.parse(ev.data)); } catch (e) { /* vista dañada: se espera la siguiente */ } });
     /* Otra pestaña/dispositivo abrió la misma sesión: esta deja de reconectar y ofrece volver a usarla aquí. */
+    es.addEventListener("snapshot", function (ev) { try { if (session) snapSet(session.room, String(ev.data)); } catch (e) { /* sin almacenamiento */ } });
     es.addEventListener("replaced", function () { taken = true; closeStream(); setConn(false, "Esta sala se abrió en otra pestaña o dispositivo."); });
     es.onopen = function () { backoff = 2000; setConn(true); };
     es.onerror = function () { setConn(false); if (es && es.readyState === 2) scheduleReopen(); };
@@ -99,7 +141,7 @@
     if (!session) return;
     post("/api/ping", {}, session.token, 8000).then(function (r) {
       if (!session) return;
-      if (r.status === 401) { sessionLost(); return; }
+      if (isUnknownRoom(r) || r.status === 401) { roomGone(r); return; }
       if (r.net) { setConn(false); if (es) { try { es.close(); } catch (e) { /* nada */ } es = null; } scheduleReopen(); return; }
       if (!connected || !es || es.readyState === 2) openStream();
     });
@@ -111,7 +153,7 @@
       reopenT = null; if (!session) return;
       post("/api/ping", {}, session.token, 8000).then(function (r) {
         if (!session) return;
-        if (r.status === 401) { sessionLost(); return; }
+        if (isUnknownRoom(r) || r.status === 401) { roomGone(r); return; }
         if (r.net) { backoff = Math.min(15000, backoff * 1.6); scheduleReopen(); return; }
         openStream();
       });
@@ -143,6 +185,7 @@
     if (!v || typeof v !== "object") return;
     if (typeof v.ver === "number") { if (v.ver < lastVer) return; lastVer = v.ver; }
     if (v.hostNote && v.hostNote.seq > noteSeq) { noteSeq = v.hostNote.seq; if (UI().toast) UI().toast(v.hostNote.name === (v.players && v.players[v.youId] && v.players[v.youId].name) ? "Ahora eres el anfitrión." : v.hostNote.name + " es ahora el anfitrión (el anterior perdió la conexión).", false); }
+    if (v.phase === "ending" && session) snapDel(session.room); /* partida terminada: la instantánea ya no sirve */
     if (v.phase === "error") { if (UI().toast) UI().toast(v.msg || "Error del servidor.", true); return; }
     if (v.phase === "lobby") { lobby = v; renderRoom(); return; }
     if (!v.me || !v.players || !v.players[v.youId]) return;
@@ -161,7 +204,7 @@
     busy = true; document.body.classList.add("netbusy");
     return post("/cmd", { cmd: name, args: args || [] }, session.token).then(function (r) {
       busy = false; document.body.classList.remove("netbusy");
-      if (r.status === 401) sessionLost();
+      if (isUnknownRoom(r) || r.status === 401) roomGone(r);
       if (r.view) { onView(r.view, true); delete r.view; }
       return r;
     });
@@ -324,7 +367,7 @@
     if (!pe.ok) { refreshNetEnd(); UI().toast(pe.msg, true); return; }
     $("btnOnStart").disabled = true;
     post("/api/start", { endAt: pe.endAt }, session.token).then(function (r) {
-      if (r.status === 401) { sessionLost(); return; }
+      if (isUnknownRoom(r) || r.status === 401) { roomGone(r); return; }
       if (!r.ok) { UI().toast(r.msg || "No se pudo empezar.", true); refreshNetEnd(); }
     });
   }

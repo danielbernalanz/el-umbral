@@ -4,9 +4,10 @@
 const { loadEngine } = require("./engine_vm");
 const view = require("./view");
 const { shielded } = require("./order");
+const vm = require("node:vm");
 
 /* Tiempos de la fase simultánea (ms). timeScale solo se usa en pruebas rápidas. */
-const T = { warn: 15000, grace: 25000, offline: 10000, cont: 30000, vote: 30000, read: 10000 };
+const T = { warn: 15000, grace: 25000, offline: 10000, cont: 30000, vote: 30000, read: 10000, restore: 60000, restoreTurn: 90000, restoreOffline: 60000 };
 const READ_MSG = "Aún estás leyendo la ronda: espera unos segundos antes de actuar sobre otros.";
 
 const GENERIC_BAD_TARGET = "Objetivo no válido.";
@@ -21,11 +22,7 @@ class Game {
   /* names: nombres de los jugadores (índice = id de jugador). opts: { engineDir, endAt, now, rng } */
   constructor(names, opts) {
     opts = opts || {};
-    this.now = opts.now || Date.now;
-    const sc = Number(opts.timeScale != null ? opts.timeScale : process.env.UMBRAL_TIME_SCALE);
-    this.scale = isFinite(sc) && sc > 0 ? sc : 1;
-    const rd = Number(opts.readMs != null ? opts.readMs : process.env.UMBRAL_READ_MS);
-    this.readMs = isFinite(rd) && rd >= 0 && (opts.readMs != null || process.env.UMBRAL_READ_MS != null) ? rd : T.read;
+    this.timing(opts);
     this.offlineSince = {}; this._tw = false;
     this.absent = new Set(); this.offRounds = {}; this._absRound = -1; this.roundStart = this.now();
     this.clock = null;
@@ -43,6 +40,14 @@ class Game {
     this._endCache = null;
     this.afterRoundStart();
     this.advance();
+  }
+
+  timing(opts) {
+    this.now = opts.now || Date.now;
+    const sc = Number(opts.timeScale != null ? opts.timeScale : process.env.UMBRAL_TIME_SCALE);
+    this.scale = isFinite(sc) && sc > 0 ? sc : 1;
+    const rd = Number(opts.readMs != null ? opts.readMs : process.env.UMBRAL_READ_MS);
+    this.readMs = isFinite(rd) && rd >= 0 && (opts.readMs != null || process.env.UMBRAL_READ_MS != null) ? rd : T.read;
   }
 
   S() { return this.U.getState(); }
@@ -289,6 +294,63 @@ class Game {
     else if (S.phase === "resolution" && S.timeAsk) { this.applyTimeAnswer(this.voteWinner()); return; }
     else if (S.phase === "resolution") S.players.forEach((p) => this.contReady.add(p.id));
     this.advance();
+  }
+
+
+  /* ---------- instantánea / restauración (persistencia entre reinicios) ---------- */
+  /* Todo lo necesario para reconstruir la partida exactamente: el estado del motor (JSON, como su propio guardado) más la
+     capa de Game (barreras, notas retenidas, ofertas en curso, reloj, ausencias, votos). Sin errores ni cachés de desenlace. */
+  snapshot() {
+    const arr = (x) => Array.from(x);
+    return {
+      state: JSON.parse(vm.runInContext("JSON.stringify(UMBRAL.getState())", this.ctx)),
+      ready: arr(this.ready), councilReady: arr(this.councilReady), contReady: arr(this.contReady),
+      held: Object.keys(this.held).reduce((o, k) => { o[k] = arr(this.held[k]); return o; }, {}),
+      fresh: this.fresh, pctx: this.pctx, votes: this.votes, councilResults: this.councilResults, clock: this.clock,
+      roundStart: this.roundStart, chronVisible: this.chronVisible === Infinity ? -1 : this.chronVisible,
+      offlineSince: this.offlineSince, absent: arr(this.absent), offRounds: this.offRounds, absRound: this._absRound,
+      presence: this.presence, tw: this._tw, hostNote: this.hostNote || null
+    };
+  }
+  /* Reconstruye una partida desde una instantánea. opts: { engineDir, now, readMs, timeScale, shift, graceTurnMs, graceMs }.
+     shift = ms transcurridos desde la instantánea: se desplazan endAt y los plazos para que NADIE pierda tiempo por el reinicio;
+     además cada plazo vigente conserva al menos `grace` de margen (todos vuelven desconectados) y nadie cuenta como ausente por ello. */
+  static restore(snap, opts) {
+    opts = opts || {};
+    const g = Object.create(Game.prototype);
+    g.timing(opts);
+    const eng = loadEngine({ dir: opts.engineDir, rng: opts.rng, now: g.now });
+    g.U = eng.U; g.D = eng.D; g.ctx = eng.ctx;
+    const st = snap.state;
+    if (!st || !Array.isArray(st.players) || st.players.length < 3 || st.players.length > 10 || st.phase === "ending") throw new Error("Instantánea no válida.");
+    g.U.createGame(st.players.map((p) => p.name), { minutes: 30, endAt: g.now() + 30 * 60000 });
+    /* el estado del motor se sustituye EN SITIO (el motor guarda `state` en una variable privada) */
+    eng.ctx.__raw = JSON.stringify(st);
+    vm.runInContext("(function(){ var S = UMBRAL.getState(), d = JSON.parse(__raw); Object.keys(S).forEach(function (k) { delete S[k]; }); Object.keys(d).forEach(function (k) { S[k] = d[k]; }); })(); delete globalThis.__raw; UMBRAL.getState().players.forEach(function (p) { UMBRAL._health.initHealth(p); });", eng.ctx);  /* como loadGame: restablece el getter no enumerable `wounds` */
+    const S = g.S(), shift = Math.max(0, Number(opts.shift) || 0), t = g.now();
+    if (typeof S.endAt === "number") S.endAt += shift;
+    if (typeof S.createdAt === "number") S.createdAt += shift;
+    const sh = (v) => (typeof v === "number" ? v + shift : v);
+    g.errors = []; g._endCache = null;
+    g.ready = new Set(snap.ready || []); g.councilReady = new Set(snap.councilReady || []); g.contReady = new Set(snap.contReady || []);
+    g.held = {}; Object.keys(snap.held || {}).forEach((k) => { g.held[k] = new Set(snap.held[k]); });
+    g.fresh = snap.fresh || {}; g.pctx = snap.pctx || {}; g.votes = snap.votes || {}; g.councilResults = snap.councilResults || null;
+    g.roundStart = sh(snap.roundStart); g.chronVisible = snap.chronVisible < 0 ? Infinity : snap.chronVisible;
+    g.absent = new Set(snap.absent || []); g.offRounds = snap.offRounds || {}; g._absRound = snap.absRound == null ? -1 : snap.absRound;
+    g._tw = !!snap.tw; g.hostNote = snap.hostNote || null;
+    let ck = snap.clock ? Object.assign({}, snap.clock) : null;
+    if (ck) {
+      ["start", "readUntil", "warnAt", "deadline", "autoAt"].forEach((k) => { if (k in ck) ck[k] = sh(ck[k]); });
+      const prim = ck.kind === "turn" ? "autoAt" : "deadline", need = Math.round((ck.kind === "turn" ? (opts.graceTurnMs != null ? opts.graceTurnMs : T.restoreTurn) : (opts.graceMs != null ? opts.graceMs : T.restore)) * g.scale);
+      const left = ck[prim] - t;
+      if (left < need) { const extra = need - left; ["warnAt", "deadline", "autoAt"].forEach((k) => { if (k in ck) ck[k] += extra; }); }
+    }
+    g.clock = ck;
+    /* todos vuelven desconectados: la gracia de «fast advance» y de ausencia empieza cuando los jugadores reconectan */
+    g.offlineSince = {};
+    st.players.forEach((p) => { if (!p.dead) g.offlineSince[p.id] = t + Math.round(T.restoreOffline * g.scale); });
+    g.presence = { online: {}, host: snap.presence ? snap.presence.host : 0 };
+    return g;
   }
 
   /* ---------- salida ---------- */

@@ -73,7 +73,7 @@ y se descartan vistas más viejas que la ya recibida). `ui.js` solo cambia en `r
 4. Todos juegan a la vez su turno privado (el servidor cierra la ronda cuando todos terminan o se agota el tiempo), luego Consejo y resolución. Tras el desenlace se puede exportar el log y la historia.
 
 Límites: 3-10 jugadores por sala, 50 salas, 20 altas/min por IP, 10 comandos/s por jugador, cuerpo 8 KB. Salas sin conexiones: 30 min; terminadas: 15 min; máximo 4 h.
-Los datos viven solo en memoria: si el servidor se reinicia (o Render lo duerme con la sala vacía) las salas se pierden.
+Los datos viven en memoria, pero las partidas **sobreviven a un reinicio/despliegue** del servidor (ver «Persistencia entre reinicios»). Sin jugadores conectados una sala caduca a los 30 min.
 
 **Local vs en línea.** Local (un solo móvil, turnos con traspaso) no cambia y no necesita servidor. En línea cada jugador usa su dispositivo, con vista filtrada
 (nadie recibe datos ajenos), turnos simultáneos con reloj del servidor, autoturno, votación de tiempo, ausencia (tras 2 rondas desconectado) y reconexión con el mismo token.
@@ -95,3 +95,30 @@ Los estáticos se revalidan siempre (ETag/304) y `sw.js` no cachea `/events`, `/
 ## Estado
 
 F1-F7 hechas. Sin verificar desde el entorno de desarrollo (red bloqueada): el despliegue real en Render, WebView Android y latencias de móvil.
+
+
+## Persistencia entre reinicios (despliegues en Render)
+
+Render reinicia el proceso al desplegar y su disco es efímero. Para que las partidas en curso no se interrumpan **sin cuentas, base de datos ni dependencias**,
+el servidor entrega a cada jugador una **instantánea cifrada** de su sala y, tras el reinicio, esos mismos jugadores se la devuelven.
+
+- **Qué es.** `server/snapshot.js`: el estado completo de la sala (lobby o partida: estado del motor, barreras de fase, notas retenidas, ofertas, reloj, ausencias, votos, anfitrión, hash de tokens)
+  se serializa, se comprime (gzip) y se cifra+autentica con **AES-256-GCM** (`node:crypto`); el código de sala y la versión de esquema van como datos autenticados.
+  Un blob mide unos 10-30 KB. No contiene nada legible; sin la clave (solo el servidor la tiene) no se puede leer ni fabricar ni modificar.
+- **Cuándo se envía.** Evento SSE `snapshot` (el mismo blob a todos los conectados de la sala): en cada cambio de fase/ronda/pregunta de tiempo, como mucho cada 10 s dentro de una fase (por si el proceso muere sin avisar, `kill -9`),
+  al reconectar y en el **SIGTERM** del despliegue (justo antes de cerrar los SSE). El cliente (`net.js`) guarda solo el último por sala en `localStorage` (`umbral_online_snap_<SALA>`) y lo borra al terminar la partida, al salir o al perder la sala.
+- **Restauración.** El servidor nuevo arranca sin salas. Un cliente que reconecta recibe `404 {unknownRoom}` (el cliente manda su código en `?room=` / `x-room`) y sube su blob a `POST /api/restore {room, blob}` (token en `x-token`, límite 1,5 MB, 12/min por IP, 6/min por token).
+  El servidor descifra y valida (código de sala, token del que sube perteneciente a esa sala, esquema, **mismo motor**, antigüedad), abre una **ventana de 5 s** y crea la sala con el blob de **mayor `seq`** recibido en la ventana (evita rebobinar si el primer móvil en volver tenía una instantánea vieja).
+  La sala vuelve con todos desconectados; cada jugador entra con su token. Una sala ya existente no se toca (el primero gana).
+- **Nadie pierde por el reinicio.** `endAt` y los plazos de fase se desplazan el tiempo caído; cada plazo vigente conserva al menos 90 s (turno) / 60 s (resto) de margen tras restaurar; la gracia de «desconexión acelerada», de ausencia y del traspaso del anfitrión empieza al restaurar (60 s). `ver` salta +1.000.000 para que ningún cliente descarte las vistas nuevas.
+- **Rechazos limpios.** Blob manipulado/truncado/de otra sala/otra clave: 400. Token que no es de esa sala: 401. Motor (`data.js`/`engine.js`) o esquema distintos: 409 (el cliente avisa «el servidor se actualizó y no pudo recuperar esta partida»; la sala se pierde, nunca se corrompe). Caducada (>4 h) o sala ya cerrada en este proceso: 410.
+- **Clave.** `SNAPSHOT_KEY` (mínimo 16 caracteres; `render.yaml` la declara con `generateValue: true`, así que **persiste entre despliegues**; si la cambias, las instantáneas antiguas dejan de valer). Sin clave, la función queda **desactivada** (aviso en el log) y se comporta como antes: las salas se pierden al reiniciar.
+- **Cliente.** Mientras reconecta muestra «Sin conexión… Reconectando…» y luego «Restaurando la partida…» sin perder la pantalla; reintenta con espera creciente y, si tras 8 intentos falla, ofrece «Reintentar».
+
+**Límites.**
+- Si **todos** los jugadores cierran la app durante el reinicio (o borran los datos del navegador), nadie puede subir el blob y la sala se pierde.
+- Un despliegue que **cambia `data.js`/`engine.js`** (o el esquema de la instantánea) no puede recuperar partidas en curso (409): despliega esos cambios con la mesa vacía. Cambios solo de cliente/servidor sin tocar el motor sí se recuperan.
+- Si el proceso muere sin avisar (`kill -9`, caída) se pierde lo ocurrido desde la última instantánea (≤10 s o el último cambio de fase): la partida vuelve a ese punto.
+- Zona horaria/reloj: los plazos se desplazan con el reloj del servidor; si el nuevo servidor tuviese el reloj muy distinto, las comparaciones usan `savedAt`.
+- Despliegues «sin corte» con dos instancias solapadas no están soportados (el estado vive en una sola instancia).
+- La instantánea de un jugador contiene también los secretos de los demás, pero cifrados con la clave del servidor (AES-GCM de 256 bits): sin la clave es indescifrable.

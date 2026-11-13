@@ -35,11 +35,12 @@ def free_port():
     s = socket.socket(); s.bind(("127.0.0.1", 0)); p = s.getsockname()[1]; s.close(); return p
 
 class Server:
-    def __init__(self, port=None, script="server/index.js", scale=None, read_ms="0"):
-        self.port = port or free_port(); self.p = None; self.script = script; self.scale = scale; self.read_ms = read_ms
+    def __init__(self, port=None, script="server/index.js", scale=None, read_ms="0", extra=None):
+        self.port = port or free_port(); self.p = None; self.script = script; self.scale = scale; self.read_ms = read_ms; self.extra = extra or {}
     def start(self):
         env = dict(os.environ, PORT=str(self.port), UMBRAL_READ_MS=str(self.read_ms))   # la lectura de 10 s estorba a los bots de interfaz: solo se prueba en `time`
         if self.scale: env["UMBRAL_TIME_SCALE"] = str(self.scale)
+        env.update(self.extra)
         self.p = subprocess.Popen(["node", self.script], cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         for _ in range(100):
             try:
@@ -48,6 +49,8 @@ class Server:
         raise RuntimeError("el servidor no arrancó")
     def stop(self):
         if self.p: self.p.terminate(); self.p.wait(5); self.p = None
+    def kill(self):   # kill -9: sin SIGTERM, el servidor no puede mandar la instantánea final
+        if self.p: self.p.kill(); self.p.wait(5); self.p = None
     @property
     def url(self): return "http://127.0.0.1:%d/" % self.port
 
@@ -648,9 +651,64 @@ def scenario_desktop(pw, vw=1280, vh=800, tag="pc"):
         check("desktop: sin scroll horizontal a %dx%d" % (vw, vh), w)
     finally: b.close(); srv.stop()
 
+
+def scenario_persist(pw, hard=False):
+    """Persistencia: el servidor se reinicia (SIGTERM o kill -9) a mitad de partida y la partida continúa y termina con la instantánea cifrada."""
+    tag = "hard" if hard else "term"
+    env = {"SNAPSHOT_KEY": "e2e-clave-secreta-0123456789abcdef"}
+    srv = Server(extra=env).start(); b = pw.chromium.launch(); rnd = random.Random(A.seed + (7 if hard else 0))
+    try:
+        cs, code = new_room3(b, srv, "p" + tag, mins=8)
+        ok = play_until(cs, rnd, lambda: all((jsq(c, "s.round") or 0) >= 2 for c in cs), 300)
+        check("persist-%s: llegan a la ronda 2" % tag, ok, [jsq(c, "s.round") for c in cs])
+        for c in cs: c.pg.wait_for_timeout(300)
+        snaps = [c.pg.evaluate("Object.keys(localStorage).filter(k=>k.indexOf('umbral_online_snap_')===0).length") for c in cs]
+        check("persist-%s: los 3 móviles guardaron la instantánea" % tag, all(n == 1 for n in snaps), snaps)
+        blobs = [c.pg.evaluate("localStorage.getItem('umbral_online_snap_%s')" % code) for c in cs]
+        check("persist-%s: el blob es opaco (sin texto del juego) y mismo formato" % tag, all(x and re.match(r"^U1\.[A-Za-z0-9_-]+$", x) and "secreto" not in x.lower() for x in blobs))
+        pre = [jsq(c, "[s.round,s.phase]") for c in cs]
+        port = srv.port
+        if hard: srv.kill()
+        else: srv.stop()
+        if hard: cs[2].ctx.close()      # un móvil se cierra durante el reinicio: la mesa sigue con la mayoría
+        act = cs[:2] if hard else cs
+        for c in act:
+            try: c.pg.wait_for_selector("#netBanner:not(.hidden)", timeout=20000)
+            except Exception: pass
+        cs[0].shot("60_%s_caido" % tag)
+        time.sleep(2)
+        srv2 = Server(port, extra=env).start()
+        seen = False
+        try: cs[0].pg.wait_for_function("document.getElementById('netBannerTxt').textContent.indexOf('Restaurando')>=0 || document.getElementById('netBanner').classList.contains('hidden')", timeout=30000); seen = "Restaurando" in cs[0].txt("#netBannerTxt")
+        except Exception: pass
+        cs[0].shot("61_%s_restaurando" % tag)
+        for c in act:
+            c.pg.wait_for_function("document.getElementById('netBanner').classList.contains('hidden') && window.UmbralNet && UmbralNet.backend.getState() && UmbralNet.backend.getState().phase", timeout=90000)
+        post_ = [jsq(c, "[s.round,s.phase]") for c in act]
+        check("persist-%s: tras reiniciar, la sala sigue en la misma ronda (o más) y mismo código" % tag, all(p[0] >= pre[i][0] for i, p in enumerate(post_)) and all(c.pg.evaluate("UmbralNet.backend.getState()!==null") for c in act), (pre, post_))
+        check("persist-%s: se mostró «Restaurando la partida…»" % tag, seen, cs[0].txt("#netBannerTxt"))
+        leaks, structural, ctl = [], [], []
+        t0 = time.time(); ended = False; n = 0
+        while time.time() - t0 < 480:
+            n += 1; res = []
+            for c in act:
+                try: res.append(bot_step(c, rnd))
+                except Exception as e: c.errors.append("BOT " + str(e)[:160]); res.append("wait")
+            if all(r == "end" for r in res): ended = True; break
+            if n % 8 == 0: privacy_scan(act, leaks, structural, ctl)
+        check("persist-%s: la partida continúa y llega al desenlace tras el reinicio" % tag, ended, [c.txt("#screenTitle")[:40] for c in act])
+        check("persist-%s: privacidad: 0 datos ajenos tras restaurar" % tag, not leaks and not structural, (leaks[:3], structural[:3]))
+        left = [c.pg.evaluate("Object.keys(localStorage).filter(k=>k.indexOf('umbral_online_snap_')===0).length") for c in act]
+        check("persist-%s: al terminar se borra la instantánea" % tag, all(n == 0 for n in left), left)
+        errs = [e for c in act for e in c.errors]
+        check("persist-%s: sin errores de JS" % tag, not errs, errs[:4])
+        srv2.stop()
+    finally:
+        b.close(); srv.stop()
+
 if A.sync:
     subprocess.check_call(["node", "scripts/sync-client.js", A.sync], cwd=ROOT, stdout=subprocess.DEVNULL)
-SC = {"lobby": scenario_lobby, "game": scenario_game, "restart": lambda pw: scenario_game(pw, True), "stun": scenario_stun, "timers": scenario_timers, "time": scenario_time, "presence": scenario_presence, "dual": scenario_dual, "csp": scenario_csp, "absvote": scenario_absvote, "external": scenario_external, "desktop": scenario_desktop, "small": lambda pw: scenario_desktop(pw, 360, 640, "360")}
+SC = {"lobby": scenario_lobby, "game": scenario_game, "restart": lambda pw: scenario_game(pw, True), "persist": scenario_persist, "persisthard": lambda pw: scenario_persist(pw, True), "stun": scenario_stun, "timers": scenario_timers, "time": scenario_time, "presence": scenario_presence, "dual": scenario_dual, "csp": scenario_csp, "absvote": scenario_absvote, "external": scenario_external, "desktop": scenario_desktop, "small": lambda pw: scenario_desktop(pw, 360, 640, "360")}
 with sync_playwright() as pw:
     for k, f in SC.items():
         if A.only and k != A.only: continue

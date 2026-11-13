@@ -16,3 +16,5 @@ services:
         value: "1"
       - key: MAX_ROOMS
         value: "50"
+      - key: SNAPSHOT_KEY      # clave del cifrado de las instantáneas de sala (persistencia entre despliegues); se genera una vez y se conserva
+        generateValue: true
