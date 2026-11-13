@@ -110,7 +110,7 @@ test("partida: inicio, vistas distintas y filtradas, comandos y rechazos", async
 
     /* ronda completa: todos meditan y entregan -> Consejo -> Continuar -> ronda 2 */
     for (let i = 0; i < 4; i++) { if (i !== 1) assert.ok((await cl[i].cmd("act", ["meditar", null, null])).ok); }
-    for (let i = 0; i < 4; i++) { const r = await cl[i].cmd("finishTurn", []); assert.strictEqual(r.ok, true, JSON.stringify(r)); if (i < 3) { await cl[0].until((v) => v.wait.length === 3 - i); } }
+    for (let i = 0; i < 4; i++) { const r = await cl[i].cmd("finishTurn", []); assert.strictEqual(r.ok, true, JSON.stringify(r)); if (i < 3) { await cl[0].until((v) => v.waitN === 3 - i); } }
     for (const c of cl) await c.until((v) => v.phase === "council");
     for (let i = 0; i < 4; i++) assert.ok((await cl[i].cmd("councilReady", [])).ok);
     for (const c of cl) await c.until((v) => v.phase === "resolution");

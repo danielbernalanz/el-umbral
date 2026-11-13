@@ -66,7 +66,7 @@ test("ausente tras 2 rondas completas desconectado: medita sin esperar, no bloqu
   assert.strictEqual(S.round, 5); assert.strictEqual(e.clk.t, t0);
   /* vista pública mínima */
   const v = g.view(0); assert.strictEqual(v.players[3].absent, true); assert.strictEqual(v.players[3].online, false); assert.strictEqual(v.players[0].absent, false);
-  assert.deepStrictEqual(v.wait, ["P0", "P1", "P2"], "el ausente no aparece como pendiente");
+  assert.strictEqual(v.waitN, 3, "el ausente no cuenta como pendiente"); assert.deepStrictEqual(v.wait, [], "fase privada: no se nombra a nadie");
   audit(e, "absent");
   /* vuelve: sigue ausente lo que queda de la ronda, recupera su vista completa y deja de estarlo en la siguiente */
   const r = e.conn(3);

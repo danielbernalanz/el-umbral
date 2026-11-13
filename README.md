@@ -62,8 +62,36 @@ y se descartan vistas más viejas que la ya recibida). `ui.js` solo cambia en `r
 - Servidor, cambios de F3: `ver` en cada vista, la respuesta de `/cmd` incluye `view`, y `storyList` en el desenlace.
 - Pruebas E2E: `test/e2e/` (ver su README).
 
+## Cómo se juega en línea
+
+1. Abre **https://el-umbral-h1ki.onrender.com** (o la URL de tu servidor) en el navegador del móvil u ordenador. En el APK, «Jugar en línea» abre esa misma web.
+   El plan gratuito de Render **duerme el servicio** tras ~15 min sin uso: la primera carga o crear/unirse puede tardar ~50 s
+   (el cliente muestra «Despertando el servidor…» y reintenta solo).
+2. Pulsa «Jugar en línea», escribe tu nombre y **Crear sala**: aparece un código de 5 letras y un enlace (`/?sala=ABCDE`) para compartir.
+3. Los demás abren el enlace o escriben el código y pulsan **Unirse**. Con 3 a 10 jugadores, el anfitrión elige la **hora de fin** (5-120 min) y pulsa **Iniciar**.
+   No se puede entrar en una partida ya empezada.
+4. Todos juegan a la vez su turno privado (el servidor cierra la ronda cuando todos terminan o se agota el tiempo), luego Consejo y resolución. Tras el desenlace se puede exportar el log y la historia.
+
+Límites: 3-10 jugadores por sala, 50 salas, 20 altas/min por IP, 10 comandos/s por jugador, cuerpo 8 KB. Salas sin conexiones: 30 min; terminadas: 15 min; máximo 4 h.
+Los datos viven solo en memoria: si el servidor se reinicia (o Render lo duerme con la sala vacía) las salas se pierden.
+
+**Local vs en línea.** Local (un solo móvil, turnos con traspaso) no cambia y no necesita servidor. En línea cada jugador usa su dispositivo, con vista filtrada
+(nadie recibe datos ajenos), turnos simultáneos con reloj del servidor, autoturno, votación de tiempo, ausencia (tras 2 rondas desconectado) y reconexión con el mismo token.
+En la fase privada solo se muestra «Faltan N»: no quién ha terminado.
+
+## Despliegue (Render)
+
+`render.yaml` define un servicio web Node (plan free, sin build, `node server/index.js`, `/healthz`, auto-deploy de `main`). Variables: `PORT` (la pone Render; escucha en `0.0.0.0`),
+`TRUST_PROXY=1`, `MAX_ROOMS`. Cabeceras de seguridad en todas las respuestas (nosniff, no-referrer, X-Frame-Options, Permissions-Policy, CSP en el HTML sin inline-script; HSTS tras el proxy https).
+Los estáticos se revalidan siempre (ETag/304) y `sw.js` no cachea `/events`, `/cmd`, `/api/*` ni `/healthz`. `SIGTERM` cierra los SSE y sale limpio (los clientes reintentan).
+
+## Desarrollo y pruebas
+
+    node scripts/sync-client.js /ruta/a/www     # public/ = copia del cliente (la fuente única es www; engine.js y data.js no se editan aquí)
+    npm test                                     # 40+ pruebas (~1 min): no-fuga, pureza, red, F4/F5, bots por red, producción
+    node test/bots_online.js 4,6,8,10 4 12 0.02  # batería grande de bots por red: jugadores, semillas, minutos, prob. de desconexión, aceleraciones
+    python3 -I test/e2e/online_e2e.py            # E2E Playwright multi-navegador (ver test/e2e/README.md)
+
 ## Estado
 
-F1 (vista), F2 (servidor y salas) y F3 (cliente en línea, lobby, E2E) hechas. Pendiente: F4 simultaneidad/relojes del servidor/votación de tiempo
-(la interfaz ya muestra `v.votes`, `v.wait` y `v.timeAsk`; «Añadir tiempo» del aviso de fin está oculto en línea hasta que exista en el servidor),
-F5 ausencia/anfitrión, F6 E2E con bots y desconexiones, F7 Render (`render.yaml`).
+F1-F7 hechas. Sin verificar desde el entorno de desarrollo (red bloqueada): el despliegue real en Render, WebView Android y latencias de móvil.

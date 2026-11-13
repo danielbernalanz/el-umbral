@@ -137,7 +137,7 @@
     const ex = players.find(function (p) { return p.exposed; });
     return { round: v.round, phase: v.phase, players: players, turn: v.youId, youId: v.youId, handoff: false, event: v.event, chronicle: v.chronicle || [], publicClues: v.publicClues || [],
       timeAsk: v.timeAsk || null, skipped: v.skipped || [], lastResolution: v.lastResolution || [], councilResults: v.councilResults || [], ending: v.ending || null,
-      votes: v.votes || {}, wait: v.wait || [], assassinId: ex ? ex.id : null, maxRounds: v.maxRounds, endAt: v.endAt || null, order: players.map(function (p) { return p.id; }) };
+      votes: v.votes || {}, wait: v.wait || [], waitN: v.waitN || 0, assassinId: ex ? ex.id : null, maxRounds: v.maxRounds, endAt: v.endAt || null, order: players.map(function (p) { return p.id; }) };
   }
   function onView(v, silent) {
     if (!v || typeof v !== "object") return;
@@ -257,18 +257,28 @@
     showPanel("onRoom"); renderRoom(); setMsg(""); lockForm(false);
     openStream();
   }
+  /* Render (plan gratuito) duerme el servicio: la primera petición puede tardar ~50 s o recibir 502/503/HTML de arranque. Se reintenta con aviso. */
+  function postWake(path, body, tries) {
+    const left = tries == null ? 3 : tries;
+    return post(path, body, "", 75000).then(function (r) {
+      const sleeping = r && !r.ok && (r.net || r.status === 502 || r.status === 503 || r.status === 504 || r.msg === "Respuesta no válida del servidor.");
+      if (!sleeping || left <= 1) return r;
+      setMsg("Despertando el servidor… (el servidor gratuito puede tardar ~1 min). Reintentando…");
+      return new Promise(function (res) { setTimeout(res, 4000); }).then(function () { return postWake(path, body, left - 1); });
+    });
+  }
   function createRoom() {
     const name = nameVal(), base = serverBase();
     if (!name) { setMsg("Escribe tu nombre.", true); return; }
     lockForm(true); setMsg(WAKE);
-    post("/api/create", { name: name }, "", 75000).then(function (r) { lockForm(false); if (r.ok && r.token) enter(r, base); else setMsg(explain(r, false), true); });
+    postWake("/api/create", { name: name }).then(function (r) { lockForm(false); if (r.ok && r.token) enter(r, base); else setMsg(explain(r, false), true); });
   }
   function joinRoom() {
     const name = nameVal(), code = String($("onCode").value || "").toUpperCase().replace(/[^A-Z]/g, ""), base = serverBase();
     if (!name) { setMsg("Escribe tu nombre.", true); return; }
     if (code.length !== 5) { setMsg("El código son 5 letras.", true); return; }
     lockForm(true); setMsg(WAKE);
-    post("/api/join", { room: code, name: name }, "", 75000).then(function (r) { lockForm(false); if (r.ok && r.token) enter(r, base); else setMsg(explain(r, true), true); });
+    postWake("/api/join", { room: code, name: name }).then(function (r) { lockForm(false); if (r.ok && r.token) enter(r, base); else setMsg(explain(r, true), true); });
   }
   function leaveRoom(silent) {
     const s = session;

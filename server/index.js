@@ -8,6 +8,20 @@ const { Rooms } = require("./room");
 const MAX_BODY = 8 * 1024;
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".ico": "image/x-icon", ".json": "application/json; charset=utf-8", ".webmanifest": "application/manifest+json; charset=utf-8", ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8" };
 
+/* Cabeceras de seguridad para TODAS las respuestas (estáticos, API y SSE). La CSP permite lo que usa el cliente:
+   scripts propios (sin inline ni eval), estilos propios + atributos style, sprites inline (SVG en el HTML), imágenes/audio data:/blob:,
+   y conexiones a cualquier servidor https/http (el servidor es configurable en el menú «Servidor (avanzado)»). Sin iframes ajenos. */
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: http:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+function secure(req, res, trustProxy) {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+  if (String(req.url || "").split("?")[0].match(/^\/($|index\.html$)/) || /\.(html?)$/.test(String(req.url || "").split("?")[0])) res.setHeader("Content-Security-Policy", CSP);
+  if (trustProxy && String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim() === "https") res.setHeader("Strict-Transport-Security", "max-age=15552000");
+}
+
 /* Límite simple por clave: ventana deslizante de `max` eventos en `ms`. */
 function limiter(max, ms, now) {
   const hits = new Map();
@@ -115,7 +129,12 @@ function createServer(opts) {
     if (file !== publicDir && file.indexOf(publicDir + path.sep) !== 0) { res.writeHead(403); return res.end(); }
     fs.stat(file, (err, st) => {
       if (err || !st.isFile()) { res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" }); return res.end("No encontrado"); }
-      res.writeHead(200, { "Content-Type": MIME[path.extname(file).toLowerCase()] || "application/octet-stream", "Content-Length": st.size, "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff" });
+      /* Siempre revalidar (sw.js y la app se actualizan al desplegar); ETag por tamaño+mtime para responder 304 sin cuerpo. */
+      const etag = 'W/"' + st.size.toString(16) + "-" + Math.round(st.mtimeMs).toString(16) + '"';
+      const h = { "Content-Type": MIME[path.extname(file).toLowerCase()] || "application/octet-stream", "Cache-Control": "no-cache", "ETag": etag, "Last-Modified": st.mtime.toUTCString() };
+      if (req.headers["if-none-match"] === etag) { res.writeHead(304, h); return res.end(); }
+      h["Content-Length"] = st.size;
+      res.writeHead(200, h);
       if (req.method === "HEAD") return res.end();
       fs.createReadStream(file).pipe(res);
     });
@@ -125,6 +144,7 @@ function createServer(opts) {
     let url;
     try { url = new URL(req.url, "http://localhost"); } catch (e) { res.writeHead(400); return res.end(); }
     const p = url.pathname;
+    secure(req, res, !!(opts.trustProxy || process.env.TRUST_PROXY));
     const isApi = p === "/healthz" || p === "/events" || p === "/cmd" || p.startsWith("/api/");
     if (isApi) {
       cors(res);
@@ -142,7 +162,15 @@ function createServer(opts) {
   ];
   timers.forEach((t) => t.unref && t.unref());
   server.on("close", () => { timers.forEach(clearInterval); rooms.closeAll(); });
-  return { server, rooms, engineDir, publicDir };
+  /* Apagado limpio: deja de aceptar conexiones, cierra los SSE (los clientes reintentan solos) y libera los temporizadores. */
+  function shutdown(cb) {
+    let done = false; const fin = () => { if (!done) { done = true; cb && cb(); } };
+    server.close(fin); try { server.closeIdleConnections(); } catch (e) { /* idem */ }
+    try { rooms.closeAll(); } catch (e) { /* idem */ }
+    setTimeout(() => { try { server.closeAllConnections(); } catch (e) { /* idem */ } }, 1500).unref();
+    setTimeout(fin, 4000).unref();
+  }
+  return { server, rooms, engineDir, publicDir, shutdown };
 }
 
 module.exports = { createServer };
@@ -151,7 +179,13 @@ if (require.main === module) {
   const port = Number(process.env.PORT) || 3000;
   let app;
   try { app = createServer({}); } catch (e) { console.error(e.message); process.exit(1); }
-  app.server.listen(port, () => console.log("El Umbral online escuchando en :" + port + " (motor: " + app.engineDir + ")"));
-  const stop = () => { app.server.close(); setTimeout(() => process.exit(0), 500).unref(); };
-  process.on("SIGTERM", stop); process.on("SIGINT", stop);
+  app.server.on("error", (e) => { console.error("No se pudo escuchar en el puerto " + port + ": " + e.message); process.exit(1); });
+  /* 0.0.0.0: obligatorio en Render (el balanceador entra por la interfaz de red, no por localhost). */
+  app.server.listen(port, "0.0.0.0", () => console.log("El Umbral online escuchando en 0.0.0.0:" + port + " (motor: " + app.engineDir + ")"));
+  let stopping = false;
+  const stop = (sig) => { if (stopping) return; stopping = true; console.log(sig + ": apagando…"); app.shutdown(() => process.exit(0)); };
+  process.on("SIGTERM", () => stop("SIGTERM")); process.on("SIGINT", () => stop("SIGINT"));
+  /* Un fallo suelto no debe tumbar todas las salas: se registra (sin datos de jugadores) y se sigue. */
+  process.on("uncaughtException", (e) => console.error("uncaughtException:", e && e.stack || e));
+  process.on("unhandledRejection", (e) => console.error("unhandledRejection:", e && e.stack || e));
 }

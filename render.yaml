@@ -1,0 +1,18 @@
+# Render Blueprint: servicio web Node sin dependencias (no hay build ni npm install).
+services:
+  - type: web
+    name: el-umbral
+    runtime: node
+    plan: free
+    branch: main
+    autoDeploy: true
+    buildCommand: "node --version"
+    startCommand: node server/index.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: TRUST_PROXY       # límites por IP con X-Forwarded-For (Render va detrás de su proxy)
+        value: "1"
+      - key: MAX_ROOMS
+        value: "50"

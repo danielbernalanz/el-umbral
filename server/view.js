@@ -8,7 +8,7 @@
    encounterStart) las materializa el servidor en game.js (refresh) y aquí solo se lee su resultado. */
 
 const PUBLIC_PLAYER_KEYS = ["id", "name", "dead", "dying", "exposed", "visibleHealth", "ready", "online", "host", "absent"];
-const TOP_KEYS = ["ver", "youId", "serverNow", "phase", "round", "maxRounds", "endAt", "durationMin", "event", "timeAsk", "publicClues", "chronicle", "skipped", "players", "me", "q", "wait", "votes", "clock", "timeAdd", "councilResults", "lastResolution", "umbralAbierto", "ending", "reveal", "log", "story", "storyList", "host", "hostNote"];
+const TOP_KEYS = ["ver", "youId", "serverNow", "phase", "round", "maxRounds", "endAt", "durationMin", "event", "timeAsk", "publicClues", "chronicle", "skipped", "players", "me", "q", "wait", "waitN", "votes", "clock", "timeAdd", "councilResults", "lastResolution", "umbralAbierto", "ending", "reveal", "log", "story", "storyList", "host", "hostNote"];
 /* Campos del jugador propio que guardan IDENTIDADES AJENAS (quién me socorrió, quién me alzó, quién me protege). */
 const ME_EXCLUDE = ["socBy", "risenBy", "protection", "lastSeen"];
 const MODES = ["cauto", "normal", "desatado"];
@@ -124,6 +124,12 @@ function waitList(game) {
   return S.players.filter((p) => !game.doneIn(p, set)).map((p) => p.name);
 }
 
+function waitCount(game) {
+  const S = game.S();
+  const set = S.phase === "private" ? game.ready : S.phase === "council" ? game.councilReady : S.phase === "resolution" ? game.contReady : null;
+  return set ? S.players.filter((p) => !game.doneIn(p, set)).length : 0;
+}
+
 function buildView(game, pid) {
   const S = game.S(), U = game.U;
   const p = S.players[pid];
@@ -149,14 +155,16 @@ function buildView(game, pid) {
     councilResults: S.phase === "council" || S.phase === "resolution" ? clone(game.councilResults || []) : [],
     players: S.players.map((x) => ({
       id: x.id, name: x.name, dead: !!x.dead, dying: !!x.dying && !x.dead, exposed: !!x.exposed, visibleHealth: U.visibleHealth(x),
-      ready: setReady ? (x.dead || setReady.has(x.id) || game.absent.has(x.id)) : false,
+      /* F6: en la fase privada solo se ve el propio «listo» (de los demás, solo muertos/ausentes, que ya son públicos): nadie espera a ser el último */
+      ready: setReady ? (S.phase === "private" && x.id !== pid ? (x.dead || game.absent.has(x.id)) : (x.dead || setReady.has(x.id) || game.absent.has(x.id))) : false,
       absent: game.absent.has(x.id) && !x.dead,
       online: pres.online ? pres.online[x.id] !== false : true,
       host: pres.host === x.id
     })),
     me: mePlayer(game, p),
     q: ending ? {} : queriesFor(game, pid),
-    wait: waitList(game),
+    wait: S.phase === "private" ? [] : waitList(game),
+    waitN: ending ? 0 : waitCount(game),
     clock: ending || !game.clock ? null : clone(game.clock),
     timeAdd: !!S.timeAdd,
     hostNote: game.hostNote || null,

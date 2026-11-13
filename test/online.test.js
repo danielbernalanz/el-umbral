@@ -33,11 +33,13 @@ test("barrera simultánea: 4 clientes de red actúan a la vez, la fase solo cier
     rs.forEach((r) => assert.strictEqual(r.ok, true, JSON.stringify(r)));
     /* tres entregan: el Consejo no se abre y wait lista al que falta */
     await Promise.all(cs.slice(0, 3).map((c) => c.cmd("finishTurn", [])));
-    await cs[0].until((v) => v.wait.length === 1 && v.wait[0] === "Eva" || v.wait.length === 1);
+    await cs[0].until((v) => v.waitN === 1);
     assert.strictEqual(cs[0].view.phase, "private");
-    assert.deepStrictEqual(cs[0].view.wait, ["Pablo"]);
-    assert.strictEqual(cs[0].view.players[0].ready, true);
-    assert.strictEqual(cs[0].view.players[3].ready, false);
+    assert.deepStrictEqual(cs[0].view.wait, [], "fase privada: no se nombra a quien falta");
+    assert.strictEqual(cs[0].view.waitN, 1);
+    assert.strictEqual(cs[0].view.players[0].ready, true, "el propio «listo» sí");
+    assert.strictEqual(cs[0].view.players[1].ready, false, "el «listo» ajeno no se ve en la fase privada");
+    assert.strictEqual(cs[3].view.waitN, 1);
     assert.ok(cs[0].view.clock && cs[0].view.clock.kind === "turn" && cs[0].view.clock.deadline > cs[0].view.serverNow, "el reloj de turno lo da el servidor");
     assert.ok(Object.keys(cs[0].view.clock).every((k) => ["kind", "start", "readUntil", "warnAt", "deadline", "autoAt"].indexOf(k) !== -1));
     await cs[3].cmd("finishTurn", []);

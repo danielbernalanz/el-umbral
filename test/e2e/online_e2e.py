@@ -52,13 +52,15 @@ class Server:
     def url(self): return "http://127.0.0.1:%d/" % self.port
 
 SSE_HOOK = """(()=>{const E=window.EventSource;window.__sse=[];
+window.__csp=[];document.addEventListener('securitypolicyviolation',e=>window.__csp.push(e.violatedDirective+' '+e.blockedURI));
 window.EventSource=function(u,o){const e=new E(u,o);e.addEventListener('view',ev=>{window.__sse.push(ev.data);if(window.__sse.length>80)window.__sse.shift();});return e;};
 window.EventSource.prototype=E.prototype;window.EventSource.CLOSED=2;window.EventSource.CONNECTING=0;window.EventSource.OPEN=1;})();"""
 
 class Client:
-    def __init__(self, browser, name, vw=390, vh=844):
+    def __init__(self, browser, name, vw=390, vh=844, csp=False):
         self.name = name
-        self.ctx = browser.new_context(viewport={"width": vw, "height": vh})
+        # bypass_csp: wait_for_function de Playwright usa eval; la CSP real se comprueba en el escenario «csp» (csp=True)
+        self.ctx = browser.new_context(viewport={"width": vw, "height": vh}, bypass_csp=not csp)
         self.ctx.add_init_script(SSE_HOOK)
         self.pg = self.ctx.new_page()
         self.errors = []; self.cmds = []; self.resp = []
@@ -304,7 +306,10 @@ def scenario_game(pw, restart_test=False):
                 try:
                     if c.vis("#handoff") and c.vis("#waitList"):
                         stats["waiting_seen"] += 1
-                        if "wait" not in shot_done: c.shot("20_esperando"); shot_done.add("wait"); stats["wait_text"] = c.txt("#waitList")[:120]
+                        if "wait" not in shot_done:
+                            c.shot("20_esperando"); shot_done.add("wait"); stats["wait_text"] = c.txt("#waitList")[:120]
+                            wt = c.txt("#waitList"); check("game: la espera solo dice «Faltan N» (sin quién está listo ni decidiendo)", re.search("faltan", wt, re.I) and not re.search(r"listo|decidiendo|terminado", wt, re.I), wt[:160])
+                            check("game: la espera no usa chips de estado por jugador", c.pg.locator("#waitList .chip.good:not(:has-text('anfitri'))").count() == 0)
                     if c.vis("#councilPanel"):
                         stats["council_seen"] += 1
                         if "council" not in shot_done: c.shot("21_consejo"); shot_done.add("council")
@@ -534,6 +539,81 @@ def scenario_time(pw):
         check("time: sin errores de JS", not errs, errs[:3])
     finally: b.close(); srv.stop()
 
+def scenario_dual(pw):
+    """F6: dos pestañas del mismo jugador: la nueva toma la conexión, la vieja muestra «Usar aquí» y puede recuperarla; una sola sesión (sin duplicar jugador)."""
+    srv = Server(script="test/e2e/test_server.js").start(); b = pw.chromium.launch()
+    try:
+        cs, code = new_room3(b, srv, "x")
+        a1 = cs[0]; a2pg = a1.ctx.new_page(); errs2 = []
+        a2pg.on("pageerror", lambda e: errs2.append(str(e)[:200]))
+        a2pg.goto(srv.url)
+        a2pg.wait_for_function("window.UmbralNet && UmbralNet.backend.getState && UmbralNet.backend.getState() && UmbralNet.backend.getState().youId===0", timeout=20000)
+        a1.pg.wait_for_selector("#netBanner:not(.hidden)", timeout=10000)
+        check("dual: la pestaña antigua muestra el aviso de otra pestaña y «Usar aquí»", "otra pestaña" in a1.txt("#netBannerTxt") and "Usar aquí" in a1.txt("#netBannerBtn"), a1.txt("#netBanner"))
+        a1.shot("90_usar_aqui")
+        n = jsq(cs[1], "s.players.length")
+        check("dual: sigue habiendo 3 jugadores (sin duplicar)", n == 3, n)
+        a1.pg.click("#netBannerBtn"); a1.pg.wait_for_function("document.getElementById('netBanner').classList.contains('hidden')", timeout=10000)
+        a2pg.wait_for_selector("#netBanner:not(.hidden)", timeout=10000)
+        check("dual: «Usar aquí» recupera la conexión y la otra pestaña pasa a mostrar el aviso", "Usar aquí" in a2pg.inner_text("#netBannerBtn"))
+        check("dual: la pestaña recuperada sigue con su vista completa del mismo jugador", jsq(a1, "s.youId") == 0 and jsq(a1, "!!s.players[0].role"))
+        check("dual: sin errores de JS", not a1.errors and not errs2, (a1.errors + errs2)[:3])
+    finally: b.close(); srv.stop()
+
+def scenario_absvote(pw):
+    """F6: con una jugadora ausente (cerró la pestaña) la pregunta de tiempo no se bloquea: votan los presentes y a los 30 s decide la mayoría."""
+    srv = Server(script="test/e2e/test_server.js", scale=0.08).start(); b = pw.chromium.launch(); rnd = random.Random(A.seed)
+    try:
+        cs, code = new_room3(b, srv, "v", mins=60)
+        marta = cs[2]; marta.pg.goto("about:blank")
+        ok = play_until(cs, rnd, lambda: bool(jsq(cs[0], "s.players[2].absent")), 150, skip=(marta,))
+        check("absvote: Marta pasa a ausente", ok)
+        endat(srv, code, -1)
+        got = False; t0 = time.time()
+        while time.time() - t0 < 120:
+            for c in cs[:2]:
+                if c.vis("#timeOverlay") and c.vis("[data-k]"): continue
+                try: bot_step(c, rnd)
+                except Exception as e: c.errors.append("BOT " + str(e)[:120])
+            if all(c.vis("#timeOverlay") and c.vis("[data-k]") for c in cs[:2]): got = True; break
+        check("absvote: la pregunta de tiempo llega a los presentes aunque haya una ausente", got)
+        if got:
+            cs[1].pg.click("[data-k='end']")      # el anfitrión no vota: gana la mayoría (Luis: terminar; la ausente se abstiene)
+            for c in cs[:2]: c.pg.wait_for_selector("#ending", state="visible", timeout=30000)
+            check("absvote: a los 30 s (x0,08) la mayoría de presentes cierra la partida con desenlace", True)
+            cs[0].shot("91_absvote_fin")
+        errs = [e for c in cs[:2] for e in c.errors if not e.startswith("BOT")]
+        check("absvote: sin errores de JS", not errs, errs[:3])
+    finally: b.close(); srv.stop()
+
+def scenario_csp(pw):
+    """F7: con la CSP real del servidor (sin bypass) el lobby, la partida y el SSE funcionan sin ninguna violación (script-src 'self', sprites inline, estilos)."""
+    srv = Server(script="test/e2e/test_server.js").start(); b = pw.chromium.launch(); rnd = random.Random(A.seed)
+    try:
+        cs = [Client(b, "c_" + n, csp=True) for n in ("ana", "luis", "marta")]
+        cs[0].pg.goto(srv.url); cs[0].pg.click("#btnModeOnline"); cs[0].pg.wait_for_selector("#onHome", state="visible")
+        check("csp: la página carga con la cabecera CSP", "frame-ancestors" in (cs[0].pg.evaluate("fetch('/').then(r=>r.headers.get('content-security-policy')||'')") or ""))
+        cs[0].pg.fill("#onName", "Ana"); cs[0].pg.click("#btnOnCreate")
+        t0 = time.time(); code = ""
+        while time.time() - t0 < 15 and not re.fullmatch(r"[A-Z]{5}", code): cs[0].pg.wait_for_timeout(200); code = cs[0].txt("#roomCode").strip()
+        check("csp: sala creada (fetch POST permitido)", len(code) == 5, code)
+        for c, n in zip(cs[1:], ("Luis", "Marta")):
+            c.pg.goto(srv.url); c.pg.click("#btnModeOnline"); c.pg.wait_for_selector("#onHome", state="visible"); c.pg.fill("#onName", n); c.pg.fill("#onCode", code); c.pg.click("#btnOnJoin")
+        t0 = time.time()
+        while time.time() - t0 < 15 and cs[0].pg.locator("#roomPlayers .rplayer").count() != 3: cs[0].pg.wait_for_timeout(200)
+        cs[0].pg.fill("#netEnd", end_time(A.mins)); cs[0].pg.click("#btnOnStart")
+        for c in cs: c.pg.wait_for_selector("#privatePanel", state="visible", timeout=15000)
+        check("csp: SSE y arranque de partida (EventSource permitido)", True)
+        for _ in range(30):
+            for c in cs:
+                try: bot_step(c, rnd)
+                except Exception as e: c.errors.append("BOT " + str(e)[:120])
+        viol = [v for c in cs for v in c.pg.evaluate("window.__csp")]
+        errs = [e for c in cs for e in c.errors if not e.startswith("BOT")]
+        check("csp: cero violaciones de CSP en el navegador", not viol and not [e for e in errs if "Content Security" in e], (viol + errs)[:3])
+        check("csp: sin errores de JS", not errs, errs[:3])
+    finally: b.close(); srv.stop()
+
 def scenario_external(pw):
     b = pw.chromium.launch(); c = Client(b, "ext")
     try:
@@ -570,7 +650,7 @@ def scenario_desktop(pw, vw=1280, vh=800, tag="pc"):
 
 if A.sync:
     subprocess.check_call(["node", "scripts/sync-client.js", A.sync], cwd=ROOT, stdout=subprocess.DEVNULL)
-SC = {"lobby": scenario_lobby, "game": scenario_game, "restart": lambda pw: scenario_game(pw, True), "stun": scenario_stun, "timers": scenario_timers, "time": scenario_time, "presence": scenario_presence, "external": scenario_external, "desktop": scenario_desktop, "small": lambda pw: scenario_desktop(pw, 360, 640, "360")}
+SC = {"lobby": scenario_lobby, "game": scenario_game, "restart": lambda pw: scenario_game(pw, True), "stun": scenario_stun, "timers": scenario_timers, "time": scenario_time, "presence": scenario_presence, "dual": scenario_dual, "csp": scenario_csp, "absvote": scenario_absvote, "external": scenario_external, "desktop": scenario_desktop, "small": lambda pw: scenario_desktop(pw, 360, 640, "360")}
 with sync_playwright() as pw:
     for k, f in SC.items():
         if A.only and k != A.only: continue

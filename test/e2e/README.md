@@ -22,3 +22,9 @@ Salida: `PASS/FAIL` por comprobación y capturas en `test/e2e/shots/` (o `--shot
 No usa la red externa. El escaneo de privacidad solo vigila mientras la partida no ha terminado (tras el desenlace todo es público).
 
 Variables de servidor para pruebas: `UMBRAL_READ_MS` (lectura previa a actuar sobre otros; 10000 por defecto, el E2E usa 0), `UMBRAL_TIME_SCALE` (multiplica todos los límites del reloj: p. ej. 0.08 = 12 veces más rápido).
+
+| `dual` | F6: dos pestañas del mismo jugador: la antigua muestra «Usar aquí», se recupera la conexión, sin duplicar jugador |
+| `absvote` | F6: con una jugadora ausente, la pregunta de tiempo llega a los presentes y a los 30 s decide la mayoría |
+
+`game` además comprueba que la espera de la fase privada solo dice «Faltan N» (sin listo/decidiendo por jugador).
+| `csp` | F7: con la CSP real (sin bypass) lobby, partida y SSE funcionan sin violaciones |

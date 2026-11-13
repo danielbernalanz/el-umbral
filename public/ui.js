@@ -1525,7 +1525,7 @@
     const wl = s.players.filter(function (x) { return !x.dead && !x.ready; }).map(function (x) { return x.name; });
     btn.classList.toggle("hidden", !!me.dead);
     btn.disabled = !!me.ready;
-    setIcoBtn(btn, iconKey, me.ready ? "Esperando a: " + (wl.join(", ") || "…") : label);
+    setIcoBtn(btn, iconKey, me.ready ? (s.phase === "private" ? "Faltan " + (s.waitN || 0) : "Esperando a: " + (wl.join(", ") || "…")) : label);
   }
   function netVotesHTML(s) {
     const host = s.players.find(function (p) { return p.host; }), V = { 1: "+1 ronda", 2: "+2 rondas", end: "terminar" };
@@ -1557,9 +1557,10 @@
     $("btnHandoff").classList.add("hidden");
     const wl = $("waitList"), alive = s.players.filter(function (x) { return !x.dead; });
     wl.classList.remove("hidden");
-    wl.innerHTML = '<div class="tag">' + ic("ui_jugadores", "ic-tag") + 'Quedan por terminar: ' + alive.filter(function (x) { return !x.ready; }).length + ' de ' + alive.length + '</div>' +
+    /* Privacidad: solo «faltan N»; no se muestra quién ha terminado ni quién decide (nadie puede esperar a ser el último). */
+    wl.innerHTML = '<div class="tag">' + ic("ui_jugadores", "ic-tag") + 'Faltan ' + (s.waitN || 0) + ' por terminar (de ' + alive.length + ')</div>' +
       '<p class="small waitcd">El turno se cierra solo en <b data-cd="turnauto">' + netCdText("turnauto") + '</b>: quien no haya decidido medita.</p>' +
-      alive.map(function (x) { return '<div class="wrow">' + playerMedal(x) + '<b>' + esc(x.name) + (x.id === me.id ? " (tú)" : "") + '</b><span class="chip ' + (x.ready ? "good" : "mid") + '">' + (x.ready ? (x.absent ? "ausente" : "listo") : (x.online === false ? "sin conexión" : "decidiendo…")) + '</span>' + (x.host ? '<span class="chip good">anfitrión</span>' : '') + '</div>'; }).join("");
+      alive.map(function (x) { return '<div class="wrow">' + playerMedal(x) + '<b>' + esc(x.name) + (x.id === me.id ? " (tú)" : "") + '</b>' + (x.absent ? '<span class="chip mid">ausente</span>' : x.online === false ? '<span class="chip mid">sin conexión</span>' : '') + (x.host ? '<span class="chip good">anfitrión</span>' : '') + '</div>'; }).join("");
     updateStatus();
   }
   /* Pantalla que toca según la vista. Se llama al cambiar de fase/ronda y tras cada mutación propia. */
