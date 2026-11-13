@@ -27,6 +27,7 @@ class Game {
     const rd = Number(opts.readMs != null ? opts.readMs : process.env.UMBRAL_READ_MS);
     this.readMs = isFinite(rd) && rd >= 0 && (opts.readMs != null || process.env.UMBRAL_READ_MS != null) ? rd : T.read;
     this.offlineSince = {}; this._tw = false;
+    this.absent = new Set(); this.offRounds = {}; this._absRound = -1; this.roundStart = this.now();
     this.clock = null;
     const eng = loadEngine({ dir: opts.engineDir, rng: opts.rng, now: this.now });
     this.U = eng.U; this.D = eng.D; this.ctx = eng.ctx;
@@ -60,13 +61,37 @@ class Game {
     this.fresh = {};                      /* avisos de desbloqueo de la ronda */
     this.votes = {};
     this.councilResults = null;
+    this.roundStart = this.now();
     this.chronVisible = S.chronicle.length; /* crónica publicable durante la fase privada */
     if (S.phase === "private") {
       S.players.forEach((p) => { if (p.dead || p.acted) this.ready.add(p.id); });
       S.players.forEach((p) => this.refresh(p.id));
       const t = this.now(), dl = t + this.ms(this.U.turnSeconds() * 1000);
       this.clock = { kind: "turn", start: t, readUntil: t + this.readMs, warnAt: dl - this.ms(T.warn), deadline: dl, autoAt: dl + this.ms(T.grace) };
+      this.absentTurns();
     } else { this.onLeavePrivate(); this.clock = null; }
+  }
+  /* ---------- ausencia (F5) ---------- */
+  isAbsent(pid) { return this.absent.has(pid); }
+  doneIn(p, set) { return p.dead || set.has(p.id) || (this.absent.has(p.id) && this.S().phase !== "private"); }  /* en la fase privada el ausente medita de verdad (absentTurns) */
+  allAbsent() { const al = this.S().players.filter((p) => !p.dead); return al.length > 0 && al.every((p) => this.absent.has(p.id)); }
+  /* Al cerrar cada ronda: quien estuvo desconectado TODA la ronda suma 1; con 2 seguidas queda ausente. Quien está conectado
+     vuelve (ausente=falso) al empezar la ronda siguiente. Una caída a mitad de ronda no suma ni borra la racha. */
+  updateAbsence() {
+    const S = this.S();
+    if (this._absRound === S.round) return;
+    this._absRound = S.round;
+    S.players.forEach((p) => {
+      if (p.dead) { this.absent.delete(p.id); return; }
+      const off = this.offlineSince[p.id];
+      if (off == null && this.isOnline(p.id)) { this.offRounds[p.id] = 0; this.absent.delete(p.id); }
+      else if (off != null && off <= this.roundStart) { this.offRounds[p.id] = (this.offRounds[p.id] || 0) + 1; if (this.offRounds[p.id] >= 2) this.absent.add(p.id); }
+    });
+  }
+  /* Los ausentes meditan siempre, sin esperar su turno. */
+  absentTurns() {
+    const S = this.S();
+    S.players.forEach((p) => { if (!p.dead && this.absent.has(p.id) && S.phase === "private" && !this.ready.has(p.id)) this.autoComplete(p.id, true); });
   }
   setClock(kind, ms) { const t = this.now(); this.clock = { kind, start: t, deadline: t + ms }; }
   readLocked() { return !!(this.clock && this.clock.kind === "turn" && this.now() < this.clock.readUntil); }
@@ -145,7 +170,7 @@ class Game {
     for (let guard = 0; guard < 8; guard++) {
       const ph = S.phase;
       if (ph === "private") {
-        if (!S.players.every((p) => p.dead || this.ready.has(p.id))) return;
+        if (!S.players.every((p) => this.doneIn(p, this.ready))) return;
         const ord = S.order || S.players.map((p) => p.id);
         S.turn = ord[ord.length - 1]; S.handoff = false; S.pendingPush = null;
         const r = U.nextTurn();
@@ -157,13 +182,13 @@ class Game {
         S.turn = 0;
         this.setClock("council", this.ms(this.U.councilSeconds() * 1000));
       } else if (ph === "council") {
-        if (!S.players.every((p) => p.dead || this.councilReady.has(p.id))) return;
+        if (!S.players.every((p) => this.doneIn(p, this.councilReady))) return;
         this.closeCouncil();
         this.contReady = new Set(S.players.filter((p) => p.dead).map((p) => p.id));
         this.setClock("cont", this.ms(T.cont));
       } else if (ph === "resolution") {
         if (S.timeAsk) return;
-        if (!S.players.every((p) => p.dead || this.contReady.has(p.id))) return;
+        if (!S.players.every((p) => this.doneIn(p, this.contReady))) return;
         this.nextRound();
       } else return;
     }
@@ -177,6 +202,7 @@ class Game {
   }
   nextRound() {
     const S = this.S(), U = this.U;
+    this.updateAbsence();
     const e = U.nextRound();
     if (S.phase === "ending") return e;
     if (S.timeAsk) { this.votes = {}; this.setClock("vote", this.ms(T.vote)); return null; }
@@ -186,8 +212,8 @@ class Game {
   /* El anfitrión (o, si cayó, el primer superviviente) decide al votar; sin decisión, a los 30 s gana la mayoría y el empate es +1 ronda. */
   decider() {
     const S = this.S(), h = this.presence && this.presence.host;
-    if (Number.isInteger(h) && S.players[h] && !S.players[h].dead) return h;
-    const f = S.players.find((p) => !p.dead);
+    if (Number.isInteger(h) && S.players[h] && !S.players[h].dead && !this.absent.has(h)) return h;
+    const f = S.players.find((p) => !p.dead && !this.absent.has(p.id) && this.isOnline(p.id)) || S.players.find((p) => !p.dead && !this.absent.has(p.id));
     return f ? f.id : -1;
   }
   applyTimeAnswer(choice) {
@@ -197,7 +223,8 @@ class Game {
   }
   voteWinner() {
     const S = this.S(), c = { 1: 0, 2: 0, end: 0 };
-    Object.keys(this.votes).forEach((id) => { const p = S.players[id]; if (p && !p.dead && c[this.votes[id]] !== undefined) c[this.votes[id]]++; });
+    Object.keys(this.votes).forEach((id) => { const p = S.players[id]; if (p && !p.dead && !this.absent.has(p.id) && c[this.votes[id]] !== undefined) c[this.votes[id]]++; });
+    if (this.allAbsent()) return "end";   /* nadie que decida: la mesa vacía cierra la partida */
     const m = Math.max(c[1], c[2], c.end), top = [1, 2, "end"].filter((k) => c[k] === m);
     return top.length === 1 ? top[0] : 1;
   }
@@ -212,7 +239,7 @@ class Game {
   pendingSet() {
     const S = this.S();
     const set = S.phase === "private" ? this.ready : S.phase === "council" ? this.councilReady : S.phase === "resolution" && !S.timeAsk ? this.contReady : null;
-    return set ? S.players.filter((p) => !p.dead && !set.has(p.id)) : [];
+    return set ? S.players.filter((p) => !this.doneIn(p, set)) : [];
   }
   tick() {
     const S = this.S();
@@ -221,7 +248,7 @@ class Game {
     const tw = !!this.U.timeWarn();
     if (tw !== this._tw) { this._tw = tw; changed = true; }
     if (ph === "resolution" && S.timeAsk) {
-      if (this.clock && t >= this.clock.deadline) { this.applyTimeAnswer(this.voteWinner()); return true; }
+      if (this.allAbsent() || (this.clock && t >= this.clock.deadline)) { this.applyTimeAnswer(this.voteWinner()); return true; }
       return changed;
     }
     const ck = this.clock;
@@ -237,7 +264,7 @@ class Game {
     return changed;
   }
   /* Completa lo que falta del turno de pid sin perder lo hecho: meditar si aún no actuó, y entrega (se omite la declaración). */
-  autoComplete(pid) {
+  autoComplete(pid, absent) {
     const S = this.S(), p = S.players[pid];
     if (!p || p.dead || S.phase !== "private" || this.ready.has(pid)) return;
     if (p.dying) { this.ready.add(pid); return; }
@@ -248,7 +275,7 @@ class Game {
     }
     if (S.phase !== "private") return;
     if (!this.ready.has(pid)) {
-      p.notes.push("Ronda " + S.round + ": se acabó el tiempo de tu turno" + (did ? ": se omitió lo que faltaba." : ": meditaste (acción segura)."));
+      p.notes.push("Ronda " + S.round + (absent ? ": sigues ausente (sin conexión): tu personaje medita hasta que vuelvas." : ": se acabó el tiempo de tu turno" + (did ? ": se omitió lo que faltaba." : ": meditaste (acción segura).")));
       const r = this.exec(pid, "finishTurn", []);
       if (!r || r.ok === false) this.errors.push("autoturno: no pudo entregar " + pid + " " + (r && r.msg));
     }

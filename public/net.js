@@ -50,11 +50,11 @@
   let session = null;           /* { server, room, pid, token } */
   let es = null, reopenT = null, backoff = 2000, pingT = null, connected = true;
   let lastVer = -1, lobby = null, cur = null, st = null, offset = 0, busy = false, attached = false, lost = false;
-  let warnOff = false;
+  let warnOff = false, taken = false, noteSeq = 0;
   const seenUnlock = {};
 
   function saveSession() { if (session) lsSet(K_SESSION, JSON.stringify(session)); }
-  function clearSession() { session = null; lsDel(K_SESSION); }
+  function clearSession() { session = null; taken = false; noteSeq = 0; lsDel(K_SESSION); }
   function closeStream() { clearTimeout(reopenT); reopenT = null; if (es) { try { es.close(); } catch (e) { /* nada */ } es = null; } clearInterval(pingT); pingT = null; }
 
   function banner() {
@@ -63,7 +63,7 @@
       b = document.createElement("div"); b.id = "netBanner"; b.className = "netbanner hidden"; b.setAttribute("role", "status");
       b.innerHTML = '<span id="netBannerTxt"></span><button class="ghost smallbtn" id="netBannerBtn"></button>';
       document.body.appendChild(b);
-      $("netBannerBtn").onclick = function () { if (lost) { location.reload(); } else leaveRoom(true); };
+      $("netBannerBtn").onclick = function () { if (lost) { location.reload(); } else if (taken) { taken = false; backoff = 2000; openStream(); } else leaveRoom(true); };
     }
     return b;
   }
@@ -73,7 +73,7 @@
     if (ok && !lost) { b.classList.add("hidden"); return; }
     if (!session && !lost) { b.classList.add("hidden"); return; }
     $("netBannerTxt").textContent = text || (lost ? "La sala ya no existe (el servidor se reinició o caducó)." : "Sin conexión con el servidor. Reintentando…");
-    $("netBannerBtn").textContent = lost ? "Volver al inicio" : "Abandonar sala";
+    $("netBannerBtn").textContent = lost ? "Volver al inicio" : taken ? "Usar aquí" : "Abandonar sala";
     b.classList.remove("hidden");
   }
   function sessionLost() {
@@ -83,11 +83,13 @@
   }
 
   function openStream() {
-    if (!session) return;
+    if (!session || taken) return;
     closeStream();
     const url = session.server + "/events?t=" + encodeURIComponent(session.token);
     try { es = new EventSource(url); } catch (e) { scheduleReopen(); return; }
     es.addEventListener("view", function (ev) { try { onView(JSON.parse(ev.data)); } catch (e) { /* vista dañada: se espera la siguiente */ } });
+    /* Otra pestaña/dispositivo abrió la misma sesión: esta deja de reconectar y ofrece volver a usarla aquí. */
+    es.addEventListener("replaced", function () { taken = true; closeStream(); setConn(false, "Esta sala se abrió en otra pestaña o dispositivo."); });
     es.onopen = function () { backoff = 2000; setConn(true); };
     es.onerror = function () { setConn(false); if (es && es.readyState === 2) scheduleReopen(); };
     clearInterval(pingT); pingT = setInterval(pingTick, 20000);
@@ -127,10 +129,10 @@
   /* Estado que ve ui.js: SOLO datos públicos de los demás + el jugador propio completo. */
   function buildState(v) {
     const players = v.players.map(function (p) {
-      return { id: p.id, name: p.name, dead: p.dead, dying: p.dying, exposed: p.exposed, visibleHealth: p.visibleHealth, ready: p.ready, online: p.online, host: p.host, alignment: p.exposed ? "asesino" : undefined };
+      return { id: p.id, name: p.name, dead: p.dead, dying: p.dying, exposed: p.exposed, visibleHealth: p.visibleHealth, ready: p.ready, online: p.online, absent: p.absent, host: p.host, alignment: p.exposed ? "asesino" : undefined };
     });
     const pub = players[v.youId], me = v.me || {};
-    players[v.youId] = Object.assign({}, me, { dead: pub.dead, dying: pub.dying, exposed: pub.exposed, visibleHealth: pub.visibleHealth, ready: pub.ready, online: pub.online, host: pub.host, protection: me.protected ? -1 : null });
+    players[v.youId] = Object.assign({}, me, { dead: pub.dead, dying: pub.dying, exposed: pub.exposed, visibleHealth: pub.visibleHealth, ready: pub.ready, online: pub.online, absent: pub.absent, host: pub.host, protection: me.protected ? -1 : null });
     (me.risen || []).forEach(function (id) { if (players[id] && ((v.q || {}).risen || []).indexOf(players[id].name) !== -1) players[id].risenBy = v.youId; });
     const ex = players.find(function (p) { return p.exposed; });
     return { round: v.round, phase: v.phase, players: players, turn: v.youId, youId: v.youId, handoff: false, event: v.event, chronicle: v.chronicle || [], publicClues: v.publicClues || [],
@@ -140,6 +142,7 @@
   function onView(v, silent) {
     if (!v || typeof v !== "object") return;
     if (typeof v.ver === "number") { if (v.ver < lastVer) return; lastVer = v.ver; }
+    if (v.hostNote && v.hostNote.seq > noteSeq) { noteSeq = v.hostNote.seq; if (UI().toast) UI().toast(v.hostNote.name === (v.players && v.players[v.youId] && v.players[v.youId].name) ? "Ahora eres el anfitrión." : v.hostNote.name + " es ahora el anfitrión (el anterior perdió la conexión).", false); }
     if (v.phase === "error") { if (UI().toast) UI().toast(v.msg || "Error del servidor.", true); return; }
     if (v.phase === "lobby") { lobby = v; renderRoom(); return; }
     if (!v.me || !v.players || !v.players[v.youId]) return;

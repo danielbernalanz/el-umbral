@@ -1559,7 +1559,7 @@
     wl.classList.remove("hidden");
     wl.innerHTML = '<div class="tag">' + ic("ui_jugadores", "ic-tag") + 'Quedan por terminar: ' + alive.filter(function (x) { return !x.ready; }).length + ' de ' + alive.length + '</div>' +
       '<p class="small waitcd">El turno se cierra solo en <b data-cd="turnauto">' + netCdText("turnauto") + '</b>: quien no haya decidido medita.</p>' +
-      alive.map(function (x) { return '<div class="wrow">' + playerMedal(x) + '<b>' + esc(x.name) + (x.id === me.id ? " (tú)" : "") + '</b><span class="chip ' + (x.ready ? "good" : "mid") + '">' + (x.ready ? "listo" : (x.online === false ? "sin conexión" : "decidiendo…")) + '</span></div>'; }).join("");
+      alive.map(function (x) { return '<div class="wrow">' + playerMedal(x) + '<b>' + esc(x.name) + (x.id === me.id ? " (tú)" : "") + '</b><span class="chip ' + (x.ready ? "good" : "mid") + '">' + (x.ready ? (x.absent ? "ausente" : "listo") : (x.online === false ? "sin conexión" : "decidiendo…")) + '</span>' + (x.host ? '<span class="chip good">anfitrión</span>' : '') + '</div>'; }).join("");
     updateStatus();
   }
   /* Pantalla que toca según la vista. Se llama al cambiar de fase/ronda y tras cada mutación propia. */

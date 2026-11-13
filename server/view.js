@@ -7,8 +7,8 @@
    La vista NO muta el estado: las consultas impuras del motor (getOffer, unlockNotices, studyOptions,
    encounterStart) las materializa el servidor en game.js (refresh) y aquí solo se lee su resultado. */
 
-const PUBLIC_PLAYER_KEYS = ["id", "name", "dead", "dying", "exposed", "visibleHealth", "ready", "online", "host"];
-const TOP_KEYS = ["ver", "youId", "serverNow", "phase", "round", "maxRounds", "endAt", "durationMin", "event", "timeAsk", "publicClues", "chronicle", "skipped", "players", "me", "q", "wait", "votes", "clock", "timeAdd", "councilResults", "lastResolution", "umbralAbierto", "ending", "reveal", "log", "story", "storyList", "host"];
+const PUBLIC_PLAYER_KEYS = ["id", "name", "dead", "dying", "exposed", "visibleHealth", "ready", "online", "host", "absent"];
+const TOP_KEYS = ["ver", "youId", "serverNow", "phase", "round", "maxRounds", "endAt", "durationMin", "event", "timeAsk", "publicClues", "chronicle", "skipped", "players", "me", "q", "wait", "votes", "clock", "timeAdd", "councilResults", "lastResolution", "umbralAbierto", "ending", "reveal", "log", "story", "storyList", "host", "hostNote"];
 /* Campos del jugador propio que guardan IDENTIDADES AJENAS (quién me socorrió, quién me alzó, quién me protege). */
 const ME_EXCLUDE = ["socBy", "risenBy", "protection", "lastSeen"];
 const MODES = ["cauto", "normal", "desatado"];
@@ -121,7 +121,7 @@ function waitList(game) {
   if (S.phase === "ending") return [];
   const set = S.phase === "private" ? game.ready : S.phase === "council" ? game.councilReady : S.phase === "resolution" ? game.contReady : null;
   if (!set) return [];
-  return S.players.filter((p) => !p.dead && !set.has(p.id)).map((p) => p.name);
+  return S.players.filter((p) => !game.doneIn(p, set)).map((p) => p.name);
 }
 
 function buildView(game, pid) {
@@ -149,7 +149,8 @@ function buildView(game, pid) {
     councilResults: S.phase === "council" || S.phase === "resolution" ? clone(game.councilResults || []) : [],
     players: S.players.map((x) => ({
       id: x.id, name: x.name, dead: !!x.dead, dying: !!x.dying && !x.dead, exposed: !!x.exposed, visibleHealth: U.visibleHealth(x),
-      ready: setReady ? (x.dead || setReady.has(x.id)) : false,
+      ready: setReady ? (x.dead || setReady.has(x.id) || game.absent.has(x.id)) : false,
+      absent: game.absent.has(x.id) && !x.dead,
       online: pres.online ? pres.online[x.id] !== false : true,
       host: pres.host === x.id
     })),
@@ -158,6 +159,7 @@ function buildView(game, pid) {
     wait: waitList(game),
     clock: ending || !game.clock ? null : clone(game.clock),
     timeAdd: !!S.timeAdd,
+    hostNote: game.hostNote || null,
     votes: S.timeAsk ? clone(game.votes || {}) : {}
   };
   if (ending) {

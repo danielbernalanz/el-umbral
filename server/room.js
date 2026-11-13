@@ -5,7 +5,7 @@ const { Game } = require("./game");
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ"; /* sin I ni O */
 const MIN_PLAYERS = 3, MAX_PLAYERS = 10, NAME_MAX = 16;
-const MAX_CONN_PER_PLAYER = 3;
+const HOST_MS = 30000;   /* anfitrión sin conexión: tras esto el papel pasa al siguiente conectado */
 
 const sha = (s) => crypto.createHash("sha256").update(String(s)).digest("hex");
 const newToken = () => crypto.randomBytes(16).toString("hex"); /* 128 bits */
@@ -24,7 +24,9 @@ class Room {
     this.ver = 0;                     /* contador monotónico de difusiones: el cliente descarta vistas más viejas que la que ya tiene */
     this.players = [];                /* { slot, name, tokenHash, host, conns:Set<res>, lastJson, lastSeen, left } */
     this.game = null;
+    this.hostOffSince = null; this.hostNote = null; this.noteSeq = 0;
   }
+  hostMs() { const sc = this.mgr.timeScale; return Math.round(HOST_MS * (sc > 0 ? sc : 1)); }
   touch() { this.lastActivity = this.mgr.now(); }
   hostPlayer() { return this.players.find((p) => p.host) || null; }
   connectedCount() { return this.players.reduce((n, p) => n + p.conns.size, 0); }
@@ -54,8 +56,10 @@ class Room {
       this.broadcast();
       return { ok: true };
     }
-    /* en partida no se elimina al jugador: queda desconectado (la ausencia es de F5) */
-    closeAll(p); this.syncPresence(); this.broadcast();
+    /* en partida no se elimina al jugador: queda desconectado (pasará a ausente tras 2 rondas) */
+    closeAll(p);
+    if (p.host) this.passHost(p);
+    this.syncPresence(); this.broadcast();
     return { ok: true };
   }
   start(p, endAt) {
@@ -93,10 +97,36 @@ class Room {
     const h = this.hostPlayer();
     this.game.setPresence(online, h ? h.slot : -1);
   }
+  /* Traspaso del anfitrión al siguiente jugador conectado (por orden de asiento). El anterior no lo recupera solo. */
+  passHost(from) {
+    const n = this.players.length; if (!n) return false;
+    for (let k = 1; k <= n; k++) {
+      const x = this.players[(from.slot + k) % n];
+      if (x !== from && x.conns.size > 0) {
+        from.host = false; x.host = true; this.hostOffSince = null;
+        this.hostNote = { name: x.name, seq: ++this.noteSeq };
+        if (this.game) this.game.hostNote = this.hostNote;
+        return true;
+      }
+    }
+    return false;
+  }
+  checkHost() {
+    const h = this.hostPlayer();
+    if (!h || h.conns.size > 0) { this.hostOffSince = null; return false; }
+    const t = this.mgr.now();
+    if (this.hostOffSince == null) { this.hostOffSince = t; return false; }
+    if (t - this.hostOffSince < this.hostMs()) return false;
+    if (!this.passHost(h)) return false;
+    this.syncPresence();
+    return true;
+  }
   /* Reloj del servidor: autoturno, límites de Consejo/continuar, votación de tiempo. Cada segundo desde Rooms.tick. */
   tick() {
-    if (this.status !== "playing" || !this.game) return;
+    if (this.status === "ended") return;
     let changed = false;
+    if (this.checkHost()) changed = true;
+    if (this.status !== "playing" || !this.game) { if (changed) this.broadcast(); return; }
     try { changed = this.game.tick(); } catch (e) { this.game.errors.push(String(e && e.stack || e)); }
     if (this.game.ended() && this.status === "playing") { this.status = "ended"; this.endedAt = this.mgr.now(); changed = true; }
     if (changed) this.broadcast();
@@ -106,7 +136,8 @@ class Room {
   connect(p, res) {
     res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no", "Access-Control-Allow-Origin": "*" });
     res.write("retry: 2000\n\n");
-    while (p.conns.size >= MAX_CONN_PER_PLAYER) { const old = p.conns.values().next().value; p.conns.delete(old); try { old.end(); } catch (e) { /* ya cerrada */ } }
+    /* Una sola conexión por jugador: la nueva (otra pestaña/dispositivo) reemplaza a la anterior y esta recibe «replaced». */
+    p.conns.forEach((old) => { p.conns.delete(old); try { old.write("event: replaced\ndata: 1\n\n"); old.end(); } catch (e) { /* ya cerrada */ } });
     p.conns.add(res); p.lastSeen = this.mgr.now(); this.touch();
     res.on("close", () => { p.conns.delete(res); this.touch(); this.onPresenceChange(p); });
     p.lastJson = null; /* fuerza el envío completo al reconectar */
@@ -114,16 +145,14 @@ class Room {
     this.sendTo(p);
   }
   onPresenceChange(p, connected) {
-    /* F5: aquí irá la ausencia y la gracia de reconexión. Esqueleto: si el anfitrión pierde todas sus conexiones
-       en partida, el papel pasa al primer jugador conectado. */
-    if (!connected && this.status === "playing" && p.host && p.conns.size === 0) {
-      const alt = this.players.find((x) => x.conns.size > 0);
-      if (alt) { p.host = false; alt.host = true; }
-    }
+    /* La ausencia y la gracia de reconexión viven en Game (offlineSince, 10 s de gracia, 2 rondas). El anfitrión caído
+       pasa el papel desde tick() tras 30 s. Volver antes de eso lo conserva. */
+    if (p.host && p.conns.size === 0) { if (this.hostOffSince == null) this.hostOffSince = this.mgr.now(); }
+    else if (p.host) this.hostOffSince = null;
     this.syncPresence(); this.broadcast();
   }
   lobbyView(p) {
-    return { phase: "lobby", code: this.code, serverNow: this.mgr.now(), youId: p.slot, host: p.host, min: MIN_PLAYERS, max: MAX_PLAYERS,
+    return { phase: "lobby", hostNote: this.hostNote, code: this.code, serverNow: this.mgr.now(), youId: p.slot, host: p.host, min: MIN_PLAYERS, max: MAX_PLAYERS,
       canStart: p.host && this.players.length >= MIN_PLAYERS,
       players: this.players.map((x) => ({ id: x.slot, name: x.name, host: x.host, online: x.conns.size > 0 })) };
   }

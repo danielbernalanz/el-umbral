@@ -210,7 +210,7 @@ def bot_step(c, rnd):
         return "wait"
     return "wait"
 
-PUBLIC_KEYS = {"id", "name", "dead", "dying", "exposed", "visibleHealth", "ready", "online", "host", "alignment", "risenBy"}
+PUBLIC_KEYS = {"id", "name", "dead", "dying", "exposed", "visibleHealth", "ready", "online", "absent", "host", "alignment", "risenBy"}
 
 TOKENS_JS = """()=>{const B=UmbralNet.backend,s=B.getState();if(!s)return null;const me=s.players[s.youId];
   const sec=B.secretInfo()||{};const pub=(s.chronicle||[]).map(x=>x.text).concat((s.publicClues||[]).map(x=>x.text));
@@ -444,6 +444,37 @@ def scenario_timers(pw):
         check("timers: sin errores de JS", not errs, errs[:3])
     finally: b.close(); srv.stop()
 
+def scenario_presence(pw):
+    """F5: un jugador cierra la pestaña, pasa a «ausente» tras 2 rondas sin frenar la partida y vuelve; el anfitrión cae y el papel pasa al siguiente."""
+    srv = Server(script="test/e2e/test_server.js", scale=0.08).start(); b = pw.chromium.launch(); rnd = random.Random(A.seed)
+    try:
+        cs, code = new_room3(b, srv, "p")
+        marta = cs[2]; marta.pg.goto("about:blank")
+        ok = play_until(cs, rnd, lambda: bool(jsq(cs[0], "s.players[2].absent")), 150, skip=(marta,))
+        check("presence: tras 2 rondas desconectada, Marta figura «ausente» para los demás", ok, [jsq(cs[0], "s.round"), jsq(cs[0], "s.players[2].online")])
+        check("presence: la partida no se frena (Ana y Luis siguen jugando, no hay bloqueo)", (jsq(cs[0], "s.round") or 0) >= 3 or jsq(cs[0], "s.phase") == "ending", jsq(cs[0], "s.round"))
+        cs[0].shot("80_marta_ausente")
+        marta.pg.goto(srv.url); marta.pg.wait_for_function("window.UmbralNet && UmbralNet.backend.getState && UmbralNet.backend.getState()", timeout=20000)
+        check("presence: al volver Marta recupera su vista completa (misma sesión, sin duplicar)", jsq(marta, "s.youId") == 2 and jsq(marta, "!!s.players[s.youId].role"), jsq(marta, "s.youId"))
+        ok = play_until(cs, rnd, lambda: jsq(cs[0], "s.phase") == "ending" or (not jsq(cs[0], "s.players[2].absent") and jsq(cs[0], "s.players[2].online")), 150)
+        check("presence: Marta deja de estar ausente al empezar la ronda siguiente", ok, jsq(cs[0], "s.players[2].absent"))
+        errs = [e for c in cs for e in c.errors if not e.startswith("BOT")]
+        check("presence: sin errores de JS (jugador)", not errs, errs[:3])
+    finally: b.close(); srv.stop()
+    srv = Server(script="test/e2e/test_server.js", scale=0.08).start(); b = pw.chromium.launch(); rnd = random.Random(A.seed)
+    try:
+        cs, code = new_room3(b, srv, "h")
+        ana = cs[0]; ana.pg.goto("about:blank")
+        ok = play_until(cs, rnd, lambda: bool(jsq(cs[1], "s.players[1].host")) and bool(jsq(cs[2], "s.players[1].host")), 40, skip=(ana,))
+        check("host: caída del anfitrión: pasa a Luis (siguiente conectado) y lo ven todos", ok and jsq(cs[2], "s.players[1].host") and not jsq(cs[2], "s.players[0].host"), [jsq(cs[1], "s.players.map(p=>p.host)")])
+        cs[1].shot("81_nuevo_anfitrion")
+        ana.pg.goto(srv.url); ana.pg.wait_for_function("window.UmbralNet && UmbralNet.backend.getState && UmbralNet.backend.getState()", timeout=20000)
+        ana.pg.wait_for_timeout(1500)
+        check("host: Ana vuelve y NO recupera el papel", not jsq(ana, "s.players[0].host") and jsq(ana, "s.players[1].host"), jsq(ana, "s.players.map(p=>p.host)"))
+        errs = [e for c in cs for e in c.errors if not e.startswith("BOT")]
+        check("host: sin errores de JS", not errs, errs[:3])
+    finally: b.close(); srv.stop()
+
 def endat(srv, code, secs, reset=False):
     import urllib.request
     urllib.request.urlopen(srv.url + "__test/endat?room=%s&secs=%s&reset=%d" % (code, secs, 1 if reset else 0)).read()
@@ -539,7 +570,7 @@ def scenario_desktop(pw, vw=1280, vh=800, tag="pc"):
 
 if A.sync:
     subprocess.check_call(["node", "scripts/sync-client.js", A.sync], cwd=ROOT, stdout=subprocess.DEVNULL)
-SC = {"lobby": scenario_lobby, "game": scenario_game, "restart": lambda pw: scenario_game(pw, True), "stun": scenario_stun, "timers": scenario_timers, "time": scenario_time, "external": scenario_external, "desktop": scenario_desktop, "small": lambda pw: scenario_desktop(pw, 360, 640, "360")}
+SC = {"lobby": scenario_lobby, "game": scenario_game, "restart": lambda pw: scenario_game(pw, True), "stun": scenario_stun, "timers": scenario_timers, "time": scenario_time, "presence": scenario_presence, "external": scenario_external, "desktop": scenario_desktop, "small": lambda pw: scenario_desktop(pw, 360, 640, "360")}
 with sync_playwright() as pw:
     for k, f in SC.items():
         if A.only and k != A.only: continue
