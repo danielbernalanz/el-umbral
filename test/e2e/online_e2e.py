@@ -117,6 +117,10 @@ def scenario_lobby(pw):
     try:
         host, g2, g3 = Client(b, "lobby_host"), Client(b, "lobby_g2"), Client(b, "lobby_g3")
         open_online(host, srv.url)
+        host.pg.click("#btnNews"); host.pg.wait_for_timeout(200)
+        news_open = host.vis("#newsOverlay") and host.pg.locator("#newsList .newsent").count() >= 3
+        host.pg.click("#btnCloseNews"); host.pg.wait_for_timeout(200)
+        check("lobby: botón Novedades abre y cierra el panel", news_open and not host.vis("#newsOverlay"))
         check("lobby: botones Jugar local / Jugar en línea y formulario", host.vis("#btnModeLocal") and host.vis("#onHome") and not host.vis("#localCard"))
         host.shot("00_home")
         code = create_room(host, "Ana")

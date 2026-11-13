@@ -122,7 +122,7 @@
       <p>Si alguien se convierte en Asesino, vence si elimina a los demás antes del amanecer. Los supervivientes vencen si lo derrotan o si resisten hasta el final.</p>
       <p class="small">Si una tirada sale bien puedes <b>forzar el destino</b>: más premio, más riesgo. Y siempre puedes <b>apostar al Umbral</b> con el envite que elijas.</p>
     </details>
-    <div class="creditsrow"><span id="verTag" class="vertag"></span><button class="ghost smallbtn creditsbtn" id="btnCredits" aria-label="Créditos" title="Créditos" data-ic="ui_creditos"><span>Créditos</span></button></div>
+    <div class="creditsrow"><span id="verTag" class="vertag"></span><button class="ghost smallbtn creditsbtn" id="btnNews" aria-label="Novedades" title="Novedades" data-ic="ui_historia"><span>Novedades</span><span class="newtag hidden" id="newsNew">nuevo</span></button><button class="ghost smallbtn creditsbtn" id="btnCredits" aria-label="Créditos" title="Créditos" data-ic="ui_creditos"><span>Créditos</span></button></div>
   </section>
 
   <!-- ============ JUEGO ============ -->
@@ -255,6 +255,13 @@
 </main>
 
 <!-- Guía -->
+<div id="newsOverlay" class="overlay hidden">
+  <div class="sheet" style="max-height:88vh;overflow:auto">
+    <div class="row between"><h2 class="h2i" data-ic="ui_historia">Novedades</h2><button class="ghost smallbtn" id="btnCloseNews" data-ic="ui_cerrar">Cerrar</button></div>
+    <div id="newsList"></div>
+  </div>
+</div>
+
 <div id="helpOverlay" class="overlay hidden">
   <div class="sheet" style="max-height:88vh;overflow:auto">
     <div class="row between"><h2 class="h2i" data-ic="ui_ayuda">Cómo se juega</h2><button class="ghost smallbtn" id="btnCloseHelp" data-ic="ui_cerrar">Cerrar</button></div>
@@ -409,6 +416,7 @@
 
 <script src="img/sprites-map.js"></script>
 <script src="img/creditos.js"></script>
+<script src="news.js"></script>
 <script src="data.js"></script>
 <script src="engine.js"></script>
 <script src="fx.js"></script>

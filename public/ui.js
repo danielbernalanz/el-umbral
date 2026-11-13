@@ -176,6 +176,25 @@
     run(res, function (r) { toast(r.msg, !r.ok); if (r.ok && r.accepted) fxScreen(name, fam, true); renderPrivate(); });
   }
 
+  /* Novedades (news.js): panel del menú principal; «nuevo» hasta que el jugador abre la versión actual. Nunca bloquea nada. */
+  function newsSeen() { try { return localStorage.getItem("umbral_news_seen"); } catch (e) { return null; } }
+  function newsMark() { try { localStorage.setItem("umbral_news_seen", String(D.VERSION)); } catch (e) { /* sin almacenamiento */ } }
+  function newsWire() {
+    const b = $("btnNews"); if (!b) return;
+    const list = window.UMBRAL_NEWS || [];
+    if (!list.length) { b.classList.add("hidden"); return; }
+    $("newsNew").classList.toggle("hidden", newsSeen() === String(D.VERSION));
+    b.onclick = function () {
+      $("newsList").innerHTML = list.map(function (n) {
+        return '<div class="newsent' + (n.version === D.VERSION ? " cur" : "") + '"><h3><span class="nv">v' + esc(n.version) + '</span>' + esc(n.titulo || "") + '<span class="nd">' + esc(n.fecha || "") + '</span></h3><ul>' +
+          (n.puntos || []).map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul></div>";
+      }).join("");
+      $("newsOverlay").classList.remove("hidden"); newsMark(); $("newsNew").classList.add("hidden");
+    };
+    $("btnCloseNews").onclick = function () { $("newsOverlay").classList.add("hidden"); };
+    $("newsOverlay").onclick = function (e) { if (e.target === $("newsOverlay")) $("newsOverlay").classList.add("hidden"); };
+  }
+
   const RUMOR_RE = /^Se rumorea/;
   const GROUP_ICON = { recuperacion: "a_descansar", pactos: "p_pacto", sucias: "a_apostar", armas: "a_apunalar", sombras: "t_sombras" };
 
@@ -295,7 +314,7 @@
         const inGame = !$("game").classList.contains("hidden");
         if (inGame) armBack();
         if (timeOverlayOpen()) { if (!(U.getState() && U.getState().timeAsk)) hideTimeOverlay(); return; }
-        const open = ["logOverlay", "helpOverlay", "statusOverlay", "actionOverlay", "secretOverlay", "storyOverlay"].filter(function (id) { return !$(id).classList.contains("hidden"); });
+        const open = ["logOverlay", "helpOverlay", "statusOverlay", "actionOverlay", "secretOverlay", "storyOverlay", "newsOverlay"].filter(function (id) { return !$(id).classList.contains("hidden"); });
         if (open.length) { open.forEach(function (id) { $(id).classList.add("hidden"); }); return; }
         if (!inGame) return; /* en inicio/desenlace, Atrás se deja al sistema */
         $("backOverlay").classList.remove("hidden");
@@ -307,6 +326,7 @@
     /* Créditos: solo existen en el menú principal (el botón vive en #start). */
     if ($("verTag") && D.VERSION) $("verTag").textContent = "v" + D.VERSION;
     if ($("btnCredits")) $("btnCredits").onclick = function () { try { if (typeof window.umbralShowCredits === "function") window.umbralShowCredits(); } catch (e) { toast("No se pudieron abrir los créditos.", true); } };
+    newsWire();
     $("btnCloseHelp").onclick = function () { $("helpOverlay").classList.add("hidden"); };
     $("btnAdviceToggle").onclick = function () {
       const off = adviceOff();
