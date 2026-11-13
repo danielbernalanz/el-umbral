@@ -41,7 +41,7 @@ test("auditoría: solo las consultas perezosas conocidas mutan el estado", () =>
   const impure = {};
   for (let g = 0; g < 4; g++) {
     const rngc = counting(500 + g);
-    const game = new Game(NAMES.slice(0, 3 + g), { engineDir: ENGINE_DIR, endAt: Date.now() + 30 * 60000, rng: rngc });
+    const game = new Game(NAMES.slice(0, 3 + g), { readMs: 0, engineDir: ENGINE_DIR, endAt: Date.now() + 30 * 60000, rng: rngc });
     let k = 0;
     playGame(game, 500 + g, "mixed", { afterCommand() { if (k++ % 6 === 0 && !game.ended()) { game.S().turn = 0; audit(game, rngc, impure); } } });
   }
@@ -66,7 +66,7 @@ test("getOffer es impura en un motor crudo (genera la oferta de forma perezosa);
 test("buildView no muta el estado ni consume azar (tras materializar)", () => {
   for (let g = 0; g < 4; g++) {
     const rngc = counting(900 + g), n = 3 + g;
-    const game = new Game(NAMES.slice(0, n), { engineDir: ENGINE_DIR, endAt: Date.now() + 30 * 60000, rng: rngc });
+    const game = new Game(NAMES.slice(0, n), { readMs: 0, engineDir: ENGINE_DIR, endAt: Date.now() + 30 * 60000, rng: rngc });
     let checks = 0;
     playGame(game, 900 + g, "mixed", {
       afterCommand() {
@@ -82,7 +82,7 @@ test("buildView no muta el estado ni consume azar (tras materializar)", () => {
 });
 
 test("q.since equivale a U.getSince cuando no hay notas retenidas", () => {
-  const game = new Game(NAMES.slice(0, 3), { engineDir: ENGINE_DIR, endAt: Date.now() + 30 * 60000, rng: seeded(3) });
+  const game = new Game(NAMES.slice(0, 3), { readMs: 0, engineDir: ENGINE_DIR, endAt: Date.now() + 30 * 60000, rng: seeded(3) });
   let compared = 0;
   playGame(game, 3, "mixed", {
     afterCommand() {
@@ -98,7 +98,7 @@ test("q.since equivale a U.getSince cuando no hay notas retenidas", () => {
 });
 
 test("q.targets coincide con canTarget del motor (misma lógica que el cliente local)", () => {
-  const game = new Game(NAMES.slice(0, 5), { engineDir: ENGINE_DIR, endAt: Date.now() + 30 * 60000, rng: seeded(11) });
+  const game = new Game(NAMES.slice(0, 5), { readMs: 0, engineDir: ENGINE_DIR, endAt: Date.now() + 30 * 60000, rng: seeded(11) });
   let n = 0;
   playGame(game, 11, "dark", {
     afterCommand() {

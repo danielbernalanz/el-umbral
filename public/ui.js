@@ -264,7 +264,7 @@
     }
     updateClock();
     let lastTick = Date.now();
-    setInterval(function () { const now = Date.now(); U.tick(now - lastTick); lastTick = now; updateClock(); checkTimeUi(); }, 1000);
+    setInterval(function () { const now = Date.now(); U.tick(now - lastTick); lastTick = now; updateClock(); checkTimeUi(); if (NET) netCd(); }, 1000);
     /* Al volver a mostrar la página (móvil desbloqueado) el reloj se refresca al instante con la hora real. */
     document.addEventListener("visibilitychange", function () { if (!document.hidden) { const now = Date.now(); U.tick(now - lastTick); lastTick = now; updateClock(); checkTimeUi(); if (!$("start").classList.contains("hidden")) refreshEnd(); } });
   }
@@ -316,9 +316,9 @@
     b.innerHTML = '<div class="tag">' + ic("ui_reloj", "ic-tag") + 'AVISO PARA TODA LA MESA</div><h2>La noche se acaba</h2>' +
       '<p class="small">Quedan unos 2 minutos. La ronda en curso se juega siempre entera; después la mesa decidirá si quiere más rondas o el desenlace.</p>' +
       '<div class="stack"><button class="primary" id="btnTwKeep">' + ic("ui_continuar") + '<span class="lbl">Seguir</span></button>' +
-      (NET ? '' : '<button class="ghost" id="btnTwAdd">' + ic("ui_reloj") + '<span class="lbl">Añadir tiempo</span></button>') + '</div>'; /* en línea «Añadir tiempo» llega con F4 (votación en el servidor) */
+      (NET && !(U.getState().players[U.getState().youId] || {}).host ? '' : '<button class="ghost" id="btnTwAdd">' + ic("ui_reloj") + '<span class="lbl">Añadir tiempo</span></button>') + '</div>' + (NET && !(U.getState().players[U.getState().youId] || {}).host ? '<p class="small">Solo el anfitrión puede añadir tiempo.</p>' : '');
     $("btnTwKeep").onclick = function () { U.dismissWarn(); hideTimeOverlay(); };
-    if ($("btnTwAdd")) $("btnTwAdd").onclick = function () { const ok = U.addTime(); hideTimeOverlay(); toast(ok ? "Tiempo añadido: la partida podrá alargarse una ronda." : "Ya se había añadido tiempo.", !ok); updateClock(); };
+    if ($("btnTwAdd")) $("btnTwAdd").onclick = function () { run(U.addTime(), function (r) { const ok = r && typeof r === "object" ? !!r.added : !!r; hideTimeOverlay(); if (NET && r && r.ok === false) { toast(r.msg || "No se pudo añadir tiempo.", true); return; } toast(ok ? "Tiempo añadido: la partida podrá alargarse una ronda." : "Ya se había añadido tiempo.", !ok); updateClock(); }); };
     o.classList.remove("hidden");
   }
   function showTimeAsk() {
@@ -351,16 +351,18 @@
   function armTurnTimer(p) {
     const s = U.getState(); if (!s || !p || p.dead || p.dying) return;
     const key = s.round + ":" + p.id;
-    if (key !== turnKey) { turnKey = key; turnDeadline = Date.now() + U.turnSeconds() * 1000; turnAuto = false; }
+    if (NET && U.clockDeadline) { turnKey = key; turnAuto = true; turnDeadline = U.clockDeadline("turn") || (Date.now() + U.turnSeconds() * 1000); } /* en línea el límite es del servidor, que además completa el turno */
+    else if (key !== turnKey) { turnKey = key; turnDeadline = Date.now() + U.turnSeconds() * 1000; turnAuto = false; }
     clearInterval(turnIv); turnIv = setInterval(turnTick, 500); turnTick();
   }
   function stopTurnTimer() { clearInterval(turnIv); turnIv = null; const el = $("turnTimer"); if (el) el.classList.add("hidden"); }
   function turnTick() {
+    if (NET && U.clockDeadline) { const dl = U.clockDeadline("turn"); if (dl) turnDeadline = dl; }
     const el = turnPill(), left = Math.ceil((turnDeadline - Date.now()) / 1000);
     el.classList.remove("hidden");
     el.classList.toggle("low", left <= 15);
     if (left > 0) { el.textContent = "Turno " + Math.floor(left / 60) + ":" + pad2(left % 60); return; }
-    el.textContent = "Tiempo de turno agotado: decide ya";
+    el.textContent = NET ? "Tiempo agotado: el servidor cerrará tu turno" : "Tiempo de turno agotado: decide ya";
     if (-left >= 25 && !turnAuto && $("overlay").classList.contains("hidden") && !timeOverlayOpen()) { turnAuto = true; autoTurn(); }
   }
   /* Pasado el tiempo + 25 s de cortesía: solo se completa lo que falta con la opción más segura; lo ya hecho se conserva. */
@@ -487,7 +489,7 @@
     const p = U.currentPlayer();
     $("phaseTag").textContent = "TURNO PRIVADO"; setPhaseIcon("ph_privado");
     $("screenTitle").textContent = "Turno de " + p.name;
-    setStep(s.round === 1 ? "Información privada: que nadie mire. Elige UNA acción; antes de confirmar verás qué hace." : "Información privada: que nadie mire.");
+    setStep((s.round === 1 ? "Información privada: que nadie mire. Elige UNA acción; antes de confirmar verás qué hace." : "Información privada: que nadie mire.") + (NET && U.readLeft && U.readLeft() > 0 ? " Lee la ronda: unos segundos antes de poder actuar sobre otros." : ""));
     $("privateName").textContent = p.name;
     $("privateAvatar").innerHTML = medal("r_" + p.role.id, "lg");
     $("privateRole").innerHTML = ic("r_" + p.role.id) + esc(p.role.name) + " · " + ic("f_" + p.affinity.id) + esc(p.affinity.name);
@@ -1132,7 +1134,7 @@
   function startCouncilTimer() {
     councilTimerStarted = true;
     fxc("campana");
-    seconds = U.councilSeconds();
+    seconds = NET && U.clockLeft && U.clockLeft("council") !== null ? U.clockLeft("council") : U.councilSeconds();
     clearInterval(timerId);
     timerId = setInterval(function () {
       seconds--;
@@ -1141,7 +1143,7 @@
         clearInterval(timerId);
         timerId = null;
         $("timer").classList.add("timeup");
-        if (U.behindSchedule()) onEndCouncil();
+        if (!NET && U.behindSchedule()) onEndCouncil(); /* en línea el servidor cierra el Consejo */
       }
     }, 1000);
   }
@@ -1528,8 +1530,18 @@
   function netVotesHTML(s) {
     const host = s.players.find(function (p) { return p.host; }), V = { 1: "+1 ronda", 2: "+2 rondas", end: "terminar" };
     const vs = Object.keys(s.votes || {}).filter(function (id) { return s.players[id]; }).map(function (id) { return esc(s.players[id].name) + ": " + (V[s.votes[id]] || "?"); });
-    return '<p class="small">Decide el anfitrión' + (host ? " (" + esc(host.name) + ")" : "") + '. ' + (vs.length ? "Votos: " + vs.join(" · ") + "." : "Aún no hay votos.") + '</p>';
+    const me = s.players[s.youId] || {}, mine = s.votes && s.votes[s.youId];
+    return '<p class="small">' + (me.host ? "Eres el anfitrión: tu voto decide al instante." : "Decide el anfitrión" + (host ? " (" + esc(host.name) + ")" : "") + ". Tu voto cuenta" + (mine ? " (has votado: " + V[mine] + ")" : "") + ".") + '</p>' +
+      '<p class="small">' + (vs.length ? "Votos: " + vs.join(" · ") + "." : "Aún no hay votos.") + ' Si el anfitrión no decide, en <b data-cd="vote">' + netCdText("vote") + '</b> gana la mayoría (empate: +1 ronda).</p>';
   }
+  /* Cuentas atrás del servidor en pantalla (spans data-cd): turnauto = límite de turno + cortesía, vote = votación de tiempo. */
+  function netCdSecs(k) {
+    if (!U.clockDeadline) return null;
+    if (k === "vote") return U.clockLeft("vote");
+    return U.clockAutoLeft();
+  }
+  function netCdText(k) { const n = netCdSecs(k); return n === null ? "…" : (n >= 60 ? Math.floor(n / 60) + " min " + pad2(n % 60) + " s" : n + " s"); }
+  function netCd() { Array.prototype.forEach.call(document.querySelectorAll("[data-cd]"), function (el) { el.textContent = netCdText(el.getAttribute("data-cd")); }); }
   function renderWaiting() {
     stopTimer(); hideAll();
     $("handoff").classList.remove("hidden");
@@ -1546,6 +1558,7 @@
     const wl = $("waitList"), alive = s.players.filter(function (x) { return !x.dead; });
     wl.classList.remove("hidden");
     wl.innerHTML = '<div class="tag">' + ic("ui_jugadores", "ic-tag") + 'Quedan por terminar: ' + alive.filter(function (x) { return !x.ready; }).length + ' de ' + alive.length + '</div>' +
+      '<p class="small waitcd">El turno se cierra solo en <b data-cd="turnauto">' + netCdText("turnauto") + '</b>: quien no haya decidido medita.</p>' +
       alive.map(function (x) { return '<div class="wrow">' + playerMedal(x) + '<b>' + esc(x.name) + (x.id === me.id ? " (tú)" : "") + '</b><span class="chip ' + (x.ready ? "good" : "mid") + '">' + (x.ready ? "listo" : (x.online === false ? "sin conexión" : "decidiendo…")) + '</span></div>'; }).join("");
     updateStatus();
   }

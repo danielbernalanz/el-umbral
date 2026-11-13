@@ -13,7 +13,7 @@ Escenarios (todos por defecto; elige con `--only nombre`):
 Uso: python3 -I test/e2e/online_e2e.py [--sync RUTA_WWW] [--only game] [--seed 1] [--shots DIR]
 Requiere: node >= 20, playwright (python). No usa la red externa.
 """
-import argparse, json, os, random, socket, subprocess, sys, time
+import argparse, json, os, random, re, socket, subprocess, sys, time
 
 from playwright.sync_api import sync_playwright
 
@@ -35,10 +35,11 @@ def free_port():
     s = socket.socket(); s.bind(("127.0.0.1", 0)); p = s.getsockname()[1]; s.close(); return p
 
 class Server:
-    def __init__(self, port=None, script="server/index.js"):
-        self.port = port or free_port(); self.p = None; self.script = script
+    def __init__(self, port=None, script="server/index.js", scale=None, read_ms="0"):
+        self.port = port or free_port(); self.p = None; self.script = script; self.scale = scale; self.read_ms = read_ms
     def start(self):
-        env = dict(os.environ, PORT=str(self.port))
+        env = dict(os.environ, PORT=str(self.port), UMBRAL_READ_MS=str(self.read_ms))   # la lectura de 10 s estorba a los bots de interfaz: solo se prueba en `time`
+        if self.scale: env["UMBRAL_TIME_SCALE"] = str(self.scale)
         self.p = subprocess.Popen(["node", self.script], cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         for _ in range(100):
             try:
@@ -370,31 +371,136 @@ def scenario_game(pw, restart_test=False):
     finally:
         b.close(); srv.stop()
 
+def hit(srv, code, pid, by, mode):
+    import urllib.request
+    return json.loads(urllib.request.urlopen(srv.url + "__test/hit?room=%s&pid=%d&by=%d&mode=%s" % (code, pid, by, mode)).read())
+
+def new_room3(pw_b, srv, prefix, mins=None):
+    cs = [Client(pw_b, prefix + "_ana"), Client(pw_b, prefix + "_luis"), Client(pw_b, prefix + "_marta")]
+    open_online(cs[0], srv.url); code = create_room(cs[0], "Ana")
+    for c, n in zip(cs[1:], ("Luis", "Marta")): open_online(c, srv.url); join_room(c, n, code)
+    cs[0].pg.wait_for_function("document.querySelectorAll('#roomPlayers .rplayer').length===3", timeout=10000)
+    cs[0].pg.fill("#netEnd", end_time(mins or A.mins)); cs[0].pg.click("#btnOnStart")
+    for c in cs: c.pg.wait_for_selector("#privatePanel", state="visible", timeout=15000)
+    return cs, code
+
+def jsq(c, expr): return c.pg.evaluate("(()=>{const B=UmbralNet.backend,s=B.getState();return " + expr + "})()")
+
+def play_until(cs, rnd, cond, secs=120, skip=()):
+    t0 = time.time()
+    while time.time() - t0 < secs:
+        if cond(): return True
+        for c in cs:
+            if c in skip: continue
+            try: bot_step(c, rnd)
+            except Exception as e: c.errors.append("BOT " + str(e)[:120])
+    return cond()
+
 def scenario_stun(pw):
-    """Mitad de la fase privada: otro jugador deja a Ana sin turno (acted=true sin haber elegido). F2 aún no lo cierra en el servidor:
-    la interfaz debe llevarla sola a la declaración/fin de turno y la partida debe seguir (nadie bloqueado)."""
+    """F4: aturdir/grillete y caer moribundo sobre quien aún no ha actuado, con el flujo REAL del servidor (tirada alta forzada)."""
     srv = Server(script="test/e2e/test_server.js").start(); b = pw.chromium.launch(); rnd = random.Random(A.seed)
     try:
-        cs = [Client(b, "s_ana"), Client(b, "s_luis"), Client(b, "s_marta")]
-        open_online(cs[0], srv.url); code = create_room(cs[0], "Ana")
-        for c, n in zip(cs[1:], ("Luis", "Marta")): open_online(c, srv.url); join_room(c, n, code)
-        cs[0].pg.wait_for_function("document.querySelectorAll('#roomPlayers .rplayer').length===3", timeout=10000)
-        cs[0].pg.fill("#netEnd", end_time(A.mins)); cs[0].pg.click("#btnOnStart")
-        for c in cs: c.pg.wait_for_selector("#privatePanel", state="visible", timeout=15000)
-        import urllib.request
-        urllib.request.urlopen(srv.url + "__test/stun?room=%s&pid=0" % code).read()
-        t0 = time.time(); r2 = False
-        while time.time() - t0 < 120:
-            for c in cs:
-                if c is cs[0] and cs[0].vis("#privatePanel") and time.time() - t0 < 1.5: continue   # deja actuar a la interfaz sola
+        cs, code = new_room3(b, srv, "s")
+        r = hit(srv, code, 0, 1, "stun")
+        check("stun: el servidor aplica el aturdimiento (acted sigue en false: cuenta para la ronda siguiente)", r["ok"] and r["success"] and not r["acted"], r)
+        cs[0].pg.wait_for_timeout(700)
+        check("stun: Ana sigue pudiendo elegir en esta ronda (panel privado intacto)", cs[0].vis("#privatePanel") and jsq(cs[0], "!s.players[s.youId].acted"))
+        ok = play_until(cs, rnd, lambda: all((jsq(c, "s.round") or 0) >= 2 for c in cs))
+        check("stun: la ronda 2 empieza para los 3 sin bloqueos", ok, [jsq(c, "s.round") for c in cs])
+        cs[0].pg.wait_for_timeout(500)
+        check("stun: en la ronda 2 Ana pierde su turno (pantalla «esperando» con aviso)", jsq(cs[0], "s.skipped.indexOf(s.youId)>=0") and "no actúas" in cs[0].txt("#handoffTitle"), cs[0].txt("#handoffTitle"))
+        cs[0].shot("50_ronda2_sin_turno")
+        # moribundo a mitad de ronda: queda listo en el servidor y no bloquea
+        ok = play_until(cs, rnd, lambda: jsq(cs[2], "s.phase")=="private" and jsq(cs[2], "!s.players[s.youId].acted") and not jsq(cs[2], "s.players[s.youId].dead"), 90)
+        if ok:
+            r = hit(srv, code, 2, 1, "down")
+            check("stun: dejar moribundo a quien aún no ha actuado cierra su turno en el servidor", r["ok"] and r["dying"], r)
+            cs[2].pg.wait_for_timeout(700); cs[2].shot("51_moribundo")
+            r3 = play_until(cs, rnd, lambda: all((jsq(c, "s.round") or 0) >= 4 or jsq(c, "s.phase")=="ending" for c in cs), 150)
+            check("stun: sin bloqueos tras caer moribundo (la partida avanza)", r3, [jsq(c, "s.round") for c in cs])
+        errs = [e for c in cs for e in c.errors if not e.startswith("BOT")]   # fallos del bot de interfaz (clics sobre elementos que cambian) no son del juego
+        check("stun: sin errores de JS", not errs, errs[:3])
+    finally: b.close(); srv.stop()
+
+def scenario_timers(pw):
+    """F4: autoturno del servidor (reloj acelerado x0.08): Marta no hace nada y la ronda se cierra sola; se ve «esperando…» con cuenta atrás."""
+    srv = Server(script="test/e2e/test_server.js", scale=0.08).start(); b = pw.chromium.launch(); rnd = random.Random(A.seed)
+    try:
+        cs, code = new_room3(b, srv, "t")
+        idle = cs[2]
+        t0 = time.time(); shot = False; closed = False
+        while time.time() - t0 < 60:
+            for c in cs[:2]:
                 try: bot_step(c, rnd)
                 except Exception as e: c.errors.append("BOT " + str(e)[:120])
-            st = [c.pg.evaluate("(()=>{const s=UmbralNet.backend.getState();return s?s.round:0})()") for c in cs]
-            if all(x >= 2 for x in st): r2 = True; break
-        check("stun: sin turno por culpa de otro jugador -> la interfaz sigue sola y la ronda 2 empieza para los 3", r2, st)
-        cs[0].shot("50_tras_stun")
-        errs = [e for c in cs for e in c.errors]
-        check("stun: sin errores de JS", not errs, errs[:3])
+            if not shot and cs[0].vis("#waitList") and cs[0].vis("[data-cd]"):
+                check("timers: «esperando…» muestra cuenta atrás del servidor", re.search(r"\d", cs[0].txt("[data-cd=turnauto]")) is not None, cs[0].txt("#waitList")); cs[0].shot("60_esperando"); shot = True
+            if jsq(cs[0], "s.phase") != "private": closed = True; break
+        check("timers: el servidor cierra la ronda aunque un jugador no haga nada", closed, jsq(cs[0], "s.phase"))
+        cs[2].pg.wait_for_timeout(800)
+        check("timers: el jugador pasivo recibe la nota de autoturno y su interfaz sigue al Consejo", jsq(idle, "s.phase")!="private" and jsq(idle, "(s.players[s.youId].notes||[]).some(n=>/se acabó el tiempo/.test(n))"), jsq(idle, "s.phase"))
+        idle.shot("61_pasivo_consejo")
+        errs = [e for c in cs for e in c.errors if not e.startswith("BOT")]   # fallos del bot de interfaz (clics sobre elementos que cambian) no son del juego
+        check("timers: sin errores de JS", not errs, errs[:3])
+    finally: b.close(); srv.stop()
+
+def endat(srv, code, secs, reset=False):
+    import urllib.request
+    urllib.request.urlopen(srv.url + "__test/endat?room=%s&secs=%s&reset=%d" % (code, secs, 1 if reset else 0)).read()
+
+def scenario_time(pw):
+    """F4: aviso «La noche se acaba» a los 2 min (común), «Añadir tiempo» solo anfitrión, pregunta de tiempo con votos visibles y regla de mayoría/empate."""
+    srv = Server(script="test/e2e/test_server.js", scale=0.4).start(); b = pw.chromium.launch(); rnd = random.Random(A.seed)
+    try:
+        cs, code = new_room3(b, srv, "w")
+        endat(srv, code, 100)
+        for c in cs: c.pg.wait_for_selector("#timeOverlay:not(.hidden)", timeout=8000)
+        check("time: aviso común «La noche se acaba» en los 3 móviles", all("La noche se acaba" in c.txt("#timeBody") for c in cs))
+        check("time: «Añadir tiempo» solo lo ve el anfitrión", cs[0].vis("#btnTwAdd") and not cs[1].vis("#btnTwAdd") and not cs[2].vis("#btnTwAdd") and "anfitrión" in cs[1].txt("#timeBody"))
+        cs[0].shot("70_aviso_host"); cs[1].shot("71_aviso_invitado")
+        e0 = jsq(cs[0], "B.endAtTs()")
+        cs[0].pg.click("#btnTwAdd"); cs[0].pg.wait_for_timeout(900)
+        e1 = jsq(cs[1], "B.endAtTs()")
+        check("time: «Añadir tiempo» desplaza la hora de fin (endAt del servidor) para todos", e1 > e0, [e0, e1])
+        for c in cs[1:]:
+            if c.vis("#btnTwKeep"): c.pg.click("#btnTwKeep")
+        # pregunta de tiempo: se acaba el reloj durante la ronda
+        endat(srv, code, 100, reset=True); endat(srv, code, -1)
+        shot = False; got = False
+        t0 = time.time()
+        while time.time() - t0 < 120:
+            for c in cs:
+                if c.vis("#timeOverlay") and c.vis("[data-k]"): continue
+                try: bot_step(c, rnd)
+                except Exception as e: c.errors.append("BOT " + str(e)[:120])
+            if all(c.vis("#timeOverlay") and c.vis("[data-k]") for c in cs): got = True; break
+        check("time: al agotarse el tiempo la mesa recibe la pregunta (3 móviles)", got)
+        if got:
+            cs[1].pg.click("[data-k='1']"); cs[2].pg.click("[data-k='end']"); cs[1].pg.wait_for_timeout(1200)
+            t = cs[0].txt("#timeBody")
+            check("time: votos visibles para todos y regla explicada", "Luis: +1 ronda" in t and "Marta: terminar" in t and "empate" in t, t[:300])
+            check("time: el anfitrión ve que su voto decide; los demás, que decide el anfitrión", "tu voto decide" in cs[0].txt("#timeBody") and "Decide el anfitrión" in cs[1].txt("#timeBody"))
+            cs[0].shot("72_votacion_host"); cs[1].shot("73_votacion_invitado")
+            r0 = jsq(cs[0], "s.round")
+            cs[0].pg.wait_for_function("UmbralNet.backend.getState().phase==='private' && UmbralNet.backend.getState().round>%d" % r0, timeout=30000)
+            check("time: empate (+1 / terminar / sin voto del anfitrión) = +1 ronda a los 30 s (reloj x0,4)", all(jsq(c, "s.round") == r0 + 1 for c in cs), [jsq(c, "s.round") for c in cs])
+            # segunda pregunta: el anfitrión decide al votar «terminar ahora»
+            endat(srv, code, -1)
+            got2 = False; t0 = time.time()
+            while time.time() - t0 < 120:
+                for c in cs:
+                    if c.vis("#timeOverlay") and c.vis("[data-k]"): continue
+                    try: bot_step(c, rnd)
+                    except Exception as e: c.errors.append("BOT " + str(e)[:120])
+                if all(c.vis("#timeOverlay") and c.vis("[data-k]") for c in cs): got2 = True; break
+            if got2:
+                cs[0].pg.click("[data-k='end']")
+                for c in cs: c.pg.wait_for_selector("#ending", state="visible", timeout=15000)
+                check("time: el voto del anfitrión «Terminar ahora» da el desenlace a todos al instante", True)
+                cs[1].shot("74_desenlace")
+            else: check("time: segunda pregunta", False)
+        errs = [e for c in cs for e in c.errors if not e.startswith("BOT")]   # fallos del bot de interfaz (clics sobre elementos que cambian) no son del juego
+        check("time: sin errores de JS", not errs, errs[:3])
     finally: b.close(); srv.stop()
 
 def scenario_external(pw):
@@ -433,7 +539,7 @@ def scenario_desktop(pw, vw=1280, vh=800, tag="pc"):
 
 if A.sync:
     subprocess.check_call(["node", "scripts/sync-client.js", A.sync], cwd=ROOT, stdout=subprocess.DEVNULL)
-SC = {"lobby": scenario_lobby, "game": scenario_game, "restart": lambda pw: scenario_game(pw, True), "stun": scenario_stun, "external": scenario_external, "desktop": scenario_desktop, "small": lambda pw: scenario_desktop(pw, 360, 640, "360")}
+SC = {"lobby": scenario_lobby, "game": scenario_game, "restart": lambda pw: scenario_game(pw, True), "stun": scenario_stun, "timers": scenario_timers, "time": scenario_time, "external": scenario_external, "desktop": scenario_desktop, "small": lambda pw: scenario_desktop(pw, 360, 640, "360")}
 with sync_playwright() as pw:
     for k, f in SC.items():
         if A.only and k != A.only: continue

@@ -3,6 +3,11 @@
    barreras de fase, retención de notas/crónica ajenas y vista filtrada. Sin red: lo usa room.js y los tests. */
 const { loadEngine } = require("./engine_vm");
 const view = require("./view");
+const { shielded } = require("./order");
+
+/* Tiempos de la fase simultánea (ms). timeScale solo se usa en pruebas rápidas. */
+const T = { warn: 15000, grace: 25000, offline: 10000, cont: 30000, vote: 30000, read: 10000 };
+const READ_MSG = "Aún estás leyendo la ronda: espera unos segundos antes de actuar sobre otros.";
 
 const GENERIC_BAD_TARGET = "Objetivo no válido.";
 const NOT_NOW = "Ahora no puedes hacer eso.";
@@ -17,6 +22,12 @@ class Game {
   constructor(names, opts) {
     opts = opts || {};
     this.now = opts.now || Date.now;
+    const sc = Number(opts.timeScale != null ? opts.timeScale : process.env.UMBRAL_TIME_SCALE);
+    this.scale = isFinite(sc) && sc > 0 ? sc : 1;
+    const rd = Number(opts.readMs != null ? opts.readMs : process.env.UMBRAL_READ_MS);
+    this.readMs = isFinite(rd) && rd >= 0 && (opts.readMs != null || process.env.UMBRAL_READ_MS != null) ? rd : T.read;
+    this.offlineSince = {}; this._tw = false;
+    this.clock = null;
     const eng = loadEngine({ dir: opts.engineDir, rng: opts.rng, now: this.now });
     this.U = eng.U; this.D = eng.D; this.ctx = eng.ctx;
     const endAt = Number(opts.endAt);
@@ -36,6 +47,7 @@ class Game {
   S() { return this.U.getState(); }
   get phase() { return this.S().phase; }
   playerCount() { return this.S().players.length; }
+  ms(x) { return Math.max(0, Math.round(x * this.scale)); }
 
   /* ---------- hooks de fase ---------- */
   afterRoundStart() {
@@ -52,8 +64,12 @@ class Game {
     if (S.phase === "private") {
       S.players.forEach((p) => { if (p.dead || p.acted) this.ready.add(p.id); });
       S.players.forEach((p) => this.refresh(p.id));
-    } else this.onLeavePrivate();
+      const t = this.now(), dl = t + this.ms(this.U.turnSeconds() * 1000);
+      this.clock = { kind: "turn", start: t, readUntil: t + this.readMs, warnAt: dl - this.ms(T.warn), deadline: dl, autoAt: dl + this.ms(T.grace) };
+    } else { this.onLeavePrivate(); this.clock = null; }
   }
+  setClock(kind, ms) { const t = this.now(); this.clock = { kind, start: t, deadline: t + ms }; }
+  readLocked() { return !!(this.clock && this.clock.kind === "turn" && this.now() < this.clock.readUntil); }
   onLeavePrivate() { this.held = {}; this.chronVisible = Infinity; }
 
   /* Consultas IMPURAS del motor: se materializan aquí, en momentos conocidos, para que la vista sea pura.
@@ -78,7 +94,7 @@ class Game {
     const sv = { turn: S.turn, handoff: S.handoff };
     S.turn = pid; S.handoff = false; S.pendingPush = this.pctx[pid] || null;
     let res;
-    try { res = fn(); }
+    try { res = wasPrivate ? shielded(S, pid, fn) : fn(); }
     catch (e) { this.errors.push(String(e && e.stack || e)); res = bad("Error interno."); }
     this.pctx[pid] = S.pendingPush && S.pendingPush.actorId === pid ? S.pendingPush : null;
     S.pendingPush = null; S.turn = sv.turn; S.handoff = sv.handoff;
@@ -97,7 +113,7 @@ class Game {
     if (!S || !isInt(pid, 0, 9) || !S.players[pid]) return bad("Jugador desconocido.");
     const spec = COMMANDS[cmd];
     if (!spec || !Array.isArray(args)) return bad("Comando desconocido.");
-    if (spec.phase !== S.phase) return bad(NOT_NOW);
+    if (Array.isArray(spec.phase) ? spec.phase.indexOf(S.phase) === -1 : spec.phase !== S.phase) return bad(NOT_NOW);
     if (!spec.check(this, pid, args)) return bad("Argumentos no válidos.");
     const res = spec.run(this, pid, args, meta || {});
     this.afterCommand(pid);
@@ -106,7 +122,11 @@ class Game {
 
   afterCommand(pid) {
     const S = this.S();
-    if (S.phase === "private") { this.invalidateStale(); this.refresh(pid); }
+    if (S.phase === "private") {
+      this.invalidateStale(); this.refresh(pid);
+      /* quien cae moribundo a mitad de ronda no puede elegir nada: queda listo (cierra el acted=true «sin elegir») */
+      S.players.forEach((q) => { if (!q.dead && q.dying && q.acted) this.ready.add(q.id); });
+    }
     this.advance();
   }
 
@@ -135,10 +155,12 @@ class Game {
         this.councilReady = new Set(S.players.filter((p) => p.dead).map((p) => p.id));
         this.councilResults = null;
         S.turn = 0;
+        this.setClock("council", this.ms(this.U.councilSeconds() * 1000));
       } else if (ph === "council") {
         if (!S.players.every((p) => p.dead || this.councilReady.has(p.id))) return;
         this.closeCouncil();
         this.contReady = new Set(S.players.filter((p) => p.dead).map((p) => p.id));
+        this.setClock("cont", this.ms(T.cont));
       } else if (ph === "resolution") {
         if (S.timeAsk) return;
         if (!S.players.every((p) => p.dead || this.contReady.has(p.id))) return;
@@ -157,17 +179,88 @@ class Game {
     const S = this.S(), U = this.U;
     const e = U.nextRound();
     if (S.phase === "ending") return e;
-    if (S.timeAsk) { this.votes = {}; return null; }
+    if (S.timeAsk) { this.votes = {}; this.setClock("vote", this.ms(T.vote)); return null; }
     this.afterRoundStart();
     return null;
+  }
+  /* El anfitrión (o, si cayó, el primer superviviente) decide al votar; sin decisión, a los 30 s gana la mayoría y el empate es +1 ronda. */
+  decider() {
+    const S = this.S(), h = this.presence && this.presence.host;
+    if (Number.isInteger(h) && S.players[h] && !S.players[h].dead) return h;
+    const f = S.players.find((p) => !p.dead);
+    return f ? f.id : -1;
+  }
+  applyTimeAnswer(choice) {
+    const r = JSON.parse(JSON.stringify(this.U.answerTime(choice)));
+    if (r.ok && !r.ended) this.nextRound();
+    return r;
+  }
+  voteWinner() {
+    const S = this.S(), c = { 1: 0, 2: 0, end: 0 };
+    Object.keys(this.votes).forEach((id) => { const p = S.players[id]; if (p && !p.dead && c[this.votes[id]] !== undefined) c[this.votes[id]]++; });
+    const m = Math.max(c[1], c[2], c.end), top = [1, 2, "end"].filter((k) => c[k] === m);
+    return top.length === 1 ? top[0] : 1;
+  }
+  setPresence(online, host) {
+    const t = this.now();
+    Object.keys(online).forEach((id) => { if (online[id] === false) { if (this.offlineSince[id] == null) this.offlineSince[id] = t; } else delete this.offlineSince[id]; });
+    this.presence = { online, host };
+  }
+  isOnline(pid) { return !(this.presence && this.presence.online) || this.presence.online[pid] !== false; }
+
+  /* ---------- reloj del servidor (se llama cada segundo; devuelve true si algo cambió) ---------- */
+  pendingSet() {
+    const S = this.S();
+    const set = S.phase === "private" ? this.ready : S.phase === "council" ? this.councilReady : S.phase === "resolution" && !S.timeAsk ? this.contReady : null;
+    return set ? S.players.filter((p) => !p.dead && !set.has(p.id)) : [];
+  }
+  tick() {
+    const S = this.S();
+    if (!S || S.phase === "ending") return false;
+    const t = this.now(), ph = S.phase; let changed = false;
+    const tw = !!this.U.timeWarn();
+    if (tw !== this._tw) { this._tw = tw; changed = true; }
+    if (ph === "resolution" && S.timeAsk) {
+      if (this.clock && t >= this.clock.deadline) { this.applyTimeAnswer(this.voteWinner()); return true; }
+      return changed;
+    }
+    const ck = this.clock;
+    const pend = this.pendingSet();
+    /* Desconexión acelerada: si solo faltan jugadores desconectados (y hay alguien conectado), no se espera al límite. */
+    let fast = false;
+    if (pend.length && pend.every((p) => !this.isOnline(p.id)) && S.players.some((p) => !p.dead && this.isOnline(p.id))) {
+      fast = pend.every((p) => this.offlineSince[p.id] != null && t - this.offlineSince[p.id] >= this.ms(T.offline));
+    }
+    if (ph === "private") {
+      if ((ck && t >= ck.autoAt) || (fast && pend.length)) { this.forceAdvance(); changed = true; }
+    } else if (ck && (t >= ck.deadline || (fast && pend.length))) { this.forceAdvance(); changed = true; }
+    return changed;
+  }
+  /* Completa lo que falta del turno de pid sin perder lo hecho: meditar si aún no actuó, y entrega (se omite la declaración). */
+  autoComplete(pid) {
+    const S = this.S(), p = S.players[pid];
+    if (!p || p.dead || S.phase !== "private" || this.ready.has(pid)) return;
+    if (p.dying) { this.ready.add(pid); return; }
+    const did = p.acted;
+    if (!did) {
+      const r = this.exec(pid, "act", ["meditar", null, null]);
+      if (!r || r.ok === false) { this.errors.push("autoturno: no pudo meditar " + pid + " " + (r && r.msg)); return; }
+    }
+    if (S.phase !== "private") return;
+    if (!this.ready.has(pid)) {
+      p.notes.push("Ronda " + S.round + ": se acabó el tiempo de tu turno" + (did ? ": se omitió lo que faltaba." : ": meditaste (acción segura)."));
+      const r = this.exec(pid, "finishTurn", []);
+      if (!r || r.ok === false) this.errors.push("autoturno: no pudo entregar " + pid + " " + (r && r.msg));
+    }
   }
 
   /* Cierre forzado por tiempo/anfitrión (los temporizadores de F4 usarán esto). */
   forceAdvance() {
     const S = this.S();
-    if (S.phase === "private") S.players.forEach((p) => { if (!p.dead) this.ready.add(p.id); });
+    if (S.phase === "private") { S.players.forEach((p) => { if (!p.dead && !this.ready.has(p.id) && this.S().phase === "private") this.autoComplete(p.id); }); }
     else if (S.phase === "council") S.players.forEach((p) => this.councilReady.add(p.id));
-    else if (S.phase === "resolution" && !S.timeAsk) S.players.forEach((p) => this.contReady.add(p.id));
+    else if (S.phase === "resolution" && S.timeAsk) { this.applyTimeAnswer(this.voteWinner()); return; }
+    else if (S.phase === "resolution") S.players.forEach((p) => this.contReady.add(p.id));
     this.advance();
   }
 
@@ -189,6 +282,7 @@ const COMMANDS = {
       if (act && act.target) {
         const ok = (view.targetsFor(g, pid)[act.id] || []).indexOf(a[1]) !== -1;
         if (!ok) return bad(GENERIC_BAD_TARGET);
+        if (g.readLocked()) return bad(READ_MSG);
       }
       return g._runAs(pid, () => g.U.act(pid, a[0], act && act.target ? a[1] : null, a[2] == null ? null : a[2]));
     }),
@@ -198,12 +292,14 @@ const COMMANDS = {
     (g, pid, a) => {
       const sp = (g.S().players[pid].spells || []).find((s) => s.id === a[0]);
       if (sp && sp.target && view.aliveOthers(g, pid).indexOf(a[1]) === -1) return bad(GENERIC_BAD_TARGET);
+      if (sp && sp.target && g.readLocked()) return bad(READ_MSG);
       return g._runAs(pid, () => g.U.cast(pid, a[0], sp && sp.target ? a[1] : null, a[2] || "normal"));
     }),
   useItem: priv(
     (g, pid, a) => isInt(a[0], 0, 30) && isIdOrNull(a[1]),
     (g, pid, a) => {
       if (a[1] != null && view.aliveOthers(g, pid).indexOf(a[1]) === -1) return bad(GENERIC_BAD_TARGET);
+      if (a[1] != null && g.readLocked()) return bad(READ_MSG);
       return g._runAs(pid, () => g.U.useItem(pid, a[0], a[1] == null ? null : a[1]));
     }),
   study: priv((g, pid, a) => isInt(a[0], 0, 30), (g, pid, a) => g._runAs(pid, () => g.U.studyOptions(pid, a[0]))),
@@ -236,17 +332,23 @@ const COMMANDS = {
   }),
   councilReady: { phase: "council", check: (g, pid, a) => a.length === 0, run: (g, pid) => { g.councilReady.add(pid); return { ok: true }; } },
   continue: { phase: "resolution", check: (g, pid, a) => a.length === 0, run: (g, pid) => { g.contReady.add(pid); return { ok: true }; } },
-  /* Pregunta de tiempo: voto visible; decide el anfitrión (esqueleto: la regla de 30 s/mayoría es de F4). */
+  /* Pregunta de tiempo: voto visible; decide el anfitrión al votar; si no, a los 30 s gana la mayoría (empate: +1 ronda). */
   vote: {
     phase: "resolution", check: (g, pid, a) => a[0] === 1 || a[0] === 2 || a[0] === "end",
-    run: (g, pid, a, meta) => {
+    run: (g, pid, a) => {
       const S = g.S();
-      if (!S.timeAsk) return bad(NOT_NOW);
+      if (!S.timeAsk || S.players[pid].dead) return bad(NOT_NOW);
       g.votes[pid] = a[0];
-      if (!meta.isHost) return { ok: true };
-      const r = JSON.parse(JSON.stringify(g.U.answerTime(a[0])));
-      if (r.ok && !r.ended) g.nextRound();
-      return r;
+      if (g.decider() !== pid) return { ok: true };
+      return g.applyTimeAnswer(a[0]);
+    }
+  },
+  /* «Añadir tiempo» del aviso de los 2 min: lo decide el anfitrión (el aviso lo ven todos). */
+  addTime: {
+    phase: ["private", "council", "resolution"], check: (g, pid, a) => a.length === 0,
+    run: (g, pid) => {
+      if (g.decider() !== pid) return bad("Solo el anfitrión puede añadir tiempo.");
+      return { ok: true, added: !!g.U.addTime() };
     }
   }
 };

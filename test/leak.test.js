@@ -12,7 +12,7 @@ const SIZES = [3, 4, 5, 6, 8, 10];
 const NAMES = ["Ana", "Luis", "Marta", "Pablo", "Eva", "Iker", "Noa", "Leo", "Mia", "Rut"];
 
 function newGame(seed, n) {
-  return new Game(NAMES.slice(0, n), { engineDir: ENGINE_DIR, endAt: Date.now() + (20 + (seed % 3) * 10) * 60000, rng: seeded(seed * 7919) });
+  return new Game(NAMES.slice(0, n), { readMs: 0, engineDir: ENGINE_DIR, endAt: Date.now() + (20 + (seed % 3) * 10) * 60000, rng: seeded(seed * 7919) });
 }
 
 test("no hay fugas en la vista de ningún jugador tras cada comando (partidas completas)", () => {

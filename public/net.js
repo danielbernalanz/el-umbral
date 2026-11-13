@@ -195,8 +195,14 @@
     councilPrompt: function () { return qv().councilPrompt || ""; }, behindSchedule: function () { return !!qv().behindSchedule; },
     timeLeftMs: leftMs, endAtTs: function () { return cur ? cur.endAt || null : null; }, elapsedMin: function () { return 0; },
     extEnd: function (k) { const e = qv().extEnd; return e ? e[k] || null : null; },
-    timeWarn: function () { const l = leftMs(); return !warnOff && !!st && st.phase !== "ending" && !st.timeAsk && l > 0 && l <= 120000; },
-    dismissWarn: function () { warnOff = true; }, addTime: function () { return false; }, /* F4: el servidor aún no tiene «añadir tiempo» */
+    timeWarn: function () { const l = leftMs(); return !warnOff && !!st && st.phase !== "ending" && !st.timeAsk && !(cur && cur.timeAdd) && l > 0 && l <= 120000; },
+    dismissWarn: function () { warnOff = true; }, addTime: function () { return cmd("addTime", []); }, /* lo decide el anfitrión en el servidor */
+    /* Relojes del servidor (el cliente solo muestra): fecha límite en hora LOCAL del cliente (corrige el desfase) o segundos que quedan. */
+    clockKind: function () { return cur && cur.clock ? cur.clock.kind : null; },
+    clockDeadline: function (kind) { const c = cur && cur.clock; return c && (!kind || c.kind === kind) ? c.deadline - offset : null; },
+    clockAutoLeft: function () { const c = cur && cur.clock; return c && c.kind === "turn" && c.autoAt ? Math.max(0, Math.ceil((c.autoAt - offset - Date.now()) / 1000)) : null; },
+    clockLeft: function (kind) { const d = B.clockDeadline(kind); return d === null ? null : Math.max(0, Math.ceil((d - Date.now()) / 1000)); },
+    readLeft: function () { const c = cur && cur.clock; return c && c.kind === "turn" && c.readUntil ? Math.max(0, Math.ceil((c.readUntil - offset - Date.now()) / 1000)) : 0; },
     getEnding: function () { return cur ? cur.ending || null : null; },
     exportLog: function () { return cur && cur.log || ""; }, exportStory: function () { return cur && cur.story || ""; }, buildStory: function () { return cur && cur.storyList || []; },
     endCouncil: function () { return st ? st.lastResolution : []; }, resolveCouncil: function () { return []; }, nextTurn: function () { return "blocked"; },

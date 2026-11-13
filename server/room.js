@@ -66,7 +66,7 @@ class Room {
     const mins = (endAt - this.mgr.now()) / 60000;
     if (!isFinite(mins) || mins < 5 || mins > 120) return { ok: false, msg: "La hora de fin debe estar entre 5 y 120 minutos desde ahora." };
     try {
-      this.game = new Game(this.players.map((x) => x.name), { engineDir: this.mgr.engineDir, endAt, now: this.mgr.now });
+      this.game = new Game(this.players.map((x) => x.name), { engineDir: this.mgr.engineDir, endAt, now: this.mgr.now, readMs: this.mgr.readMs, timeScale: this.mgr.timeScale });
     } catch (e) { return { ok: false, msg: String(e.message || "No se pudo empezar.") }; }
     this.status = "playing"; this.touch();
     this.syncPresence();
@@ -91,7 +91,15 @@ class Room {
     const online = {};
     this.players.forEach((p) => { online[p.slot] = p.conns.size > 0; });
     const h = this.hostPlayer();
-    this.game.presence = { online, host: h ? h.slot : -1 };
+    this.game.setPresence(online, h ? h.slot : -1);
+  }
+  /* Reloj del servidor: autoturno, límites de Consejo/continuar, votación de tiempo. Cada segundo desde Rooms.tick. */
+  tick() {
+    if (this.status !== "playing" || !this.game) return;
+    let changed = false;
+    try { changed = this.game.tick(); } catch (e) { this.game.errors.push(String(e && e.stack || e)); }
+    if (this.game.ended() && this.status === "playing") { this.status = "ended"; this.endedAt = this.mgr.now(); changed = true; }
+    if (changed) this.broadcast();
   }
 
   /* ---------- SSE ---------- */
@@ -142,6 +150,7 @@ class Rooms {
   /* opts: { engineDir, maxRooms, now, idleMs, endedMs, maxAgeMs } */
   constructor(opts) {
     this.engineDir = opts.engineDir;
+    this.readMs = opts.readMs; this.timeScale = opts.timeScale;
     this.maxRooms = opts.maxRooms || 50;
     this.now = opts.now || Date.now;
     this.idleMs = opts.idleMs || 30 * 60000; this.endedMs = opts.endedMs || 15 * 60000; this.maxAgeMs = opts.maxAgeMs || 4 * 3600000;
@@ -185,6 +194,7 @@ class Rooms {
     return n;
   }
   heartbeat() { this.rooms.forEach((r) => r.heartbeat()); }
+  tick() { this.rooms.forEach((r) => r.tick()); }
   closeAll() { this.rooms.forEach((r) => r.destroy()); this.rooms.clear(); this.tokens.clear(); }
 }
 

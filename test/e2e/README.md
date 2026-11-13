@@ -13,7 +13,12 @@ Escenarios
 | `game` | partida completa de 3 jugadores con un bot de interfaz hasta el desenlace; pantalla «esperando…», Consejo y resolución; doble toque; recarga a mitad (reconexión por token); corte de red y vuelta; **escaneo de privacidad** continuo (secreto, rol, afinidad, notas, pistas y pactos de cada jugador no aparecen en el DOM, en `getState()`, en los mensajes SSE crudos ni en las respuestas `/cmd` de los otros) y solo claves públicas de los demás jugadores |
 | `restart` | el servidor cae a mitad de partida y vuelve (las salas se pierden): aviso de «sin conexión», luego «la sala ya no existe» y «Volver al inicio» |
 | `external` | desde `file://` (como el APK) «Jugar en línea» abre `https://el-umbral-h1ki.onrender.com` fuera (popup) |
+| `stun` | F4: aturdir y caer moribundo sobre quien aún no ha actuado con el flujo real del servidor (nadie pierde una acción a medio elegir; el aturdido pierde la ronda siguiente; el moribundo no bloquea la barrera) |
+| `timers` | F4: autoturno del servidor con reloj acelerado (`UMBRAL_TIME_SCALE`): un jugador pasivo no bloquea la ronda; «esperando…» con cuenta atrás |
+| `time` | F4: aviso común «La noche se acaba», «Añadir tiempo» solo anfitrión, pregunta de tiempo con votos visibles, empate = +1 ronda, anfitrión decide al votar |
 | `desktop` | 1280x800: capturas y sin scroll horizontal |
 
 Salida: `PASS/FAIL` por comprobación y capturas en `test/e2e/shots/` (o `--shots`). Código de salida 1 si algo falla.
 No usa la red externa. El escaneo de privacidad solo vigila mientras la partida no ha terminado (tras el desenlace todo es público).
+
+Variables de servidor para pruebas: `UMBRAL_READ_MS` (lectura previa a actuar sobre otros; 10000 por defecto, el E2E usa 0), `UMBRAL_TIME_SCALE` (multiplica todos los límites del reloj: p. ej. 0.08 = 12 veces más rápido).

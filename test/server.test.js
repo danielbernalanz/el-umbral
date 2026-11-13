@@ -8,7 +8,7 @@ const { ENGINE_DIR, botStep, mkRng } = require("./helpers/bot");
 const L = require("./helpers/leakcheck");
 
 function boot(opts) {
-  const app = createServer(Object.assign({ engineDir: ENGINE_DIR, publicDir: "/nonexistent-public" }, opts || {}));
+  const app = createServer(Object.assign({ readMs: 0, engineDir: ENGINE_DIR, publicDir: "/nonexistent-public" }, opts || {}));
   return new Promise((resolve) => app.server.listen(0, "127.0.0.1", () => resolve(Object.assign(app, { port: app.server.address().port }))));
 }
 const shut = (app) => new Promise((r) => { app.rooms.closeAll(); app.server.closeAllConnections && app.server.closeAllConnections(); app.server.close(() => r()); });

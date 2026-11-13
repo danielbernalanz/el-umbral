@@ -27,7 +27,7 @@ function createServer(opts) {
   const publicDir = opts.publicDir || path.join(__dirname, "..", "public");
   const engineDir = opts.engineDir || process.env.ENGINE_DIR || publicDir;
   ["data.js", "engine.js"].forEach((f) => { if (!fs.existsSync(path.join(engineDir, f))) throw new Error("No se encuentra " + f + " en ENGINE_DIR (" + engineDir + "). Copia el cliente a public/ o define ENGINE_DIR."); });
-  const rooms = new Rooms({ engineDir, maxRooms: opts.maxRooms || Number(process.env.MAX_ROOMS) || 50, now, idleMs: opts.idleMs, endedMs: opts.endedMs });
+  const rooms = new Rooms({ engineDir, maxRooms: opts.maxRooms || Number(process.env.MAX_ROOMS) || 50, now, idleMs: opts.idleMs, endedMs: opts.endedMs, readMs: opts.readMs, timeScale: opts.timeScale });
   const joinLimit = limiter(opts.joinPerMin || 20, 60000, now);   /* crear/unirse por IP */
   const cmdLimit = limiter(opts.cmdPerSec || 10, 1000, now);      /* comandos por token */
   const startedAt = now();
@@ -137,6 +137,7 @@ function createServer(opts) {
 
   const timers = [
     setInterval(() => rooms.heartbeat(), 20000),
+    setInterval(() => rooms.tick(), opts.tickMs || 1000),
     setInterval(() => { rooms.sweep(); joinLimit.sweep(); cmdLimit.sweep(); }, 60000)
   ];
   timers.forEach((t) => t.unref && t.unref());
