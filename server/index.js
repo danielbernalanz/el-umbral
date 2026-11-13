@@ -145,8 +145,9 @@ function createServer(opts) {
     try { rel = decodeURIComponent(url.pathname); } catch (e) { res.writeHead(400); return res.end(); }
     if (rel.indexOf("\0") !== -1) { res.writeHead(400); return res.end(); }
     if (rel.endsWith("/")) rel += "index.html";
-    const file = path.normalize(path.join(publicDir, rel));
-    if (file !== publicDir && file.indexOf(publicDir + path.sep) !== 0) { res.writeHead(403); return res.end(); }
+    const root = path.resolve(publicDir);
+    const file = path.normalize(path.join(root, rel));
+    if (file !== root && file.indexOf(root + path.sep) !== 0) { res.writeHead(403); return res.end(); }
     fs.stat(file, (err, st) => {
       if (err || !st.isFile()) { res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" }); return res.end("No encontrado"); }
       /* Siempre revalidar (sw.js y la app se actualizan al desplegar); ETag por tamaño+mtime para responder 304 sin cuerpo. */

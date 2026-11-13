@@ -2,7 +2,7 @@
 /* Bots que juegan SOLO con la vista filtrada de su jugador (como un cliente real) y envían comandos por Game.exec.
    Referencia de comandos legales: scratchpad/work/smart.js y smart_human.js (mismo repertorio, elección aleatoria sesgada). */
 const path = require("node:path");
-const ENGINE_DIR = process.env.ENGINE_DIR || "/tmp/claude-0/-home-claude/7b586fea-69a6-5d02-a28a-5cd182c7f952/scratchpad/apk/assets/www";
+const ENGINE_DIR = process.env.ENGINE_DIR || "public";
 
 function mkRng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 

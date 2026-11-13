@@ -3,3 +3,10 @@ node_modules/
 .env
 tmp/
 test/e2e/shots/
+# Artefactos privados (firma, APK, copias locales) — nunca al repo
+ElUmbral-privado.zip
+*.apk
+*.p12
+*.pem
+# Worktrees de trabajo
+/work/

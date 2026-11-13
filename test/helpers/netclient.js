@@ -8,7 +8,7 @@ function request(port, method, path, body, token, raw) {
     const headers = { "Content-Type": "application/json" };
     if (token) headers["x-token"] = token;
     if (data !== null) headers["Content-Length"] = Buffer.byteLength(data);
-    const req = http.request({ host: "127.0.0.1", port, method, path, headers }, (res) => {
+    const req = http.request({ host: "127.0.0.1", port, method, path, headers, agent: false }, (res) => {
       const chunks = [];
       res.on("data", (c) => chunks.push(c));
       res.on("end", () => { const txt = Buffer.concat(chunks).toString("utf8"); let json = null; try { json = JSON.parse(txt); } catch (e) { /* no JSON */ } resolve({ status: res.statusCode, headers: res.headers, text: txt, json }); });
