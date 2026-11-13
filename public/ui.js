@@ -101,6 +101,9 @@
     const s = U.getState(); if (!s || !p) return;
     const key = s.round + ":" + p.id; if (key === fxTurnKey) return; fxTurnKey = key;
     const d = p.dead ? null : U.getSince(p.id);
+    if (p.dying) fxScreen("hurt", "danger", true, "slow");
+    else if (d && d.hpNow < d.hpFrom) fxScreen("hurt", "danger", true);
+    if (d && d.notes.some(function (n) { return /rompiste tu pacto/i.test(n); })) fxScreen("crack", "gold", true);
     if (p.dying) { fxv("moribundo"); fxc("latido"); return; }
     if (offer && !offer.done) { fxv("oferta"); return; }
     if (d && d.notes.some(function (n) { return ATK_RE.test(n); })) { fxv("ataque"); return; }
@@ -112,6 +115,67 @@
     if (!p) return;
     if (p.dying) { fxv("moribundo"); fxc("latido"); } else if (typeof hp0 === "number" && p.hp < hp0) fxv("herida");
   }
+  /* ---- animaciones con sentido (v1.6.2) ----
+     Cada efecto comunica algo que acaba de pasar (resultado, herida, curación, sello...). Solo transform/opacidad, siempre finitas.
+     Lo secreto solo se anima en la pantalla de quien actúa; en el Consejo, solo lo ya público. Se apagan con prefers-reduced-motion. */
+  function motionOn() { try { return !window.UmbralFX || window.UmbralFX.motion(); } catch (e) { return true; } }
+  const FX_KIND = {
+    apunalar: ["slash", "danger"], cazar: ["claws", "danger"], devorar: ["claws", "danger"], aturdir: ["impact", "danger"], envenenar: ["drip", "dark"], maldecir: ["close", "dark"],
+    hechizar: ["flash", "dark"], robar: ["snatch", "dark"], investigar: ["scan", "lore"], explorar: ["scan", "ember"], proteger: ["shield", "guard"], resistir: ["shield", "guard"],
+    tender: ["shield", "heal"], meditar: ["glow", "lore"], descansar: ["glow", "heal"], socorrer: ["glow", "heal"], bendecir: ["glow", "gold"], alzar: ["glow", "dark"],
+    entrenar: ["impact", "ember"], apostar: ["coin", "ember"], ceder: ["close", "dark"], sombra_espia: ["scan", "dark"], sombra_guarda: ["shield", "dark"], sombra_hostiga: ["close", "dark"]
+  };
+  const ASP_FAM = { fuego: "ember", hielo: "lore", luz: "gold", sangre: "danger", sombra: "dark", vacio: "dark" };
+  function fxHTML(name) {
+    if (name === "claws" || name === "drip") return "<i></i><i></i><i></i>";
+    if (name === "flash") return '<i class="core"></i><i class="ring"></i>';
+    if (name === "crack") return '<i class="a"></i><i class="b"></i>';
+    if (name === "snatch") return "<i>" + ic("a_robar") + "</i>";
+    return "<i></i>";
+  }
+  /* Capa de efecto sobre un contenedor (o sobre toda la pantalla); una sola a la vez por contenedor; se retira sola. */
+  function fxPlay(host, name, fam, ok, cls) {
+    if (!motionOn()) return;
+    const screen = !host;
+    host = host || document.body;
+    Array.prototype.slice.call(host.children).forEach(function (c) { if (c.classList && c.classList.contains("fxl") && (!screen || c.classList.contains("screen"))) c.remove(); });
+    const l = document.createElement("div");
+    l.className = "fxl fx-" + name + " f-" + fam + (screen ? " screen" : "") + (ok === false ? " ko" : "") + (cls ? " " + cls : "");
+    l.setAttribute("aria-hidden", "true");
+    l.innerHTML = fxHTML(name);
+    host.appendChild(l);
+    setTimeout(function () { if (l.parentNode) l.remove(); }, 1200);
+  }
+  function fxScreen(name, fam, ok, cls) { fxPlay(null, name, fam, ok, cls); }
+  function fxClass(el, cls, ms) {
+    if (!el || !motionOn()) return;
+    el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
+    setTimeout(function () { el.classList.remove(cls); }, ms || 600);
+  }
+  const fxSeen = {};
+  function fxOnce(key) { if (fxSeen[key]) return false; fxSeen[key] = 1; return true; }
+  function fxGameKey() { const s = U.getState(); return s ? String(s.createdAt || s.startedAt || 0) : "0"; }
+  function fxReset() { [fxSeen, fxHpLast, fxResPrev].forEach(function (o) { Object.keys(o).forEach(function (k) { delete o[k]; }); }); }
+  function fxIn(el, key) { if (el && !el.classList.contains("hidden") && fxOnce(fxGameKey() + ":" + key)) fxClass(el, "fxin", 700); }
+  /* ¿Falló de verdad? Con tirada, por la tirada; sin ella, solo si el motor cuenta que alguien se interpuso o el conjuro rebotó. */
+  function fxFailed(r) { return !!r && r.success === false && (r.die > 0 || /se interpone|rebota|frustra|desv[ií]a|se disipa/i.test(r.outcome || "")); }
+  function fxActionOpts(a, res, hp0, p2) {
+    const k = FX_KIND[a.id] || null;
+    return { fx: k ? { name: k[0], fam: k[1], ok: !fxFailed(res) } : null, hit: !!p2 && typeof hp0 === "number" && p2.hp < hp0, heal: !!p2 && typeof hp0 === "number" && p2.hp > hp0, dying: !!(p2 && p2.dying) };
+  }
+  /* Vitalidad: temblor al bajar, latido al subir (solo en tu propio panel). */
+  const fxHpLast = {};
+  function fxHp(p, el) {
+    const s = U.getState(), g = fxGameKey(), prev = fxHpLast[p.id];
+    fxHpLast[p.id] = { g: g, hp: p.hp };
+    if (!el || !prev || prev.g !== g || prev.hp === p.hp) return;
+    fxClass(el, p.hp < prev.hp ? "dn" : "up", 600);
+  }
+  /* Mismo efecto para cualquier herida: no delata de dónde viene. */
+  function mutFx(res, name, fam) {
+    run(res, function (r) { toast(r.msg, !r.ok); if (r.ok && r.accepted) fxScreen(name, fam, true); renderPrivate(); });
+  }
+
   const RUMOR_RE = /^Se rumorea/;
   const GROUP_ICON = { recuperacion: "a_descansar", pactos: "p_pacto", sucias: "a_apostar", armas: "a_apunalar", sombras: "t_sombras" };
 
@@ -514,11 +578,15 @@
     renderPacts(p);
     renderAdvice(p);
     renderOffer(p);
+    fxIn($("privateOffer"), "of:" + s.round + ":" + p.id);
+    fxIn($("eventBanner"), "ev:" + s.round + ":" + p.id);
+    fxIn($("privateGear"), "gf:" + s.round + ":" + p.id);
     renderHand(p);
     renderPactOffers(p);
     const fresh = U.unlockNotices(p);
     if (fresh.length) toast(fresh.length > 2 ? "Se te abren " + fresh.length + " acciones nuevas (mira «Más acciones»; las intuiciones quedan en tu ficha)." : fresh.join(" "), false);
     $("privateStats").innerHTML = statsHTML(p);
+    fxHp(p, document.querySelector("#privateStats .hearts"));
     renderSheet(p);
     renderActions(p);
     updateStatus();
@@ -589,7 +657,7 @@
         '<p class="small"><b>Pierdes</b></p>' + o.losses.map(function (g) { return '<div class="stline"><span class="f-danger" style="color:var(--ic)">' + ic("ui_fallo") + '</span><span>− ' + esc(g) + '</span></div>'; }).join("") +
         '<p class="small muted">Sin responder, cuenta como rechazo.</p>' +
         '<div class="row"><button class="danger smallbtn" id="offerYes">' + ic("t_asesino") + 'Convertirme en Asesino</button><button class="primary smallbtn" id="offerNo">' + ic("a_resistir") + 'Rechazar</button></div>';
-      $("offerYes").onclick = function () { mut(U.answerOffer(p.id, true)); };
+      $("offerYes").onclick = function () { mutFx(U.answerOffer(p.id, true), "close", "dark"); };
       $("offerNo").onclick = function () { mut(U.answerOffer(p.id, false)); };
       return;
     }
@@ -600,7 +668,7 @@
       '<p class="small muted">Aceptar tiene un precio oculto. ' + refuse +
       ' Sin responder, cuenta como rechazo.</p>' +
       '<div class="row"><button class="primary smallbtn" id="offerYes">' + ic("ui_ok") + 'Aceptar</button><button class="ghost smallbtn" id="offerNo">' + ic("ui_cerrar") + 'Rechazar</button></div>';
-    $("offerYes").onclick = function () { mut(U.answerOffer(p.id, true)); };
+    $("offerYes").onclick = function () { mutFx(U.answerOffer(p.id, true), "seal", "dark"); };
     $("offerNo").onclick = function () { mut(U.answerOffer(p.id, false)); };
   }
 
@@ -777,11 +845,18 @@
     ["desatado", "Desatado", "Más potente (+1) y deja un estallido visible, pero más difícil (+1), te mancha (+3 oscuridad) y si falla te estalla en las manos (2 de daño)."]
   ];
   function doCast(spellId, targetId, mode) {
-    const p = U.currentPlayer();
+    const p = U.currentPlayer(), hp0 = p.hp;
     run(U.cast(p.id, spellId, targetId, mode), function (res) {
       if (!res.ok) { if (NET && U.currentPlayer().acted) { endTurn(); return; } $("actionHint").textContent = onl(res.msg); return; }
       pendingSpell = null;
-      showRoll({ title: "CONJURO", icon: "a_conjurar", result: res, text: res.outcome, buttons: [{ label: "Continuar", cls: "primary", onClick: endTurn }] });
+      const p2 = U.currentPlayer(), sp = (p2.spells || []).find(function (x) { return x.id === spellId; }) || (p.spells || []).find(function (x) { return x.id === spellId; });
+      const o = fxActionOpts({ id: "conjurar" }, res, hp0, p2);
+      if (sp) {
+        const af = ASP_FAM[sp.aspect] || "lore";
+        o.fx = sp.kind === "off" ? { name: "flash", fam: af, ok: !fxFailed(res), cls: sp.aspect === "vacio" ? "vac" : "" }
+          : (sp.form === "sanar" || sp.form === "purga") ? { name: "glow", fam: "heal", ok: !fxFailed(res) } : { name: "shield", fam: af, ok: !fxFailed(res) };
+      }
+      showRoll({ title: "CONJURO", icon: "a_conjurar", result: res, text: res.outcome, fx: o.fx, hit: o.hit, heal: o.heal, dying: o.dying, buttons: [{ label: "Continuar", cls: "primary", onClick: endTurn }] });
     });
   }
   function spellLine(sp, info) {
@@ -996,7 +1071,8 @@
         { label: "Quedarme con esto", cls: "", onClick: endTurn },
         { label: "Forzar el destino", cls: "danger", onClick: function () { doPush(p.id); } }
       ] : [{ label: "Continuar", cls: "primary", onClick: endTurn }];
-      showRoll({ title: a.name.toUpperCase(), icon: "a_" + a.id, result: res, text: res.outcome, buttons: buttons });
+      const o = fxActionOpts(a, res, hp0, U.currentPlayer());
+      showRoll({ title: a.name.toUpperCase(), icon: "a_" + a.id, result: res, text: res.outcome, fx: o.fx, hit: o.hit, heal: o.heal, dying: o.dying, buttons: buttons });
     });
   }
 
@@ -1005,7 +1081,8 @@
     run(U.pushLuck(actorId), function (r) {
       if (!r.ok) { endTurn(); return; }
       fxSelf(U.currentPlayer(), hp0);
-      showRoll({ title: "FORZAR EL DESTINO", icon: "ui_critico", result: r, text: r.outcome, buttons: [{ label: "Continuar", cls: "primary", onClick: endTurn }] });
+      const p2 = U.currentPlayer();
+      showRoll({ title: "FORZAR EL DESTINO", icon: "ui_critico", result: r, text: r.outcome, fx: { name: "flash", fam: "ember", ok: !fxFailed(r) }, hit: p2.hp < hp0, heal: p2.hp > hp0, dying: !!p2.dying, buttons: [{ label: "Continuar", cls: "primary", onClick: endTurn }] });
     });
   }
 
@@ -1042,7 +1119,8 @@
         run(U.encounterAct(p.id, o.id), function (r) {
           if (!r.ok) { toast(r.msg, true); endTurn(); return; }
           fxSelf(U.currentPlayer(), hp0);
-          showRoll({ title: e.name.toUpperCase(), icon: "e_viajero", result: r, text: r.outcome, buttons: [{ label: "Continuar", cls: "primary", onClick: endTurn }] });
+          const p2 = U.currentPlayer();
+          showRoll({ title: e.name.toUpperCase(), icon: "e_viajero", result: r, text: r.outcome, hit: p2.hp < hp0, heal: p2.hp > hp0, dying: !!p2.dying, buttons: [{ label: "Continuar", cls: "primary", onClick: endTurn }] });
         });
       } };
     });
@@ -1281,7 +1359,7 @@
         '<div class="row"><button class="primary smallbtn" data-pact="' + o.idx + '" data-yes="1">' + ic("ui_ok") + 'Aceptar</button><button class="ghost smallbtn" data-pact="' + o.idx + '">' + ic("ui_cerrar") + 'Rechazar</button></div>';
     }).join("") + '<p class="small">Si eliges una acción sin responder, se rechaza.</p>';
     Array.prototype.forEach.call(box.querySelectorAll("[data-pact]"), function (b) {
-      b.onclick = function () { mut(U.answerPact(p.id, Number(b.getAttribute("data-pact")), !!b.getAttribute("data-yes"))); };
+      b.onclick = function () { mutFx(U.answerPact(p.id, Number(b.getAttribute("data-pact")), !!b.getAttribute("data-yes")), "seal", "gold"); };
     });
   }
 
@@ -1305,10 +1383,14 @@
     const r = list[i].res;
     const next = { label: i + 1 < list.length ? "Continuar" : "Cerrar el Consejo", cls: "primary", onClick: function () { showCouncilResults(list, i + 1); } };
     hideAll(); $("councilPanel").classList.remove("hidden");
-    showRoll({ title: "RESOLUCIÓN PÚBLICA", icon: list[i].type === "acusacion" ? "a_acusar" : list[i].type === "emboscada" ? "a_enfrentar" : list[i].type === "romper" ? "a_romper" : "ph_resolucion", result: r.kind === "roll" ? r.roll : {}, duel: r.duel, text: r.text, buttons: [next] });
+    /* Solo lo ya público: acusación = foco; emboscada = tajo (parada si pierde el duelo); romper silencio = sello que se parte. */
+    const cok = r.duel ? r.duel.attacker.total > r.duel.defender.total : r.roll ? !!r.roll.success : true;
+    const cfx = list[i].type === "acusacion" ? { name: "focus", fam: "danger", ok: true } : list[i].type === "emboscada" ? { name: "slash", fam: "danger", ok: cok } : list[i].type === "romper" ? { name: "crack", fam: "gold", ok: true } : null;
+    showRoll({ title: "RESOLUCIÓN PÚBLICA", fx: cfx, icon: list[i].type === "acusacion" ? "a_acusar" : list[i].type === "emboscada" ? "a_enfrentar" : list[i].type === "romper" ? "a_romper" : "ph_resolucion", result: r.kind === "roll" ? r.roll : {}, duel: r.duel, text: r.text, buttons: [next] });
   }
 
   /* ---------------- resolución ---------------- */
+  const fxResPrev = {};
   function renderResolution(entries) {
     stopTimer();
     hideAll();
@@ -1326,6 +1408,12 @@
       return '<div class="player' + (p.dead ? " dead" : "") + '"><div class="prow">' + playerMedal(p) + '<div class="grow"><div class="row between"><b>' + esc(p.name) + '</b><span class="small">' + (p.dead ? 'Eliminado' : p.dying ? 'Necesita socorro' : 'En juego') + '</span></div>' +
         '<div class="small">' + esc(U.visibleHealth(p)) + '</div></div></div></div>';
     }).join("");
+    { const g = fxGameKey(), rows = $("resPlayers").children;
+      s.players.forEach(function (p, i) {
+        const st = p.dead ? "dead" : p.dying ? "dying" : "ok", k = "res:" + g + ":" + p.id, prev = fxResPrev[k];
+        fxResPrev[k] = st;
+        if (prev && prev !== st && st !== "ok") fxClass(rows[i], st === "dead" ? "fx-dead" : "fx-dying", 700);
+      }); }
     setLbl($("btnNextRound"), s.round >= U.maxRounds() ? "Ver el desenlace" : "Siguiente ronda");
     { const nb = $("btnNextRound"); if (!nb.querySelector(".ic")) nb.insertAdjacentHTML("afterbegin", ic(s.round >= U.maxRounds() ? "ph_desenlace" : "ui_continuar")); else nb.querySelector(".ic").outerHTML = ic(s.round >= U.maxRounds() ? "ph_desenlace" : "ui_continuar"); }
     updateStatus();
@@ -1343,7 +1431,7 @@
   /* ---------------- desenlace ---------------- */
   function renderEnding(e) {
     stopTimer(); updateClock();
-    { const was = $("ending").classList.contains("hidden"); fxGame(false); if (was && e) fxc("desenlace"); }
+    { const was = $("ending").classList.contains("hidden"); fxGame(false); if (was && e) { fxc("desenlace"); fxClass($("endingSigil"), "fx-sigil", 900); fxReset(); } }
     $("game").classList.add("hidden");
     $("start").classList.add("hidden");
     $("ending").classList.remove("hidden");
@@ -1473,6 +1561,9 @@
     $("rollBanner").className = "rollbanner";
     $("rollOutcome").textContent = "";
     $("rollActions").innerHTML = "";
+    const card = overlay.querySelector(".rollcard");
+    Array.prototype.slice.call(card.children).forEach(function (c) { if (c.classList.contains("fxl")) c.remove(); });
+    card.classList.remove("shk");
     const stage = $("rollStage");
     const duel = opts.duel;
     if (duel) {
@@ -1492,30 +1583,37 @@
         $("rollDie").textContent = 1 + Math.floor(Math.random() * 6);
       }
     }, 70) : null;
+    if (iv && motionOn()) { Array.prototype.forEach.call(stage.querySelectorAll(".die"), function (d) { d.classList.add("rolling"); }); }
     setTimeout(function () {
       if (iv) clearInterval(iv);
       const r = opts.result;
       if (duel) {
         $("dieA").textContent = duel.attacker.die;
         $("dieB").textContent = duel.defender.die;
-        $("dieA").className = "die " + (duel.attacker.total > duel.defender.total ? "good" : "bad");
-        $("dieB").className = "die " + (duel.defender.total >= duel.attacker.total ? "good" : "bad");
+        { const aw = duel.attacker.total > duel.defender.total;
+          $("dieA").className = "die " + (aw ? "good land" : "bad fum");
+          $("dieB").className = "die " + (!aw ? "good land" : "bad fum"); }
         $("mathA").textContent = "d6 + " + duel.attacker.bonus + " = " + duel.attacker.total;
         $("mathB").textContent = "d6 + " + duel.defender.bonus + " = " + duel.defender.total;
         $("rollMath").textContent = "Duelo de dados";
       } else if (r && r.die) {
         $("rollDie").textContent = r.die;
-        $("rollDie").className = "die " + (r.success ? "good" : "bad");
-        $("rollBanner").innerHTML = ic(r.success ? "ui_exito" : "ui_fallo") + (r.success ? "ÉXITO" : "FALLO"); $("rollBanner").className = "rollbanner " + (r.success ? "good" : "bad");
+        $("rollDie").className = "die " + (r.success ? "good" : "bad") + (r.crit ? " crit" : r.fumble ? " fum" : r.success ? " land" : "");
+        $("rollBanner").innerHTML = ic(r.success ? "ui_exito" : "ui_fallo") + (r.success ? "ÉXITO" : "FALLO"); $("rollBanner").className = "rollbanner pop " + (r.success ? "good" : "bad");
         $("rollWhy").textContent = (r.why || []).length ? "Influye: " + r.why.join(" · ") : "";
         $("rollMath").textContent = "d6 " + signed(r.stat) + (r.focus ? " + foco " + r.focus : "") + (r.status ? " (incluye " + signed(r.status) + " por estados)" : "") + " = " + r.total + " · dificultad " + r.diff;
-        if (r.crit) { $("rollBanner").innerHTML = ic("ui_critico") + "✦ FAVOR DEL UMBRAL"; $("rollBanner").className = "rollbanner good"; }
-        if (r.fumble) { $("rollBanner").innerHTML = ic("s_muerto") + "☠ PRESAGIO"; $("rollBanner").className = "rollbanner bad"; }
+        if (r.crit) { $("rollBanner").innerHTML = ic("ui_critico") + "✦ FAVOR DEL UMBRAL"; $("rollBanner").className = "rollbanner pop good"; }
+        if (r.fumble) { $("rollBanner").innerHTML = ic("s_muerto") + "☠ PRESAGIO"; $("rollBanner").className = "rollbanner pop bad"; }
       } else {
         $("rollDie").innerHTML = ic(opts.icon || "t_umbral");
         $("rollDie").className = "die";
       }
       $("rollOutcome").textContent = opts.text || "";
+      /* Efecto del resultado: la acción (si falló, se nota), después lo que te pasó a ti. */
+      if (opts.fx) fxPlay(card, opts.fx.name, opts.fx.fam, opts.fx.ok, opts.fx.cls);
+      else if (opts.heal) fxPlay(card, "glow", "heal", true);
+      if (opts.dying) fxScreen("hurt", "danger", true, "slow");
+      else if (opts.hit) { fxScreen("hurt", "danger", true); fxClass(card, "shk", 450); }
       (opts.buttons || []).forEach(function (b) {
         const el = document.createElement("button");
         el.className = b.cls || "";

@@ -446,8 +446,7 @@ details.items>summary{font-weight:700}
 
 /* v1.2.0: ambiente, traspaso tenso, rumores y epílogo */
 .fxrow{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:2px 0 4px}
-.mood{margin:2px 0 0;font-style:italic;letter-spacing:.02em;color:var(--gold,#c9a55c);opacity:.85;min-height:1.4em;animation:moodpulse 4.5s ease-in-out infinite}
-@keyframes moodpulse{0%,100%{opacity:.55}50%{opacity:.95}}
+.mood{margin:2px 0 0;font-style:italic;letter-spacing:.02em;color:var(--gold,#c9a55c);opacity:.85;min-height:1.4em}
 .notice.rumor{border-left-color:#7c6f86;background:linear-gradient(90deg,rgba(40,36,48,.55),rgba(28,24,34,.7));font-style:italic;color:#cfc6d6}
 .epirow{margin:8px 0}
 .epirow b{display:block}
@@ -501,3 +500,105 @@ button.primary.big:disabled{opacity:.45}
   .roomplayers{grid-template-columns:1fr 1fr}
   #game>.card{max-width:880px;margin-left:auto;margin-right:auto}
 }
+
+/* v1.6.2: animaciones con sentido. Solo transform/opacidad, siempre finitas, ligadas a lo que ocurre; prefers-reduced-motion las anula (regla global arriba). */
+.rollcard{position:relative}
+.fxl{position:absolute;left:0;right:0;top:0;bottom:0;pointer-events:none;overflow:hidden;border-radius:20px;color:var(--ic,var(--c-gold));z-index:2}
+.fxl.screen{position:fixed;border-radius:0;z-index:60}
+.fxl i{position:absolute;display:block;opacity:0}
+.fxl i .ic{width:100%;height:100%;display:block}
+/* tajo (apuñalar): estela diagonal; si falla, se detiene a medio camino */
+.fx-slash i,.fx-claws i{left:-10%;top:38%;width:120%;height:3px;margin-top:-1px;background:linear-gradient(90deg,transparent,#fff 45%,currentColor 60%,transparent);box-shadow:0 0 10px currentColor;animation:fx-slash .34s ease-out both}
+.fx-claws i:nth-child(1){top:30%}.fx-claws i:nth-child(2){top:38%;animation-delay:.06s}.fx-claws i:nth-child(3){top:46%;animation-delay:.12s}
+.fx-slash.ko i,.fx-claws.ko i{animation-name:fx-parry}
+@keyframes fx-slash{0%{opacity:0;transform:rotate(-28deg) translateX(-60%) scaleX(.3)}30%{opacity:1}100%{opacity:0;transform:rotate(-28deg) translateX(60%) scaleX(1)}}
+@keyframes fx-parry{0%{opacity:0;transform:rotate(-28deg) translateX(-60%) scaleX(.3)}40%{opacity:.7;transform:rotate(-28deg) translateX(-12%) scaleX(.6)}100%{opacity:0;transform:rotate(-28deg) translateX(-26%) scaleX(.4)}}
+/* golpe / anillo (aturdir, entrenar) y anillo que se cierra (acusar) */
+.fx-impact i,.fx-focus i,.fx-seal i,.fx-flash .ring{left:50%;top:38%;width:96px;height:96px;margin:-48px 0 0 -48px;border-radius:50%;border:3px solid currentColor;box-shadow:0 0 14px currentColor;animation:fx-ring .45s ease-out both}
+.fx-impact.ko i{animation-name:fx-ringko}
+.fx-focus i{animation-name:fx-focusin;animation-duration:.5s}
+.fx-seal i{border-style:double;border-width:5px;animation-name:fx-sealin;animation-duration:.55s;animation-timing-function:cubic-bezier(.2,.9,.3,1.2)}
+@keyframes fx-ring{0%{opacity:.95;transform:scale(.2)}100%{opacity:0;transform:scale(1.9)}}
+@keyframes fx-ringko{0%{opacity:.5;transform:scale(.2)}100%{opacity:0;transform:scale(.9)}}
+@keyframes fx-focusin{0%{opacity:0;transform:scale(2.3)}60%{opacity:1;transform:scale(.9)}100%{opacity:0;transform:scale(.75)}}
+@keyframes fx-sealin{0%{opacity:0;transform:scale(1.9) rotate(-12deg)}55%{opacity:1;transform:scale(1) rotate(0)}100%{opacity:0;transform:scale(1.05)}}
+/* veneno: gotas que caen */
+.fx-drip i{top:16%;width:9px;height:13px;margin-left:-4px;border-radius:50% 50% 50% 50%/62% 62% 38% 38%;background:currentColor;box-shadow:0 0 8px currentColor;animation:fx-drip .62s ease-in both}
+.fx-drip i:nth-child(1){left:40%}.fx-drip i:nth-child(2){left:50%;animation-delay:.09s}.fx-drip i:nth-child(3){left:60%;animation-delay:.18s}
+.fx-drip.ko i{animation-name:fx-dripko}
+@keyframes fx-drip{0%{opacity:0;transform:translateY(0)}20%{opacity:1}100%{opacity:0;transform:translateY(96px)}}
+@keyframes fx-dripko{0%{opacity:0;transform:translateY(0)}20%{opacity:.6}100%{opacity:0;transform:translateY(30px)}}
+/* cierre de sombras (ceder, maldecir, sombras hostigadoras) */
+.fx-close i{left:-20%;top:-20%;width:140%;height:140%;background:radial-gradient(circle,transparent 22%,rgba(8,4,16,.95) 72%);animation:fx-close .75s ease-in-out both}
+.fx-close.ko i{animation-name:fx-closeko}
+@keyframes fx-close{0%{opacity:0;transform:scale(1.7)}55%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(.85)}}
+@keyframes fx-closeko{0%{opacity:0;transform:scale(1.7)}50%{opacity:.5;transform:scale(1.2)}100%{opacity:0;transform:scale(1.4)}}
+/* luz que sube (curar, socorrer, bendecir, descansar, meditar) */
+.fx-glow i{left:50%;top:44%;width:150px;height:150px;margin:-75px 0 0 -75px;border-radius:50%;background:radial-gradient(circle,currentColor,transparent 68%);animation:fx-glow .7s ease-out both}
+.fx-glow.ko i{animation-name:fx-glowko}
+@keyframes fx-glow{0%{opacity:0;transform:translateY(14px) scale(.5)}35%{opacity:.55}100%{opacity:0;transform:translateY(-22px) scale(1.35)}}
+@keyframes fx-glowko{0%{opacity:0;transform:translateY(14px) scale(.5)}35%{opacity:.18}100%{opacity:0;transform:translateY(0) scale(.9)}}
+/* escudo (proteger, resistir): se planta; si falla, se agrieta y cae */
+.fx-shield i{left:50%;top:38%;width:92px;height:110px;margin:-55px 0 0 -46px;border:3px solid currentColor;border-radius:46px 46px 48px 48px/38px 38px 62px 62px;box-shadow:0 0 14px currentColor,inset 0 0 12px currentColor;animation:fx-shield .55s cubic-bezier(.2,.9,.3,1.3) both}
+.fx-shield.ko i{animation-name:fx-shieldko}
+@keyframes fx-shield{0%{opacity:0;transform:scale(1.6)}45%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.05)}}
+@keyframes fx-shieldko{0%{opacity:0;transform:scale(1.6)}35%{opacity:.9;transform:scale(1)}100%{opacity:0;transform:translateY(22px) rotate(8deg) scale(.95)}}
+/* barrido de luz (investigar, explorar, sombras espías) */
+.fx-scan i{top:0;bottom:0;left:0;width:34%;background:linear-gradient(90deg,transparent,currentColor,transparent);animation:fx-scan .65s ease-in-out both}
+.fx-scan.ko i{animation-name:fx-scanko}
+@keyframes fx-scan{0%{opacity:0;transform:translateX(-100%)}20%{opacity:.4}100%{opacity:0;transform:translateX(300%)}}
+@keyframes fx-scanko{0%{opacity:0;transform:translateX(-100%)}20%{opacity:.14}100%{opacity:0;transform:translateX(300%)}}
+/* destello de conjuro (color por aspecto; el vacío se contrae; si falla, chisporrotea) */
+.fx-flash .core{left:50%;top:38%;width:130px;height:130px;margin:-65px 0 0 -65px;border-radius:50%;background:radial-gradient(circle,#fff,currentColor 35%,transparent 70%);animation:fx-flash .5s ease-out both}
+.fx-flash .ring{animation-delay:.06s}
+.fx-flash.vac .core{animation-name:fx-implode;animation-duration:.6s}
+.fx-flash.vac .ring{animation-name:fx-focusin}
+.fx-flash.ko .core{animation-name:fx-flashko}
+.fx-flash.ko .ring{display:none}
+@keyframes fx-flash{0%{opacity:0;transform:scale(.2)}25%{opacity:.95}100%{opacity:0;transform:scale(1.8)}}
+@keyframes fx-implode{0%{opacity:0;transform:scale(2)}60%{opacity:.9;transform:scale(.3)}100%{opacity:0;transform:scale(.1)}}
+@keyframes fx-flashko{0%{opacity:0;transform:scale(.2)}25%{opacity:.35}100%{opacity:0;transform:scale(.8)}}
+/* robar: la mano pasa y se lleva algo; si falla, se retira */
+.fx-snatch i{left:50%;top:38%;width:46px;height:46px;margin:-23px 0 0 -23px;animation:fx-snatch .5s ease-in-out both}
+.fx-snatch.ko i{animation-name:fx-snatchko}
+@keyframes fx-snatch{0%{opacity:0;transform:translateX(110px)}35%{opacity:1;transform:translateX(0)}100%{opacity:0;transform:translateX(-120px)}}
+@keyframes fx-snatchko{0%{opacity:0;transform:translateX(110px)}35%{opacity:1;transform:translateX(20px)}100%{opacity:0;transform:translateX(120px)}}
+/* apostar: la moneda sube, gira y cae */
+.fx-coin i{left:50%;top:38%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f6e2a8,#c9a55c 60%,#7a5c25);border:2px solid #f6e6c6;animation:fx-coin .75s ease-out both}
+.fx-coin.ko i{background:radial-gradient(circle at 35% 30%,#d9a0a6,#a94f58 60%,#5a2429);border-color:#f3c3c8}
+@keyframes fx-coin{0%{opacity:0;transform:translateY(70px) scaleX(1)}15%{opacity:1}35%{transform:translateY(-34px) scaleX(.1)}55%{transform:translateY(-34px) scaleX(1)}75%{transform:translateY(0) scaleX(.15)}92%{opacity:1;transform:translateY(0) scaleX(1)}100%{opacity:0;transform:translateY(0) scaleX(1)}}
+/* ruptura de un pacto: el sello se parte */
+.fx-crack i{left:50%;top:38%;width:90px;height:90px;margin:-45px 0 0 -45px;border-radius:50%;border:4px solid currentColor;box-shadow:0 0 12px currentColor}
+.fx-crack i.a{clip-path:polygon(0 0,100% 0,100% 38%,0 62%);animation:fx-ca .65s ease-in both}
+.fx-crack i.b{clip-path:polygon(0 62%,100% 38%,100% 100%,0 100%);animation:fx-cb .65s ease-in both}
+@keyframes fx-ca{0%{opacity:1;transform:none}40%{opacity:1;transform:none}100%{opacity:0;transform:translate(-12px,-18px) rotate(-14deg)}}
+@keyframes fx-cb{0%{opacity:1;transform:none}40%{opacity:1;transform:none}100%{opacity:0;transform:translate(12px,18px) rotate(14deg)}}
+/* herida recibida: borde rojo y temblor; moribundo: dos latidos */
+.fx-hurt i{left:0;top:0;width:100%;height:100%;box-shadow:inset 0 0 46px 8px currentColor;animation:fx-hurt .45s ease-out both}
+.fx-hurt.slow i{animation-name:fx-dying;animation-duration:1s}
+@keyframes fx-hurt{0%{opacity:0}25%{opacity:.8}100%{opacity:0}}
+@keyframes fx-dying{0%{opacity:0}18%{opacity:.9}36%{opacity:.25}54%{opacity:.8}100%{opacity:0}}
+.shk{animation:fx-shake .4s linear both}
+@keyframes fx-shake{0%,100%{transform:none}20%{transform:translateX(-7px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(3px)}}
+.hearts{transform-origin:left center}
+.hearts.dn{animation:fx-shake .4s linear both}
+.hearts.up{animation:fx-beat .55s ease-out both}
+@keyframes fx-beat{0%{transform:none}35%{transform:scale(1.16)}100%{transform:none}}
+/* dados: sacuden mientras ruedan (número finito de vueltas) y caen con el resultado */
+.die.rolling{animation:fx-dice .14s linear 8}
+@keyframes fx-dice{0%{transform:rotate(-8deg)}25%{transform:rotate(7deg) translateY(-5px)}50%{transform:rotate(-5deg)}75%{transform:rotate(9deg) translateY(-3px)}100%{transform:rotate(-8deg)}}
+.die.land{animation:fx-land .3s cubic-bezier(.2,.9,.3,1.4) both}
+@keyframes fx-land{0%{transform:scale(1.35)}100%{transform:none}}
+.die.crit{animation:fx-crit .55s cubic-bezier(.2,.9,.3,1.4) both}
+@keyframes fx-crit{0%{transform:scale(1.55)}55%{transform:scale(.94)}80%{transform:scale(1.08)}100%{transform:none}}
+.die.fum{animation:fx-shake .4s linear both}
+.rollbanner.pop{animation:fx-bannerin .3s ease-out both}
+@keyframes fx-bannerin{0%{opacity:0;transform:scale(1.5)}100%{opacity:1;transform:none}}
+/* llegada de algo nuevo que solo se ve una vez: evento de la ronda, regalo, trato */
+.fxin{animation:fx-in .5s ease-out both}
+@keyframes fx-in{0%{opacity:0;transform:translateY(-12px)}100%{opacity:1;transform:none}}
+.fx-dead{animation:fx-fall .6s ease-out both}
+.fx-dying{animation:fx-shake .5s linear both}
+@keyframes fx-fall{from{opacity:1;transform:translateY(-4px)}}
+.fx-sigil{animation:fx-sigil .7s cubic-bezier(.2,.9,.3,1.3) both}
+@keyframes fx-sigil{0%{opacity:0;transform:scale(.6)}100%{opacity:1;transform:none}}

@@ -92,6 +92,8 @@
 
   w.UmbralFX = {
     vibrate: buzz,
+    /* Las animaciones de la interfaz (ui.js) solo se encienden si el sistema no pide reducir el movimiento. */
+    motion: function () { try { return !(w.matchMedia && w.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (e) { return true; } },
     cue: cue,
     unlock: unlock,
     /* Entra/sale de la partida: el viento solo suena durante la partida. */
