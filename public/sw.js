@@ -1,4 +1,4 @@
-const CACHE = "umbral-v16-2";
+const CACHE = "umbral-v17-0";
 const ASSETS = [
   "./",
   "./index.html",
@@ -6,6 +6,7 @@ const ASSETS = [
   "./data.js",
   "./news.js",
   "./engine.js",
+  "./npc.js",
   "./fx.js",
   "./ui.js",
   "./net.js",

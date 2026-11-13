@@ -1,4 +1,4 @@
-/* EL UMBRAL — motor de juego (v1.6.2)
+/* EL UMBRAL — motor de juego (v1.7.0)
    Sin DOM. Toda la lógica vive aquí para poder probarla con Node. */
 (function (g) {
   "use strict";
@@ -12,7 +12,7 @@
   const MAX_STAT = 6;
   const HUNT_EDGE = Number((typeof process !== "undefined" && process.env && process.env.HUNT_EDGE) || 3);
   const DEFAULT_MINUTES = 20, MIN_MINUTES = 5, MAX_MINUTES = 120, ROUNDS_CAP = 14;
-  const MIN_PLAYERS = 3;
+  const MIN_PLAYERS = 2;
   const MAX_PLAYERS = 10;
   /* Con más jugadores que roles/afinidades/secretos, se reparten en ciclo (barajados), sin repetir hasta agotar la lista. */
   function dealCycle(list, n) { let out = []; while (out.length < n) out = out.concat(shuffle(list)); return out.slice(0, n); }
@@ -133,8 +133,8 @@
       p.hp = 0; p.dying = true; p.dyingRound = r; p.status = []; p.acted = true; out.dying = true;
       p.dyingFast = !!opts.fast && maxRounds() < 10; p.socBy = {};
       epi("moribundo", p.id);
-      if (state) state.chronicle.push({ round: r, text: "✖ " + p.name + " se desploma, moribundo." + (opts.fast ? " Quien lo dejó así no le ha dado tiempo: si nadie lo socorre antes de que acabe esta ronda, morirá." : "") });
-      p.notes.push("Ronda " + r + ": te desplomas, moribundo. " + (opts.fast ? "El golpe fue de los que no perdonan: si nadie te socorre antes de que acabe ESTA ronda, morirás; cualquier golpe más te mataría." : "Si nadie te socorre antes de que acabe la próxima ronda, morirás; cualquier golpe más te mataría."));
+      if (state) state.chronicle.push({ round: r, text: "✖ " + p.name + " se desploma, moribundo." + (p.dyingFast ? " Quien lo dejó así no le ha dado tiempo: si nadie lo socorre antes de que acabe esta ronda, morirá." : " Si nadie lo socorre antes de que acabe la próxima ronda, morirá.") });
+      p.notes.push("Ronda " + r + ": te desplomas, moribundo. " + (p.dyingFast ? "El golpe fue de los que no perdonan: si nadie te socorre antes de que acabe ESTA ronda, morirás; cualquier golpe más te mataría." : "Si nadie te socorre antes de que acabe la próxima ronda, morirás; cualquier golpe más te mataría."));
     } else if (!opts.noBleed && amount >= 3 && zone) {
       if (Math.random() < (zone === "torso" ? 0.45 : 0.25)) bleed(p, 2);
     }
@@ -1270,6 +1270,7 @@
 
   function createGame(names, opts) {
     if (!Array.isArray(names) || names.length < MIN_PLAYERS || names.length > MAX_PLAYERS) throw new Error("La partida admite de " + MIN_PLAYERS + " a " + MAX_PLAYERS + " jugadores.");
+    const npcOpt = opts && Array.isArray(opts.npc) ? opts.npc : [];
     const minutes = clamp(Math.round(Number(opts && opts.minutes) || DEFAULT_MINUTES), MIN_MINUTES, MAX_MINUTES);
     const roles = dealCycle(D.ROLES, names.length);
     const affs = dealCycle(D.AFFINITIES, names.length);
@@ -1279,7 +1280,9 @@
       let clean = String(n || "").trim().slice(0, 16) || ("Jugador " + (i + 1));
       while (used[clean.toLowerCase()]) clean = clean + " " + (i + 1);
       used[clean.toLowerCase()] = true;
-      return makePlayer(clean, i, roles[i], affs[i], secrets[i]);
+      const pl = makePlayer(clean, i, roles[i], affs[i], secrets[i]);
+      if (npcOpt[i]) { pl.npc = D.NPC_PROFILES && D.NPC_PROFILES[npcOpt[i]] ? String(npcOpt[i]) : Object.keys(D.NPC_PROFILES || { prudente: 1 })[i % Object.keys(D.NPC_PROFILES || { prudente: 1 }).length]; }
+      return pl;
     });
     state = {
       v: VERSION, round: 1, turn: 0, phase: "private", handoff: false,
@@ -1298,6 +1301,42 @@
     startRound();
     save();
     return state;
+  }
+
+  /* ---------- NPC: jugadores controlados por la app (la IA vive en npc.js) ---------- */
+  /* Perfil que encaja con el historial del jugador que se sustituye (solo datos propios; nunca se muestra en público). */
+  function npcProfileFor(pid) {
+    const p = state && state.players[pid];
+    if (!p) return "prudente";
+    const heal = healCount(p) + didN(p, "proteger") + didN(p, "bendecir");
+    if (isAssassin(p) || p.corr >= 28 || didN(p, "ceder") + didN(p, "hechizar") + didN(p, "apostar") >= 2) return "oscuro";
+    if ((p.aggr || 0) >= 3 || didN(p, "apunalar") + didN(p, "robar") + didN(p, "aturdir") + didN(p, "envenenar") >= 2) return "agresivo";
+    if (heal >= 2) return "curandero";
+    return "prudente";
+  }
+  /* Un NPC toma el lugar de un jugador: hereda TODO (vitalidad, corrupción, objetos, pactos, secretos, tentación, rol de Asesino). Solo cambia la marca pública `npc`. */
+  function replaceWithNpc(pid, profile) {
+    const p = state && state.players[pid];
+    if (!p) return err("Jugador desconocido.");
+    if (p.npc) return err(p.name + " ya es un NPC.");
+    if (p.dead) return err("Ese jugador ya está eliminado.");
+    p.npc = D.NPC_PROFILES && D.NPC_PROFILES[profile] ? profile : npcProfileFor(pid);
+    p.npcSwaps = (p.npcSwaps || 0) + 1; p.npcSince = state.round;
+    state.chronicle.push({ round: state.round, text: "☾ " + p.name + " pasa a estar controlado por un NPC." });
+    glog("npc", { a: p.id, x: p.name + " pasa a ser NPC (" + p.npc + ")" });
+    save();
+    return { ok: true, profile: p.npc };
+  }
+  /* El jugador original recupera su sitio. */
+  function restoreFromNpc(pid) {
+    const p = state && state.players[pid];
+    if (!p) return err("Jugador desconocido.");
+    if (!p.npc || !p.npcSwaps) return err(p.name + " no es un NPC sustituto.");
+    p.npc = null; p.npcSince = null;
+    state.chronicle.push({ round: state.round, text: "☾ " + p.name + " recupera su sitio en la mesa." });
+    glog("npc", { a: p.id, x: p.name + " recupera su sitio" });
+    save();
+    return { ok: true };
   }
 
   /* ---------- pistas ---------- */
@@ -3072,7 +3111,7 @@
     L.push(state.players.length + " jugadores · " + e.durationMin + " min (" + hhmm(e.startedAt || state.createdAt) + "–" + hhmm(e.endedAt || Date.now()) + ") · " + Math.min(state.round, maxRounds()) + " de " + maxRounds() + " rondas");
     L.push("");
     L.push("EL REPARTO");
-    state.players.forEach(function (p) { L.push("• " + p.name + ": " + p.role.name + ", " + p.affinity.name + (isAssassin(p) ? " (acabó siendo el Asesino)" : "")); });
+    state.players.forEach(function (p) { L.push("• " + p.name + (p.npc ? " (NPC)" : "") + ": " + p.role.name + ", " + p.affinity.name + (isAssassin(p) ? " (acabó siendo el Asesino)" : "")); });
     L.push(line);
     L.push("LA CRÓNICA");
     const story = {}; buildStory().forEach(function (x) { if (x.round) story[x.round] = x.text; });
@@ -3103,7 +3142,7 @@
     if (withSecrets !== false) {
       L.push(line);
       L.push("SECRETOS REVELADOS");
-      e.players.forEach(function (p) { L.push("• " + p.name + " (" + (p.secretTitle || "secreto") + "): " + p.secret.replace(/^OBJETIVO:\s*/, "") + " → " + (p.fulfilled ? "CUMPLIDO" : "no cumplido") + (p.secretWhy ? ". " + p.secretWhy : "") + (p.rewardPaid ? " Premio recibido: " + p.rewardTitle + "." : "")); });
+      e.players.forEach(function (p) { L.push("• " + p.name + " (" + (p.secretTitle || "secreto") + "): " + p.secret.replace(/^OBJETIVO:\s*/, "") + " → " + (p.fulfilled ? "CUMPLIDO" : "no cumplido") + (p.secretWhy ? ". " + p.secretWhy : "") + (p.rewardPaid && p.fulfilled ? " Premio recibido: " + p.rewardTitle + "." : "")); });
     }
     L.push("");
     L.push("— Generado con El Umbral");
@@ -3117,7 +3156,7 @@
     L.push("fecha: " + new Date().toISOString() + (state.endAt ? " · hora de fin: " + hhmm(state.endAt) + " (inicio " + hhmm(state.createdAt) + ")" : "") + " · duración elegida: " + (state.durationMin || "-") + " min · jugada: " + Math.round(playedMs() / 60000) + " min · rondas: " + state.round + "/" + maxRounds());
     L.push("final: " + (e.title || "(sin final)") + " · ganador: " + (e.winner || "-") + (e.timedOut ? " · TIEMPO AGOTADO" : "") + (e.tableEnded ? " · cierre por la mesa" : "") + (state.extraRounds ? " · rondas añadidas: " + state.extraRounds : ""));
     state.players.forEach(function (p) {
-      L.push("J" + p.id + " " + p.name + " | " + p.role.name + "/" + p.affinity.name + " | " + (p.alignment === "asesino" ? "ASESINO(r" + p.asesinoRound + ")" : "inocente") + " | vir " + p.virtue + " cor " + p.corr + " vit " + p.hp + "/" + maxHp(p) + (p.dying ? " MORIBUNDO(r" + p.dyingRound + ")" : "") + (p.dead ? " MUERTO(" + (p.cause || "?") + ")" : "") + " | secreto: " + (p.secret && p.secret.id) + (p.secretPaid ? " (PREMIO r" + p.secretPaid + ")" : "") + " | objetos: " + (p.items.length ? p.items.map(function (i) { return i.id + (i.left !== undefined ? "x" + i.left : ""); }).join(",") : "-") + (p.ally ? " | ALIADO listo" : "") + " | agr " + (p.aggr || 0) + (aggrSummary(p) ? " (" + aggrSummary(p) + ")" : "") + " | dominio sombras " + domLevel(p) + " (" + ((p.dom && p.dom.wins) || 0) + " éxitos)" + ((p.risen || []).length ? " | alzados: " + p.risen.map(function (id) { return state.players[id] ? state.players[id].name : "?"; }).join(",") : "") + (p.risenBy !== undefined && p.risenBy !== null ? " | ALZADO por J" + p.risenBy : "") + ((p.tempOffers || 0) ? " | tentaciones ofrecidas " + p.tempOffers : ""));
+      L.push("J" + p.id + " " + p.name + (p.npc ? " [NPC " + p.npc + "]" : "") + " | " + p.role.name + "/" + p.affinity.name + " | " + (p.alignment === "asesino" ? "ASESINO(r" + p.asesinoRound + ")" : "inocente") + " | vir " + p.virtue + " cor " + p.corr + " vit " + p.hp + "/" + maxHp(p) + (p.dying ? " MORIBUNDO(r" + p.dyingRound + ")" : "") + (p.dead ? " MUERTO(" + (p.cause || "?") + ")" : "") + " | secreto: " + (p.secret && p.secret.id) + (p.secretPaid ? " (PREMIO r" + p.secretPaid + ")" : "") + " | objetos: " + (p.items.length ? p.items.map(function (i) { return i.id + (i.left !== undefined ? "x" + i.left : ""); }).join(",") : "-") + (p.ally ? " | ALIADO listo" : "") + " | agr " + (p.aggr || 0) + (aggrSummary(p) ? " (" + aggrSummary(p) + ")" : "") + " | dominio sombras " + domLevel(p) + " (" + ((p.dom && p.dom.wins) || 0) + " éxitos)" + ((p.risen || []).length ? " | alzados: " + p.risen.map(function (id) { return state.players[id] ? state.players[id].name : "?"; }).join(",") : "") + (p.risenBy !== undefined && p.risenBy !== null ? " | ALZADO por J" + p.risenBy : "") + ((p.tempOffers || 0) ? " | tentaciones ofrecidas " + p.tempOffers : ""));
     });
     const an = [];
     state.players.forEach(function (p) {
@@ -3215,7 +3254,8 @@
         clues: p.clues.length, secret: (sec && sec.text) || p.secret.text, secretTitle: sec ? sec.title : "", secretWhy: (sec && sec.why ? sec.why(p, state, fulfilled) : "") + (!fulfilled && p.secretPaid && sec && sec.reward ? " Lo cumpliste a mitad de partida y cobraste el premio, aunque lo perdiste al final: " + sec.reward.title + "." : ""), fulfilled: fulfilled,
         rewardTitle: sec && sec.reward ? sec.reward.title : "", rewardText: sec && sec.reward ? sec.reward.text : "", rewardPaid: !!p.secretPaid,
         betrayals: p.betrayals, keptPacts: p.keptPacts,
-        risenBy: p.risenBy !== undefined && p.risenBy !== null && ps[p.risenBy] ? ps[p.risenBy].name : null, via: p.asesinoVia || null
+        risenBy: p.risenBy !== undefined && p.risenBy !== null && ps[p.risenBy] ? ps[p.risenBy].name : null, via: p.asesinoVia || null,
+        npc: !!p.npc, npcProfile: p.npc || null, npcSwaps: p.npcSwaps || 0
       };
     });
 
@@ -3366,7 +3406,7 @@
     maxHp: maxHp, visibleHealth: visibleHealth, healthInfo: healthInfo,
     _health: { damage: damage, heal: heal, finish: finish, stabilize: stabilize, pickZone: pickZone, zoneLvl: zoneLvl, zoneMod: zoneMod, initHealth: initHealth },
     getSince: getSince, endAtTs: endAtTs, extEnd: extEnd, hhmm: hhmm, assassinGoal: assassinGoal, visibleActions: visibleActions, spellInfo: spellInfo, actionOdds: actionOdds, buildStory: buildStory, exportStory: exportStory, secretInfo: secretInfo, umbralInfo: umbralInfo, exportLog: exportLog, lastLogs: lastLogs, noteError: noteError,
-    finishTurn: finishTurn, nextTurn: nextTurn,
+    finishTurn: finishTurn, nextTurn: nextTurn, replaceWithNpc: replaceWithNpc, restoreFromNpc: restoreFromNpc, npcProfileFor: npcProfileFor,
     beginCouncil: beginCouncil, councilPrompt: councilPrompt,
     registerInteraction: registerLogged, endCouncil: endCouncil, resolveCouncil: resolveCouncil,
     declareOptions: declareOptions, getPactOffers: getPactOffers, answerPact: wrapLog("answerPact", answerPact),

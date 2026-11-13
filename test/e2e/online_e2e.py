@@ -226,7 +226,7 @@ def bot_step(c, rnd):
         return "wait"
     return "wait"
 
-PUBLIC_KEYS = {"id", "name", "dead", "dying", "exposed", "visibleHealth", "ready", "online", "absent", "host", "alignment", "risenBy"}
+PUBLIC_KEYS = {"npc", "id", "name", "dead", "dying", "exposed", "visibleHealth", "ready", "online", "absent", "host", "alignment", "risenBy"}
 
 TOKENS_JS = """()=>{const B=UmbralNet.backend,s=B.getState();if(!s)return null;const me=s.players[s.youId];
   const sec=B.secretInfo()||{};const pub=(s.chronicle||[]).map(x=>x.text).concat((s.publicClues||[]).map(x=>x.text));
@@ -721,9 +721,120 @@ def scenario_persist(pw, hard=False):
     finally:
         b.close(); srv.stop()
 
+# ------------------------------------------------------------------ NPC y 2 jugadores
+def run_to_end(cs, rnd, secs=240, skip=(), scan=None):
+    t0 = time.time(); n = 0
+    while time.time() - t0 < secs:
+        n += 1; res = []
+        for c in cs:
+            if c in skip: continue
+            try: res.append(bot_step(c, rnd))
+            except Exception as e: c.errors.append("BOT " + str(e)[:160]); res.append("wait")
+        if res and all(r == "end" for r in res): return True
+        if scan and n % 8 == 0: scan()
+    return False
+
+def scenario_npc2(pw):
+    """2 jugadores humanos (mínimo 2) y sala con NPC: añadir/quitar (solo anfitrión), empezar con 1 humano + NPC, partida completa, sin fugas."""
+    srv = Server().start(); b = pw.chromium.launch(); rnd = random.Random(A.seed)
+    try:
+        host, g2 = Client(b, "n2_ana", 360, 640), Client(b, "n2_luis", 360, 640)
+        open_online(host, srv.url); code = create_room(host, "Ana")
+        check("npc2: con 1 jugador no se puede empezar", host.pg.locator("#btnOnStart").is_disabled())
+        host.pg.click("#btnOnNpcAdd"); host.pg.wait_for_function("document.querySelectorAll('#roomNpcs .rplayer').length===1", timeout=8000)
+        check("npc2: 1 humano + 1 NPC ya permite empezar (mínimo 2 contando NPC)", host.pg.locator("#btnOnStart").is_enabled() and "2 /" in host.txt("#roomCount"), host.txt("#roomCount"))
+        host.shot("90_lobby_npc_360")
+        check("npc2: el NPC se ve como «NPC» con botón Quitar (solo anfitrión)", "NPC" in host.txt("#roomNpcs") and host.pg.locator("#roomNpcs [data-npcrm]").count() == 1)
+        open_online(g2, srv.url); join_room(g2, "Luis", code)
+        g2.pg.wait_for_function("document.getElementById('roomCode').textContent.trim()==='%s'" % code, timeout=8000)
+        g2.pg.wait_for_function("document.querySelectorAll('#roomNpcs .rplayer').length===1", timeout=8000)
+        check("npc2: el invitado ve al NPC pero sin controles", g2.pg.locator("#roomNpcs [data-npcrm]").count() == 0 and not g2.vis("#roomNpcCtl"))
+        g2.shot("91_lobby_invitado_360")
+        host.pg.click("#roomNpcs [data-npcrm]"); host.pg.wait_for_function("document.querySelectorAll('#roomNpcs .rplayer').length===0", timeout=8000)
+        check("npc2: quitar NPC", g2.pg.locator("#roomNpcs .rplayer").count() == 0)
+        host.pg.click("#btnOnStart"); 
+        for c in (host, g2): c.pg.wait_for_selector("#privatePanel", state="visible", timeout=15000)
+        check("npc2: 2 jugadores humanos: la partida empieza", jsq(host, "s.players.length") == 2 and not any(jsq(host, "s.players.map(p=>p.npc)")))
+        host.shot("92_2j_privado_360")
+        leaks, structural, ctl = [], [], []
+        ended = run_to_end([host, g2], rnd, 300, scan=lambda: privacy_scan([host, g2], leaks, structural, ctl))
+        check("npc2: partida de 2 llega al desenlace", ended, [c.txt("#screenTitle")[:40] for c in (host, g2)])
+        check("npc2: privacidad (2 jugadores): 0 fugas", not leaks and not structural, (leaks[:2], structural[:2]))
+        errs = [e for c in (host, g2) for e in c.errors if not e.startswith("BOT")]
+        check("npc2: sin errores de JS", not errs, errs[:3])
+    finally: b.close(); srv.stop()
+
+def scenario_npcroom(pw):
+    """Sala con 2 humanos + 2 NPC: la mesa los muestra como NPC, juegan solos (la barrera no los espera), «Faltan N» solo cuenta humanos, 0 fugas, desenlace."""
+    srv = Server().start(); b = pw.chromium.launch(); rnd = random.Random(A.seed)
+    try:
+        host, g2 = Client(b, "nr_ana", 360, 640), Client(b, "nr_luis", 360, 640)
+        open_online(host, srv.url); code = create_room(host, "Ana")
+        open_online(g2, srv.url); join_room(g2, "Luis", code)
+        host.pg.wait_for_function("document.querySelectorAll('#roomPlayers .rplayer').length===2", timeout=8000)
+        for prof in ("agresivo", "curandero"):
+            host.pg.select_option("#npcProfSel", prof); host.pg.click("#btnOnNpcAdd")
+        host.pg.wait_for_function("document.querySelectorAll('#roomNpcs .rplayer').length===2", timeout=8000)
+        host.shot("93_lobby_2npc_360")
+        host.pg.fill("#netEnd", end_time(A.mins)); host.pg.click("#btnOnStart")
+        for c in (host, g2): c.pg.wait_for_selector("#privatePanel", state="visible", timeout=15000)
+        npcs = jsq(host, "s.players.map(p=>!!p.npc)")
+        check("npcroom: NPC marcados en la mesa (público)", npcs == [False, False, True, True], npcs)
+        check("npcroom: el perfil NO está en las vistas de los demás", not jsq(host, "JSON.stringify(s.players.filter(p=>p.id!==s.youId)).match(/agresivo|curandero|prudente|oscuro/)") )
+        host.pg.click("#btnStatus"); host.pg.wait_for_selector("#statusOverlay:not(.hidden)")
+        check("npcroom: «NPC» visible en el Estado de la compañía", host.pg.locator("#allPlayers .npcchip").count() == 2)
+        host.shot("94_mesa_npc_360"); host.pg.click("#btnCloseStatus")
+        # turno: tras jugar los dos humanos, la barrera cierra sin esperar a nadie más
+        leaks, structural, ctl = [], [], []
+        ended = run_to_end([host, g2], rnd, 300, scan=lambda: privacy_scan([host, g2], leaks, structural, ctl))
+        check("npcroom: llega al desenlace con 2 humanos + 2 NPC", ended)
+        check("npcroom: desenlace marca NPC", host.pg.locator("#endingStats .npcchip").count() >= 2 or host.pg.locator("#ending .npcchip").count() >= 2, host.pg.locator(".npcchip").count())
+        host.shot("95_desenlace_npc_360")
+        check("npcroom: privacidad: 0 fugas ni claves extra", not leaks and not structural, (leaks[:2], structural[:2]))
+        errs = [e for c in (host, g2) for e in c.errors if not e.startswith("BOT")]
+        check("npcroom: sin errores de JS", not errs, errs[:3])
+    finally: b.close(); srv.stop()
+
+def scenario_npcsub(pw):
+    """Sustitución: el anfitrión pone un NPC en lugar de Marta (se avisa, no puede actuar, recupera su sitio en la ronda siguiente); y una desconexión de 2 rondas la sustituye sola y vuelve al reconectar."""
+    srv = Server(script="test/e2e/test_server.js", scale=0.08).start(); b = pw.chromium.launch(); rnd = random.Random(A.seed)
+    try:
+        cs, code = new_room3(b, srv, "u")
+        ana, luis, marta = cs
+        ana.pg.click("#btnStatus"); ana.pg.wait_for_selector("#statusOverlay:not(.hidden)")
+        check("npcsub: el anfitrión ve «Sustituir por NPC»; Luis no", ana.pg.locator(".npcsub").count() >= 2 and (luis.pg.click("#btnStatus") or True) and luis.pg.locator(".npcsub").count() == 0)
+        luis.pg.click("#btnCloseStatus")
+        btn = ana.pg.locator('.npcsub[data-id="2"]'); btn.click(); ana.pg.locator('.npcsub[data-id="2"]').click()
+        marta.pg.wait_for_function("UmbralNet.backend.getState().npcInfo", timeout=8000)
+        check("npcsub: Marta recibe el aviso de que un NPC juega por ella", marta.vis("#npcBanner") and "NPC" in marta.txt("#npcBanner"), marta.txt("#npcBanner"))
+        marta.shot("96_sustituida_360") if False else None
+        check("npcsub: todos ven a Marta como NPC (marca pública)", jsq(luis, "s.players[2].npc") is True)
+        ok = play_until(cs, rnd, lambda: (jsq(ana, "s.round") or 0) >= 2, 100, skip=(marta,))
+        check("npcsub: la partida avanza sin Marta (NPC juega por ella)", ok, jsq(ana, "s.round"))
+        marta.pg.click("#npcBannerBtn"); marta.pg.wait_for_function("/pr.xima ronda|empiece la pr/.test(document.getElementById('npcBannerTxt').textContent)", timeout=8000)
+        r0 = jsq(ana, "s.round")
+        ok = play_until(cs, rnd, lambda: (jsq(ana, "s.round") or 0) > r0 and not jsq(marta, "s.npcInfo"), 100, skip=(marta,))
+        check("npcsub: Marta recupera su sitio al empezar la ronda siguiente", ok and jsq(luis, "s.players[2].npc") is False, [jsq(luis, "s.players[2].npc"), jsq(marta, "!!s.npcInfo")])
+        ok = play_until(cs, rnd, lambda: marta.vis("#privatePanel") or jsq(ana, "s.phase") == "ending", 60)
+        check("npcsub: Marta puede jugar de nuevo", ok)
+        # desconexión: 2 rondas fuera -> NPC; al volver, recupera
+        marta.pg.goto("about:blank")
+        ok = play_until(cs, rnd, lambda: bool(jsq(ana, "s.players[2].npc")) or jsq(ana, "s.phase") == "ending", 160, skip=(marta,))
+        check("npcsub: tras 2 rondas desconectada, un NPC toma el lugar de Marta", ok and jsq(ana, "s.players[2].npc") is True, jsq(ana, "s.players[2].npc"))
+        marta.pg.goto(srv.url); marta.pg.wait_for_function("window.UmbralNet && UmbralNet.backend.getState && UmbralNet.backend.getState()", timeout=20000)
+        marta.pg.wait_for_function("UmbralNet.backend.getState().npcInfo || UmbralNet.backend.getState().phase==='ending'", timeout=10000)
+        info = jsq(marta, "s.npcInfo")
+        check("npcsub: al reconectar se programa su regreso automáticamente", bool(info) and info.get("recover"), info)
+        marta.shot("97_vuelve_360") if False else None
+        ok = play_until(cs, rnd, lambda: jsq(ana, "s.phase") == "ending" or not jsq(ana, "s.players[2].npc"), 120)
+        check("npcsub: Marta vuelve a su sitio al empezar la ronda siguiente", ok and (jsq(ana, "s.phase") == "ending" or jsq(ana, "s.players[2].npc") is False), jsq(ana, "s.players[2].npc"))
+        errs = [e for c in cs for e in c.errors if not e.startswith("BOT")]
+        check("npcsub: sin errores de JS", not errs, errs[:3])
+    finally: b.close(); srv.stop()
+
 if A.sync:
     subprocess.check_call(["node", "scripts/sync-client.js", A.sync], cwd=ROOT, stdout=subprocess.DEVNULL)
-SC = {"lobby": scenario_lobby, "game": scenario_game, "restart": lambda pw: scenario_game(pw, True), "persist": scenario_persist, "persisthard": lambda pw: scenario_persist(pw, True), "stun": scenario_stun, "timers": scenario_timers, "time": scenario_time, "presence": scenario_presence, "dual": scenario_dual, "csp": scenario_csp, "absvote": scenario_absvote, "external": scenario_external, "desktop": scenario_desktop, "small": lambda pw: scenario_desktop(pw, 360, 640, "360")}
+SC = {"lobby": scenario_lobby, "game": scenario_game, "restart": lambda pw: scenario_game(pw, True), "persist": scenario_persist, "persisthard": lambda pw: scenario_persist(pw, True), "stun": scenario_stun, "timers": scenario_timers, "time": scenario_time, "presence": scenario_presence, "dual": scenario_dual, "csp": scenario_csp, "absvote": scenario_absvote, "external": scenario_external, "desktop": scenario_desktop, "small": lambda pw: scenario_desktop(pw, 360, 640, "360"), "npc2": scenario_npc2, "npcroom": scenario_npcroom, "npcsub": scenario_npcsub}
 with sync_playwright() as pw:
     for k, f in SC.items():
         if A.only and k != A.only: continue

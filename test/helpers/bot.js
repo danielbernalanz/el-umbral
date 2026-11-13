@@ -87,9 +87,10 @@ function playGame(game, seed, mode, hooks) {
   };
   let guard = 0, idle = 0;
   while (!game.ended() && guard++ < 20000) {
+    if (hooks && hooks.onLoop) hooks.onLoop(game, guard);
     const order = Array.from({ length: n }, (_, i) => i).sort(() => rnd() - 0.5);
-    let did = false;
-    for (const pid of order) { if (game.ended()) break; if (botStep(game, pid, rnd, mode, sendAs(pid))) did = true; }
+    let did = game.runNpcs();
+    for (const pid of order) { if (game.ended()) break; if (game.S().players[pid].npc) continue; if (botStep(game, pid, rnd, mode, sendAs(pid))) did = true; }
     if (!did) { if (++idle > 3) { game.forceAdvance(); idle = 0; } } else idle = 0;
   }
   return guard;

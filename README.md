@@ -19,7 +19,7 @@ Variables: `PORT` (3000), `ENGINE_DIR` (por defecto `public/`: debe contener `da
 |---|---|
 | `GET /healthz` | `{ok, rooms, uptimeS}` |
 | `POST /api/create {name}` | crea sala -> `{room, pid, token}` (token de 128 bits, guárdalo) |
-| `POST /api/join {room, name}` | se une al lobby (3-10 jugadores; no se entra en partida empezada) |
+| `POST /api/join {room, name}` | se une al lobby (2-10 jugadores, contando NPC; no se entra en partida empezada) |
 | `POST /api/start {endAt}` | solo anfitrión; `endAt` = epoch ms entre 5 y 120 min desde ahora |
 | `POST /api/leave`, `POST /api/ping` | salir / mantener viva la sala |
 | `GET /events` | SSE: evento `view` con la vista del jugador (completa al conectar y tras cada cambio) y latido `:hb` cada 20 s |
@@ -68,11 +68,11 @@ y se descartan vistas más viejas que la ya recibida). `ui.js` solo cambia en `r
    El plan gratuito de Render **duerme el servicio** tras ~15 min sin uso: la primera carga o crear/unirse puede tardar ~50 s
    (el cliente muestra «Despertando el servidor…» y reintenta solo).
 2. Pulsa «Jugar en línea», escribe tu nombre y **Crear sala**: aparece un código de 5 letras y un enlace (`/?sala=ABCDE`) para compartir.
-3. Los demás abren el enlace o escriben el código y pulsan **Unirse**. Con 3 a 10 jugadores, el anfitrión elige la **hora de fin** (5-120 min) y pulsa **Iniciar**.
+3. Los demás abren el enlace o escriben el código y pulsan **Unirse**. Con 2 a 10 jugadores (los NPC cuentan), el anfitrión elige la **hora de fin** (5-120 min) y pulsa **Iniciar**.
    No se puede entrar en una partida ya empezada.
 4. Todos juegan a la vez su turno privado (el servidor cierra la ronda cuando todos terminan o se agota el tiempo), luego Consejo y resolución. Tras el desenlace se puede exportar el log y la historia.
 
-Límites: 3-10 jugadores por sala, 50 salas, 20 altas/min por IP, 10 comandos/s por jugador, cuerpo 8 KB. Salas sin conexiones: 30 min; terminadas: 15 min; máximo 4 h.
+Límites: 2-10 jugadores por sala, 50 salas, 20 altas/min por IP, 10 comandos/s por jugador, cuerpo 8 KB. Salas sin conexiones: 30 min; terminadas: 15 min; máximo 4 h.
 Los datos viven en memoria, pero las partidas **sobreviven a un reinicio/despliegue** del servidor (ver «Persistencia entre reinicios»). Sin jugadores conectados una sala caduca a los 30 min.
 
 **Local vs en línea.** Local (un solo móvil, turnos con traspaso) no cambia y no necesita servidor. En línea cada jugador usa su dispositivo, con vista filtrada
@@ -88,7 +88,7 @@ Los estáticos se revalidan siempre (ETag/304) y `sw.js` no cachea `/events`, `/
 ## Desarrollo y pruebas
 
     node scripts/sync-client.js /ruta/a/www     # public/ = copia del cliente (la fuente única es www; engine.js y data.js no se editan aquí)
-    npm test                                     # 40+ pruebas (~1 min): no-fuga, pureza, red, F4/F5, bots por red, producción
+    npm test                                     # 59 pruebas (~1 min): no-fuga, pureza, red, F4/F5, bots por red, producción
     node test/bots_online.js 4,6,8,10 4 12 0.02  # batería grande de bots por red: jugadores, semillas, minutos, prob. de desconexión, aceleraciones
     python3 -I test/e2e/online_e2e.py            # E2E Playwright multi-navegador (ver test/e2e/README.md)
 

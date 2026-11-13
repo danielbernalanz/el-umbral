@@ -1,4 +1,4 @@
-/* EL UMBRAL — interfaz (v1.6.2) */
+/* EL UMBRAL — interfaz (v1.7.0) */
 (function () {
   "use strict";
 
@@ -8,6 +8,18 @@
   const $ = function (id) { return document.getElementById(id); };
   const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return ESC[c]; }); }
+  /* Nombre para mostrar: los NPC se ven siempre como tales. */
+  function dn(p) { return esc(p.name) + (p && p.npc ? ' <span class="chip mid npcchip">NPC</span>' : ''); }
+  function npcAdv() {
+    if (NET || !window.UMBRAL_NPC) return 0;
+    try { return window.UMBRAL_NPC.localAdvance(U); } catch (e) { try { U.noteError("npc: " + e.message); } catch (e2) { /* nada */ } return 0; }
+  }
+  /* Primer humano que aún tiene que jugar (tras el turno actual si ya se entregó). */
+  function pendingHuman(s) {
+    const o = s.order || s.players.map(function (q) { return q.id; });
+    for (let i = s.handoff ? o.indexOf(s.turn) + 1 : o.indexOf(s.turn); i < o.length; i++) { const q = s.players[o[i]]; if (q && !q.dead && !q.acted && !q.npc) return q; }
+    return null;
+  }
   function signed(n) { return (n >= 0 ? "+ " : "- ") + Math.abs(n); }
   function pad2(n) { return (n < 10 ? "0" : "") + n; }
 
@@ -220,19 +232,60 @@
       $("btnContinue").classList.remove("hidden");
       $("saveInfo").textContent = "Partida guardada: " + sv.names + " · ronda " + sv.round + " · " + ({ private: "turnos privados", council: "consejo", resolution: "resolución", ending: "desenlace" }[sv.phase] || "en curso");
     }
-    const syncNames = function () {
-      const n = Number($("playerCount").value) || 3;
-      [3, 4, 5, 6, 7, 8, 9].forEach(function (i) { $("nameRow" + i).style.display = i < n ? "" : "none"; });
+    /* Asientos de la mesa: humano o NPC (los ids name{i}/npc{i} se conservan para las pruebas). */
+    const NPC_IDS = Object.keys(D.NPC_PROFILES || {});
+    let seats = [0, 1, 2].map(function (i) { return { name: "Jugador " + (i + 1), npc: "" }; });
+    const stdName = function (n) { return /^Jugador \d+$/.test(n) || (D.NPC_NAMES || []).indexOf(n) !== -1; };
+    function freeNpcName() {
+      const used = seats.map(function (q) { return q.name.toLowerCase(); }), pool = D.NPC_NAMES || ["NPC"];
+      for (let k = 0; k < pool.length; k++) { const c = pool[(seats.length * 3 + k) % pool.length]; if (used.indexOf(c.toLowerCase()) === -1) return c; }
+      return "NPC " + (seats.length + 1);
+    }
+    function renderSeats() {
+      $("playerCount").value = String(seats.length);
+      $("playerRows").innerHTML = seats.map(function (q, i) {
+        const opts = '<option value=""' + (!q.npc ? " selected" : "") + '>Humano</option><option value="azar"' + (q.npc === "azar" ? " selected" : "") + '>NPC · perfil al azar</option>' +
+          NPC_IDS.map(function (id) { return '<option value="' + id + '"' + (q.npc === id ? " selected" : "") + '>NPC · ' + esc(D.NPC_PROFILES[id].toLowerCase()) + '</option>'; }).join("");
+        return '<div class="seat' + (q.npc ? " npc" : "") + '" id="nameRow' + i + '"><label class="fl" data-ic="ui_jugador">Nombre del jugador ' + (i + 1) + '<input id="name' + i + '" value="' + esc(q.name) + '" maxlength="16" data-i="' + i + '"></label>' +
+          '<select id="npc' + i + '" class="seatsel" data-i="' + i + '" aria-label="Tipo del jugador ' + (i + 1) + '">' + opts + '</select>' +
+          (q.npc && seats.length > 2 ? '<button class="ghost smallbtn seatrm" id="rm' + i + '" data-i="' + i + '" aria-label="Quitar a ' + esc(q.name) + '">Quitar</button>' : '') + '</div>';
+      }).join("");
+      decorate($("playerRows"));
+      $("btnAddNpc").disabled = seats.length >= 10;
+      const nh = seats.filter(function (q) { return !q.npc; }).length;
+      $("npcHint").textContent = nh === 0 ? "Hace falta al menos un jugador humano." : "Un NPC es un jugador más controlado por la app: juega solo en su turno y puede acabar siendo el Asesino. Se ve siempre como «NPC».";
+    }
+    function resizeSeats(n) {
+      n = Math.max(2, Math.min(10, n || 3));
+      while (seats.length > n) seats.pop();
+      while (seats.length < n) seats.push({ name: "Jugador " + (seats.length + 1), npc: "" });
+      renderSeats();
+    }
+    $("playerCount").onchange = function () { resizeSeats(Number($("playerCount").value)); };
+    $("btnAddNpc").onclick = function () {
+      if (seats.length >= 10) { toast("La mesa admite 10 jugadores como máximo.", true); return; }
+      seats.push({ name: freeNpcName(), npc: "azar" }); renderSeats();
     };
-    $("playerCount").onchange = syncNames;
+    $("playerRows").addEventListener("input", function (e) { const i = Number(e.target.getAttribute("data-i")); if (seats[i] && e.target.tagName === "INPUT") seats[i].name = e.target.value; });
+    $("playerRows").addEventListener("change", function (e) {
+      const i = Number(e.target.getAttribute("data-i")); if (!seats[i] || e.target.tagName !== "SELECT") return;
+      seats[i].npc = e.target.value;
+      if (seats[i].npc && stdName(seats[i].name)) seats[i].name = freeNpcName();
+      else if (!seats[i].npc && stdName(seats[i].name)) seats[i].name = "Jugador " + (i + 1);
+      renderSeats();
+    });
+    $("playerRows").addEventListener("click", function (e) {
+      const b = e.target.closest ? e.target.closest(".seatrm") : null; if (!b) return;
+      seats.splice(Number(b.getAttribute("data-i")), 1); renderSeats();
+    });
     try {
       const sn = JSON.parse(localStorage.getItem("umbral_setup") || "null");
-      if (sn && sn.count >= 3 && sn.count <= 10) {
-        $("playerCount").value = String(sn.count);
-        (sn.names || []).forEach(function (nm, i) { if ($("name" + i) && nm) $("name" + i).value = nm; });
+      if (sn && sn.count >= 2 && sn.count <= 10) {
+        seats = [];
+        for (let i = 0; i < sn.count; i++) { const nmv = (sn.names || [])[i], nv = (sn.npc || [])[i]; seats.push({ name: nmv || (nv ? "NPC" : "Jugador " + (i + 1)), npc: nv && (nv === "azar" || (D.NPC_PROFILES || {})[nv]) ? nv : "" }); }
       }
     } catch (e) { /* sin datos guardados */ }
-    syncNames();
+    renderSeats();
     /* Hora de fin: por defecto ahora + 15 min redondeado a 5; la vista previa se actualiza sola mientras se mira. */
     {
       const d0 = new Date(Date.now() + 15 * 60000), m5 = Math.round(d0.getMinutes() / 5) * 5;
@@ -252,13 +305,15 @@
     window.onerror = function (m, src, ln) { try { U.noteError(m + " @" + ln); } catch (e) { /* nada */ } };
     $("btnStart").onclick = function () {
       U.clearSave();
-      const count = Number($("playerCount").value) || 3;
-      const names = [];
-      for (let i = 0; i < count; i++) names.push($("name" + i).value);
+      const count = seats.length;
+      const names = seats.map(function (q) { return q.name; });
+      if (seats.every(function (q) { return !!q.npc; })) { toast("Hace falta al menos un jugador humano.", true); return; }
       const pe = parseEnd();
       if (!pe.ok) { refreshEnd(); toast(pe.msg, true); return; }
-      try { localStorage.setItem("umbral_setup", JSON.stringify({ count: count, names: names })); } catch (e) { /* sin almacenamiento */ }
-      U.createGame(names, { minutes: pe.mins, endAt: pe.endAt });
+      try { localStorage.setItem("umbral_setup", JSON.stringify({ count: count, names: names, npc: seats.map(function (q) { return q.npc || ""; }) })); } catch (e) { /* sin almacenamiento */ }
+      const salt = Date.now() % 97;
+      const npc = seats.map(function (q, i) { return q.npc ? (q.npc === "azar" && window.UMBRAL_NPC ? window.UMBRAL_NPC.profileFor(i, salt) : q.npc === "azar" ? "prudente" : q.npc) : null; });
+      U.createGame(names, { minutes: pe.mins, endAt: pe.endAt, npc: npc });
       enterGame(true);
       $("roundLabel").textContent = "RONDA 1/" + U.maxRounds();
       renderHandoff("start");
@@ -305,6 +360,7 @@
     $("btnPrepSkip").onclick = onPrepSkip;
     $("btnNextRound").onclick = onNextRound;
     $("btnSaveExit").onclick = function () { U.save(); location.reload(); };
+    $("allPlayers").addEventListener("click", npcCtlClick);
     $("btnStatus").onclick = function () { updateStatus(); $("statusOverlay").classList.remove("hidden"); };
     $("btnCloseStatus").onclick = function () { $("statusOverlay").classList.add("hidden"); };
     $("statusOverlay").onclick = function (e) { if (e.target === $("statusOverlay")) $("statusOverlay").classList.add("hidden"); };
@@ -503,6 +559,7 @@
     const s = U.getState();
     if (!s) return;
     if (NET) { routeNet(); return; }
+    npcAdv();
     $("roundLabel").textContent = "RONDA " + s.round + "/" + U.maxRounds();
     updateClock();
     updateStatus();
@@ -645,7 +702,7 @@
     const hi = U.healthInfo(p);
     if (!hi.dying && (hi.hp <= hi.max * 0.4 || hi.shock)) return { id: "vitalidad", text: "Tu vitalidad está baja (" + hi.hp + "/" + hi.max + ") y puedes desmayarte. Cúbrete: Proteger, Descansar o un objeto de curación te mantienen en pie." };
     const dyingMate = !hi.dying && s.players.find(function (x) { return x.id !== p.id && x.dying && !x.dead; });
-    if (dyingMate) return { id: "socorro" + dyingMate.id, text: dyingMate.name + " está moribundo: usa Socorrer en tu turno antes de que acabe " + (dyingMate.dyingFast ? "ESTA ronda (el golpe fue de los que no perdonan)." : "la ronda siguiente.") };
+    if (dyingMate) return { id: "socorro" + dyingMate.id, text: dyingMate.name + " está moribundo y " + dyingDeadline(dyingMate) + ". Usa Socorrer en tu turno." };
     if (p.corr >= 40 && !did.meditar) return { id: "corr", text: "Notas que la oscuridad te gana terreno. Meditar la aleja y también devuelve virtud." };
     if (s.round >= 3 && total >= 3 && top && did[top] >= total && total >= 3) return { id: "repite", text: "Llevas toda la partida haciendo lo mismo. Probar otra acción te enseña cosas nuevas y desbloquea más opciones." };
     if (s.round >= 2 && p.items.length >= 3) return { id: "objetos", text: "Tienes varios objetos guardados. Mira tu ficha: algunos protegen, curan o dan ventaja en una acción." };
@@ -748,6 +805,12 @@
     return out;
   }
 
+  /* Plazo real de un moribundo: muere al empezar la ronda siguiente a «dyingUntil». */
+  function dyingDeadline(x) {
+    const s = U.getState();
+    const until = x.dyingUntil !== undefined ? x.dyingUntil : (x.dyingRound || s.round) + (x.dyingFast ? 0 : 1);
+    return until <= s.round ? "muere si nadie lo socorre antes de que acabe ESTA ronda" : until === s.round + 1 ? "muere si nadie lo socorre antes de que acabe la próxima ronda" : "muere si nadie lo socorre antes de que acabe la ronda " + until;
+  }
   function renderActions(p) {
     const box = $("actionChoices");
     if (pendingStudy) { renderStudyPicker(p); return; }
@@ -778,9 +841,18 @@
       n.innerHTML = '<div class="nrow">' + medal("a_" + a.id, "sm") + '<span><b>Acción nueva: ' + esc(a.name) + '.</b> ' + esc(a.desc) + (va.main.indexOf(a) === -1 ? ' (la encuentras en «Más acciones»)' : '') + '</span></div>';
       box.appendChild(n);
     });
+    /* Urgencia: alguien moribundo en la mesa. Misma lógica para todos; no oculta nada. */
+    const socA = va.main.find(function (x) { return x.id === "socorrer"; });
+    const dyers = socA && !p.dying ? U.getState().players.filter(function (x) { return x.id !== p.id && x.dying && !x.dead; }) : [];
+    dyers.forEach(function (x) {
+      const n = document.createElement("div"); n.className = "notice small urgent";
+      n.innerHTML = '<div class="nrow">' + medal("a_socorrer", "sm") + '<span><b>LO MÁS ÚTIL AHORA: socorrer a ' + esc(x.name) + '.</b> Está moribundo y ' + esc(dyingDeadline(x)) + '. <button class="primary smallbtn" data-soc="1">' + ic("a_socorrer") + 'Socorrer a ' + esc(x.name) + '</button></span></div>';
+      n.querySelector("[data-soc]").onclick = function () { openActionSheet(socA); };
+      box.appendChild(n);
+    });
     const grid = document.createElement("div");
     grid.className = "actions grid3";
-    va.main.forEach(function (a) { grid.appendChild(mkTile(a)); });
+    va.main.slice().sort(function (x, y) { return (dyers.length && y.id === "socorrer" ? 1 : 0) - (dyers.length && x.id === "socorrer" ? 1 : 0); }).forEach(function (a) { const t = mkTile(a); if (dyers.length && a.id === "socorrer") t.classList.add("urgenttile"); grid.appendChild(t); });
     box.appendChild(grid);
     const locked = lockedRows(p);
     if (va.hidden || locked.length) {
@@ -900,7 +972,7 @@
         const info = U.spellInfo(p.id, sp0.id, t.id, "normal");
         const btn = document.createElement("button");
         btn.className = "choice";
-        btn.innerHTML = playerMedal(t) + '<span class="cbody"><b>' + esc(t.name) + (info ? probChip(info.prob) : '') + '</b><span class="small">' + esc(U.visibleHealth(t)) + '</span></span>';
+        btn.innerHTML = playerMedal(t) + '<span class="cbody"><b>' + dn(t) + (info ? probChip(info.prob) : '') + '</b><span class="small">' + esc(U.visibleHealth(t)) + '</span></span>';
         btn.onclick = function () { pendingSpell = { id: sp0.id, tid: t.id }; renderPrivate(); };
         box.appendChild(btn);
       });
@@ -1017,7 +1089,7 @@
     targetsOf(pendingAction, p).forEach(function (t) {
       const btn = document.createElement("button");
       btn.className = "choice";
-      btn.innerHTML = playerMedal(t) + '<span class="cbody"><b>' + esc(t.name) + '</b><span class="small">' + esc(U.visibleHealth(t)) + '</span></span>';
+      btn.innerHTML = playerMedal(t) + '<span class="cbody"><b>' + dn(t) + '</b><span class="small">' + esc(U.visibleHealth(t)) + '</span></span>';
       btn.onclick = function () { if (pendingAction.mode) { pendingMode = { a: pendingAction, t: t.id }; pendingAction = null; renderPrivate(); return; } doAction(pendingAction, t.id, null); };
       box.appendChild(btn);
     });
@@ -1052,7 +1124,7 @@
     U.getState().players.filter(function (x) { return x.id !== p.id && !x.dead; }).forEach(function (t) {
       const btn = document.createElement("button");
       btn.className = "choice";
-      btn.innerHTML = playerMedal(t) + '<span class="cbody"><b>' + esc(t.name) + '</b><span class="small">' + esc(U.visibleHealth(t)) + '</span></span>';
+      btn.innerHTML = playerMedal(t) + '<span class="cbody"><b>' + dn(t) + '</b><span class="small">' + esc(U.visibleHealth(t)) + '</span></span>';
       btn.onclick = function () { const ix = pendingItem; pendingItem = null; mut(U.useItem(p.id, ix, t.id)); };
       box.appendChild(btn);
     });
@@ -1192,6 +1264,8 @@
   }
 
   function renderHandoff(mode) {
+    const npcN = npcAdv();
+    if (!NET && U.getState() && U.getState().phase === "ending") { renderEnding(U.getState().ending || U.getEnding()); return; }
     stopTimer();
     hideAll();
     Array.prototype.forEach.call(document.querySelectorAll(".toast"), function (t) { t.remove(); });
@@ -1207,10 +1281,11 @@
     $("screenTitle").textContent = "Pasa el móvil";
     setStep("");
     $("handoffMood").textContent = moodLine(s, mode);
+    const hmn = NET ? null : pendingHuman(s), npcNote = npcN ? " Los NPC ya han jugado su turno." : "";
     if (mode === "start") {
-      const cur = s.players[s.turn];
+      const cur = hmn || s.players[s.turn];
       $("handoffTitle").textContent = "Entrega el móvil";
-      $("handoffText").textContent = "Entrega el móvil a " + cur.name + ". Nadie más debe mirar la pantalla.";
+      $("handoffText").textContent = "Entrega el móvil a " + cur.name + ". Nadie más debe mirar la pantalla." + npcNote;
       setLbl($("btnHandoff"), "Soy " + cur.name);
     } else if (mode === "round") {
       $("handoffTitle").textContent = "La noche avanza";
@@ -1219,18 +1294,23 @@
       const skSt = sk.filter(function (id) { return !s.players[id].dying; }).map(function (id) { return s.players[id].name; });
       const skipTxt = (skSt.length ? " Pierde su turno (aturdido): " + skSt.join(", ") + "." : "") + (skDy.length ? " Inconsciente y moribundo, no actúa: " + skDy.join(", ") + "." : "");
       if (s.phase === "council") $("handoffText").textContent = eventLine(s.event) + skipTxt + " Nadie puede actuar: se abre el Consejo.";
-      else $("handoffText").textContent = eventLine(s.event) + skipTxt + " Entrega el móvil a " + s.players[s.turn].name + ".";
-      setLbl($("btnHandoff"), "Comenzar ronda " + s.round);
+      else if (!hmn) $("handoffText").textContent = eventLine(s.event) + skipTxt + " Los NPC ya han jugado su turno: abrid el Consejo.";
+      else $("handoffText").textContent = eventLine(s.event) + skipTxt + " Entrega el móvil a " + hmn.name + "." + npcNote;
+      setLbl($("btnHandoff"), !hmn && s.phase === "private" ? "Abrir el Consejo" : "Comenzar ronda " + s.round);
     } else {
       $("handoffTitle").textContent = "Decisión sellada";
-      $("handoffText").textContent = (function () { var o = s.order || s.players.map(function (q) { return q.id; }); var rest = o.slice(o.indexOf(s.turn) + 1).filter(function (id) { return !s.players[id].dead && !s.players[id].acted; }); return rest.length ? "Entrega el móvil a " + s.players[rest[0]].name + ". No reveles tu elección." : "Todos han decidido. Abrid el Consejo."; })();
+      $("handoffText").textContent = (function () { var o = s.order || s.players.map(function (q) { return q.id; }); var rest = o.slice(o.indexOf(s.turn) + 1).filter(function (id) { return !s.players[id].dead && !s.players[id].acted; }); return rest.length ? "Entrega el móvil a " + s.players[rest[0]].name + ". No reveles tu elección." + npcNote : "Todos han decidido. Abrid el Consejo."; })();
       setLbl($("btnHandoff"), (function () { var o = s.order || s.players.map(function (q) { return q.id; }); return o.slice(o.indexOf(s.turn) + 1).filter(function (id) { return !s.players[id].dead && !s.players[id].acted; }).length === 0; })() ? "Abrir el Consejo" : "Continuar");
     }
     updateStatus();
   }
 
   function onHandoffContinue() {
-    if (handoffMode === "round" || handoffMode === "start") { handoffMode = null; route(); return; }
+    if (handoffMode === "round" || handoffMode === "start") {
+      handoffMode = null;
+      if (!NET && U.getState().phase === "private" && U.getState().handoff) U.nextTurn();
+      route(); return;
+    }
     const advanced = U.nextTurn();
     if (advanced === "blocked") toast("El turno no puede avanzar: falta resolver una acción.", true);
     route();
@@ -1425,7 +1505,7 @@
       return '<div class="notice' + (RUMOR_RE.test(e) ? ' rumor' : '') + '">' + esc(e) + '</div>';
     }).join("") : '<p class="small">Ronda tranquila: nada se ha hecho público. Lo que cada uno haya hecho en secreto sigue en secreto.</p>';
     $("resPlayers").innerHTML = s.players.map(function (p) {
-      return '<div class="player' + (p.dead ? " dead" : "") + '"><div class="prow">' + playerMedal(p) + '<div class="grow"><div class="row between"><b>' + esc(p.name) + '</b><span class="small">' + (p.dead ? 'Eliminado' : p.dying ? 'Necesita socorro' : 'En juego') + '</span></div>' +
+      return '<div class="player' + (p.dead ? " dead" : "") + '"><div class="prow">' + playerMedal(p) + '<div class="grow"><div class="row between"><b>' + dn(p) + '</b><span class="small">' + (p.dead ? 'Eliminado' : p.dying ? 'Necesita socorro' : 'En juego') + '</span></div>' +
         '<div class="small">' + esc(U.visibleHealth(p)) + '</div></div></div></div>';
     }).join("");
     { const g = fxGameKey(), rows = $("resPlayers").children;
@@ -1473,7 +1553,7 @@
     $("endingStats").innerHTML = e.players.map(function (p) {
       const items = p.items.length ? p.items.map(esc).join(", ") : "sin objetos";
       const rd = D.ROLES.find(function (x) { return x.name === p.role; }), af = D.AFFINITIES.find(function (x) { return x.name === p.affinity; });
-      return '<div class="player"><div class="prow">' + (rd ? medal("r_" + rd.id, "md") : "") + '<div class="grow"><b>' + esc(p.name) + '</b><div class="small">' + (rd ? ic("r_" + rd.id, "ic-sm") : "") + esc(p.role) + ' · ' + (af ? ic("f_" + af.id, "ic-sm") : "") + esc(p.affinity) + '</div></div></div>' +
+      return '<div class="player"><div class="prow">' + (rd ? medal("r_" + rd.id, "md") : "") + '<div class="grow"><b>' + dn(p) + '</b><div class="small">' + (rd ? ic("r_" + rd.id, "ic-sm") : "") + esc(p.role) + ' · ' + (af ? ic("f_" + af.id, "ic-sm") : "") + esc(p.affinity) + '</div></div></div>' +
         '<div class="row between small"><span class="lab f-heal">' + ic("st_virtud", "ic-sm") + ' Virtud ' + p.virtue + '</span><span class="lab f-dark">' + ic("st_corrupcion", "ic-sm") + ' Corrupción ' + p.corr + '</span></div>' +
         '<div class="meter"><span class="corrupt" style="width:' + p.corr + '%"></span></div>' +
         '<p class="small">' + 'vitalidad ' + p.hp + '/' + p.maxHp + ' · ' + p.clues + (p.clues === 1 ? ' pista · ' : ' pistas · ') + items + '</p>' +
@@ -1481,7 +1561,7 @@
     }).join("");
     $("endingSecrets").innerHTML = e.players.map(function (p) {
       const sd = D.SECRETS.find(function (x) { return x.title === p.secretTitle; });
-      return '<div class="secretrow">' + (sd ? medal("x_" + sd.id, "md") : "") + '<span class="st ' + (p.fulfilled ? "ok" : "no") + '">' + ic(p.fulfilled ? "ui_exito" : "ui_fallo") + '</span><p class="small" style="margin:0">' + (p.fulfilled ? "✦" : "✧") + ' <b>' + esc(p.name) + '</b>' + (p.secretTitle ? ' (' + esc(p.secretTitle) + ')' : '') + ': ' + esc(p.secret) + ' — <b>' +
+      return '<div class="secretrow">' + (sd ? medal("x_" + sd.id, "md") : "") + '<span class="st ' + (p.fulfilled ? "ok" : "no") + '">' + ic(p.fulfilled ? "ui_exito" : "ui_fallo") + '</span><p class="small" style="margin:0">' + (p.fulfilled ? "✦" : "✧") + ' <b>' + dn(p) + '</b>' + (p.secretTitle ? ' (' + esc(p.secretTitle) + ')' : '') + ': ' + esc(p.secret) + ' — <b>' +
         (p.fulfilled ? "CUMPLIDO" : "NO CUMPLIDO") + '</b>' + (p.secretWhy ? '. ' + esc(p.secretWhy) : '') + (p.rewardTitle && p.fulfilled ? ' <span class="reward">' + (p.rewardPaid ? 'Premio recibido: ' : 'Premio: ') + esc(p.rewardTitle) + (p.rewardPaid ? '' : ' (la partida acabó antes de cobrarlo)') + '.</span>' : '') + '</p></div>';
     }).join("");
   }
@@ -1545,14 +1625,44 @@
   }
 
   /* ---------------- estado público ---------------- */
+  /* Botones de la mesa para NPC: sustituir a un jugador (local: cualquiera; en línea: solo el anfitrión) y recuperar el sitio (local). */
+  let subArm = null;
+  function npcCtl(p, s) {
+    if (p.dead || s.phase === "ending") return "";
+    const me = NET ? s.players[s.youId] : null;
+    if (!p.npc) {
+      if (NET && !(me && me.host)) return "";
+      return '<div class="npcctl"><button class="ghost smallbtn npcsub" data-id="' + p.id + '" data-op="sub">' + (subArm === "s" + p.id ? "¿Seguro? Pulsa otra vez" : "Sustituir por NPC") + '</button></div>';
+    }
+    if (!NET && p.npcSwaps) return '<div class="npcctl"><button class="ghost smallbtn npcsub" data-id="' + p.id + '" data-op="back">' + (subArm === "b" + p.id ? "¿Seguro? Pulsa otra vez" : "Recuperar su sitio") + '</button></div>';
+    return "";
+  }
+  function npcCtlClick(e) {
+    const b = e.target.closest ? e.target.closest(".npcsub") : null; if (!b) return;
+    const id = Number(b.getAttribute("data-id")), op = b.getAttribute("data-op"), key = (op === "sub" ? "s" : "b") + id;
+    if (subArm !== key) { subArm = key; updateStatus(); return; }
+    subArm = null;
+    if (op === "sub") {
+      run(U.replaceWithNpc(id), function (r) {
+        toast(r && r.ok ? "Ahora un NPC juega por ese jugador." : (r && r.msg) || "No se pudo sustituir.", !(r && r.ok));
+        $("statusOverlay").classList.add("hidden"); if (NET) routeNet(); else route();
+      });
+    } else {
+      const r = U.restoreFromNpc(id);
+      toast(r && r.ok ? "El jugador recupera su sitio." : (r && r.msg) || "No se pudo recuperar.", !(r && r.ok));
+      $("statusOverlay").classList.add("hidden");
+      const s2 = U.getState(), c2 = s2.phase === "private" && !s2.handoff ? U.currentPlayer() : null;
+      if (c2 && !c2.acted && !c2.npc) renderHandoff("start"); else route();
+    }
+  }
   function updateStatus() {
     const s = U.getState();
     if (!s || !$("allPlayers")) return;
     $("allPlayers").innerHTML = s.players.map(function (p) {
       const active = s.phase === "private" && s.turn === p.id && !s.handoff;
       return '<div class="player' + (active ? " active" : "") + (p.dead ? " dead" : "") + '"><div class="prow">' + playerMedal(p) + '<div class="grow">' +
-        '<div class="row between"><b>' + esc(p.name) + '</b><span class="small">' + (p.dead ? 'Eliminado' : p.dying ? 'Necesita socorro' : 'En juego') + '</span></div>' +
-        '<div class="small">' + esc(U.visibleHealth(p)) + '</div></div></div></div>';
+        '<div class="row between"><b>' + dn(p) + '</b><span class="small">' + (p.dead ? 'Eliminado' : p.dying ? 'Necesita socorro' : 'En juego') + '</span></div>' +
+        '<div class="small">' + esc(U.visibleHealth(p)) + '</div>' + npcCtl(p, s) + '</div></div></div>';
     }).join("");
     $("clueCount").textContent = s.publicClues.length;
     $("publicClues").innerHTML = s.publicClues.length ? s.publicClues.slice(-4).map(function (c) {
@@ -1689,6 +1799,21 @@
   }
   function netCdText(k) { const n = netCdSecs(k); return n === null ? "…" : (n >= 60 ? Math.floor(n / 60) + " min " + pad2(n % 60) + " s" : n + " s"); }
   function netCd() { Array.prototype.forEach.call(document.querySelectorAll("[data-cd]"), function (el) { el.textContent = netCdText(el.getAttribute("data-cd")); }); }
+  /* Aviso para quien ha sido sustituido por un NPC (en línea): quién juega por él y cómo volver. */
+  function npcBanner() {
+    let b = $("npcBanner");
+    const s = NET ? U.getState() : null, info = s && s.npcInfo;
+    if (!info) { if (b) b.classList.add("hidden"); return; }
+    if (!b) {
+      b = document.createElement("div"); b.id = "npcBanner"; b.className = "notice npcbanner"; b.setAttribute("role", "status");
+      b.innerHTML = '<span id="npcBannerTxt"></span><button class="ghost smallbtn" id="npcBannerBtn">Recuperar mi sitio</button>';
+      $("game").insertBefore(b, $("game").firstChild);
+      $("npcBannerBtn").onclick = function () { run(U.recoverSeat(), function (r) { toast(r && r.ok ? "Volverás a jugar al empezar la próxima ronda." : (r && r.msg) || "No se pudo.", !(r && r.ok)); routeNet(); }); };
+    }
+    b.classList.remove("hidden");
+    $("npcBannerTxt").textContent = info.recover ? "Un NPC juega por ti hasta que empiece la próxima ronda; entonces volverás a tu sitio con todo lo que tenías." : (info.auto ? "Estuviste desconectado y un NPC ha tomado tu lugar. " : "El anfitrión ha puesto un NPC en tu lugar. ") + "Conserva tu personaje, tus objetos y tus secretos.";
+    $("npcBannerBtn").classList.toggle("hidden", !!info.recover);
+  }
   function renderWaiting() {
     stopTimer(); hideAll();
     $("handoff").classList.remove("hidden");
@@ -1697,7 +1822,8 @@
     $("screenTitle").textContent = "Esperando a los demás"; setStep("");
     { const sg = $("handoffSigil"); sg.className = "bigmedal f-mist"; sg.innerHTML = ic("ph_privado"); }
     $("handoffTitle").textContent = me.dead ? "Has caído" : (s.skipped || []).indexOf(me.id) !== -1 ? "Esta ronda no actúas" : "Decisión sellada";
-    $("handoffText").textContent = me.dead ? "Observas la partida: ya no puedes actuar, pero seguirás viendo el Consejo."
+    $("handoffText").textContent = s.npcInfo ? "Un NPC juega por ti. Observa la partida; puedes recuperar tu sitio con el botón de arriba."
+      : me.dead ? "Observas la partida: ya no puedes actuar, pero seguirás viendo el Consejo."
       : (s.skipped || []).indexOf(me.id) !== -1 ? "Estás aturdido o inconsciente. Espera a que los demás terminen su turno."
       : "Tu decisión queda en secreto. Cuando todos hayan terminado se abrirá el Consejo.";
     $("handoffMood").textContent = "";
@@ -1707,7 +1833,7 @@
     /* Privacidad: solo «faltan N»; no se muestra quién ha terminado ni quién decide (nadie puede esperar a ser el último). */
     wl.innerHTML = '<div class="tag">' + ic("ui_jugadores", "ic-tag") + 'Faltan ' + (s.waitN || 0) + ' por terminar (de ' + alive.length + ')</div>' +
       '<p class="small waitcd">El turno se cierra solo en <b data-cd="turnauto">' + netCdText("turnauto") + '</b>: quien no haya decidido medita.</p>' +
-      alive.map(function (x) { return '<div class="wrow">' + playerMedal(x) + '<b>' + esc(x.name) + (x.id === me.id ? " (tú)" : "") + '</b>' + (x.absent ? '<span class="chip mid">ausente</span>' : x.online === false ? '<span class="chip mid">sin conexión</span>' : '') + (x.host ? '<span class="chip good">anfitrión</span>' : '') + '</div>'; }).join("");
+      alive.map(function (x) { return '<div class="wrow">' + playerMedal(x) + '<b>' + dn(x) + (x.id === me.id ? " (tú)" : "") + '</b>' + (x.absent ? '<span class="chip mid">ausente</span>' : x.online === false ? '<span class="chip mid">sin conexión</span>' : '') + (x.host ? '<span class="chip good">anfitrión</span>' : '') + '</div>'; }).join("");
     updateStatus();
   }
   /* Textos fijos de index.html que hablan de pasar el móvil: solo en línea se reescriben (en local el HTML queda intacto). */
@@ -1728,7 +1854,7 @@
     lastKey = netKey(s);
     if (prev !== lastKey) ["overlay", "actionOverlay", "secretOverlay"].forEach(function (id) { $(id).classList.add("hidden"); });
     $("roundLabel").textContent = "RONDA " + s.round + "/" + U.maxRounds();
-    updateClock(); updateStatus();
+    updateClock(); updateStatus(); npcBanner();
     if (s.phase === "ending") { hideTimeOverlay(); renderEnding(s.ending || U.getEnding()); return; }
     if (!s.timeAsk) hideTimeOverlay();
     if (s.phase === "private") { if (me.ready) renderWaiting(); else if (me.acted) endTurn(); else renderPrivate(); return; }
@@ -1743,7 +1869,7 @@
     if (netKey(s) !== lastKey) { routeNet(); return; }
     const me = U.currentPlayer(), idle = ["overlay", "actionOverlay", "secretOverlay", "storyOverlay", "logOverlay"].every(function (id) { return $(id).classList.contains("hidden"); }) && !timeOverlayOpen();
     $("roundLabel").textContent = "RONDA " + s.round + "/" + U.maxRounds();
-    updateClock(); updateStatus();
+    updateClock(); updateStatus(); npcBanner();
     if (s.phase === "ending") return;
     if (s.timeAsk) { if (timeOverlayOpen()) showTimeAsk(); return; }
     if (s.phase === "private") {

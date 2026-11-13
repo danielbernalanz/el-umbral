@@ -16,7 +16,7 @@ const MAX_PLAIN = 8 * 1024 * 1024;
 /* Identificador del motor: hash de data.js + engine.js. Un blob solo se restaura con el MISMO motor (si no, rechazo limpio). */
 function engineId(dir) {
   const h = crypto.createHash("sha256");
-  ["data.js", "engine.js"].forEach((f) => h.update(fs.readFileSync(path.join(dir, f))));
+  ["data.js", "engine.js", "npc.js"].forEach((f) => h.update(fs.readFileSync(path.join(dir, f))));
   return h.digest("hex").slice(0, 16);
 }
 

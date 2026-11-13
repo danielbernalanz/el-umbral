@@ -41,10 +41,10 @@ test("lobby: crear, unirse, nombres, límites y rechazos", async () => {
     await a.until((v) => v.phase === "lobby" && v.players.length === 2);
     await b.until((v) => v.phase === "lobby" && v.players.length === 2);
     assert.strictEqual(a.view.host, true); assert.strictEqual(b.view.host, false);
-    assert.strictEqual(a.view.canStart, false);
+    assert.strictEqual(a.view.canStart, true, "2 jugadores bastan");
     /* iniciar: no anfitrión, pocos jugadores, hora inválida */
     assert.strictEqual((await b.start(Date.now() + 30 * 60000)).json.ok, false);
-    assert.strictEqual((await a.start(Date.now() + 30 * 60000)).json.msg.includes("al menos 3"), true);
+    assert.strictEqual((await a.start(Date.now() + 60000)).json.ok, false, "hora de fin demasiado cercana");
     /* JSON roto, cuerpo enorme, token inválido */
     assert.strictEqual((await request(app.port, "POST", "/api/join", "{no json", null, true)).status, 400);
     assert.strictEqual((await request(app.port, "POST", "/api/join", JSON.stringify({ room: a.room, name: "x".repeat(20000) }), null, true)).status, 413);

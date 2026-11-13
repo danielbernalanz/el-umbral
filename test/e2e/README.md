@@ -29,3 +29,6 @@ Variables de servidor para pruebas: `UMBRAL_READ_MS` (lectura previa a actuar so
 `game` además comprueba que la espera de la fase privada solo dice «Faltan N» (sin listo/decidiendo por jugador).
 | `csp` | F7: con la CSP real (sin bypass) lobby, partida y SSE funcionan sin violaciones |
 | `persist` / `persisthard` | Persistencia: el servidor (con `SNAPSHOT_KEY`) se reinicia a mitad de partida con SIGTERM (los 3 móviles vuelven) o `kill -9` (un móvil se cierra durante el reinicio): «Restaurando la partida…», la partida sigue y llega al desenlace, 0 fugas, la instantánea se borra al terminar |
+| `npc2` | v1.7.0: sala de 2 (anfitrión + 1) con NPC; partida completa con privacidad |
+| `npcroom` | v1.7.0: añadir/quitar NPC en el lobby, perfiles y tope de 10 |
+| `npcsub` | v1.7.0: sustituir a un ausente por un NPC y recuperar el lugar |

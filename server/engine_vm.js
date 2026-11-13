@@ -22,8 +22,9 @@ function loadEngine(opts) {
   vm.runInContext("Date.now = function () { return __now(); };" + (opts.rng ? "Math.random = function () { return __rng(); };" : ""), ctx);
   vm.runInContext(readSrc(dir, "data.js"), ctx, { filename: "data.js" });
   vm.runInContext(readSrc(dir, "engine.js"), ctx, { filename: "engine.js" });
-  const U = vm.runInContext("UMBRAL", ctx), D = vm.runInContext("UMBRAL_DATA", ctx);
-  return { ctx, U, D };
+  vm.runInContext(readSrc(dir, "npc.js"), ctx, { filename: "npc.js" });
+  const U = vm.runInContext("UMBRAL", ctx), D = vm.runInContext("UMBRAL_DATA", ctx), NPC = vm.runInContext("UMBRAL_NPC", ctx);
+  return { ctx, U, D, NPC };
 }
 
 /* Generador con semilla (mulberry32) para pruebas reproducibles. */

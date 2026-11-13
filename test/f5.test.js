@@ -55,8 +55,8 @@ test("ausente tras 2 rondas completas desconectado: medita sin esperar, no bloqu
   assert.strictEqual(g.errors.length, 0, g.errors.join("|"));
   /* ya en la ronda 4 el ausente está listo desde el principio: nadie espera ni hace falta aceleración */
   assert.strictEqual(S.phase, "private");
-  assert.ok(g.ready.has(3) && S.players[3].acted && S.players[3].action === "meditar");
-  assert.ok(S.players[3].notes.some((n) => /ausente/.test(n)));
+  assert.ok(g.ready.has(3) && S.players[3].acted && S.players[3].npc, "un NPC toma su lugar y juega su turno");
+  assert.ok(g.npcAuto.has(3));
   const t0 = e.clk.t;
   [0, 1, 2].forEach((i) => { g.exec(i, "act", ["meditar", null, null]); g.exec(i, "finishTurn", []); });
   assert.strictEqual(S.phase, "council", "no espera al ausente (sin avanzar el reloj)");

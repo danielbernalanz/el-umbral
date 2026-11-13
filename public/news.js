@@ -5,6 +5,13 @@
 (function (w) {
   "use strict";
   w.UMBRAL_NEWS = [
+    { version: "1.7.0", fecha: "2026-11-13", titulo: "Mesas de 2 y jugadores de la casa (NPC)", puntos: [
+      "Ya se puede jugar con 2 jugadores.",
+      "Puedes añadir NPC a la mesa (hasta 10 jugadores en total) y sustituir por un NPC a quien se ausente, en local y en línea. Cada NPC tiene su perfil (prudente, agresivo, curandero u oscuro), se ve claramente que es un NPC, y quien se fue puede recuperar su lugar.",
+      "Socorrer aparece destacado arriba en tu turno cuando alguien cae moribundo, con el plazo real que le queda.",
+      "El aviso del moribundo es más claro y coincide con lo que de verdad ocurre.",
+      "Los textos de los secretos al final de la partida ya no repiten el premio."
+    ] },
     { version: "1.6.2", fecha: "2026-11-13", titulo: "Animaciones y novedades", puntos: [
       "Animaciones breves ligadas a lo que ocurre: tajo al apuñalar, destello del conjuro, luz al curar, escudo al protegerte, temblor al recibir daño y sello de los pactos. Se apagan si tu móvil pide reducir el movimiento.",
       "Nuevo apartado «Novedades» en el menú principal, con el historial de cambios de cada versión."

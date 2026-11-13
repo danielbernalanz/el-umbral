@@ -45,9 +45,10 @@ function checkView(game, pid, v, pre) {
   Object.keys(v).forEach((k) => { if (TOP_KEYS.indexOf(k) === -1) probs.push("clave de nivel superior no permitida: " + k); });
   if (v.phase === "private") {
     if ((v.wait || []).length) probs.push("wait nombra jugadores en la fase privada");
-    v.players.forEach((p) => { if (p.id !== pid && p.ready !== (!!S.players[p.id].dead || game.absent.has(p.id))) probs.push("ready ajeno visible en la fase privada: J" + p.id); });
+    v.players.forEach((p) => { if (p.id !== pid && p.ready !== (!!S.players[p.id].dead || !!S.players[p.id].npc || game.absent.has(p.id))) probs.push("ready ajeno visible en la fase privada: J" + p.id); });
   }
   if (v.phase !== "ending") ["ending", "reveal", "log", "story"].forEach((k) => { if (v[k] !== undefined) probs.push("campo de desenlace antes de tiempo: " + k); });
+  v.players.forEach((p) => { if (p.id !== pid && typeof p.npc !== "boolean") probs.push("npc ajeno no booleano (perfil expuesto?): J" + p.id); });
   v.players.forEach((p) => { if (p.id !== pid) Object.keys(p).forEach((k) => { if (PUBLIC_PLAYER_KEYS.indexOf(k) === -1) probs.push("jugador ajeno con clave " + k); }); });
   if (v.phase !== "ending") {
     Object.keys(v.q).forEach((k) => { if (Q_KEYS.indexOf(k) === -1) probs.push("q con clave desconocida " + k); });

@@ -1,4 +1,4 @@
-/* EL UMBRAL — datos del juego (v1.6.2)
+/* EL UMBRAL — datos del juego (v1.7.0)
    Roles, afinidades, objetos, acciones, eventos, secretos y pistas. */
 (function (g) {
   "use strict";
@@ -226,7 +226,11 @@
     fortalecido: { name: "Fortalecido", desc: "+1 a todas las tiradas (dos rondas)." }
   };
 
-  const D = { VERSION: "1.6.2", STATUS, ROLES, AFFINITIES, ITEMS, LOOT_ITEMS, DARK_ITEMS, UTIL_ITEMS, MEDIC_ITEMS, ACTIONS, STAKES, EVENTS, CLUES, ASSASSIN_CLUES, SECRETS };
+  /* NPC (jugadores controlados por la app): perfiles y nombres. */
+  const NPC_PROFILES = { prudente: "Prudente", agresivo: "Agresivo", curandero: "Curandero", oscuro: "Oscuro" };
+  const NPC_NAMES = ["Brisa", "Cuervo", "Dara", "Elan", "Fenn", "Gaia", "Hael", "Ibis", "Jora", "Kael", "Lumi", "Mirt", "Nox", "Orla", "Pyra", "Quill", "Rhea", "Sable", "Tilo", "Vesta"];
+
+  const D = { VERSION: "1.7.0", NPC_PROFILES, NPC_NAMES, STATUS, ROLES, AFFINITIES, ITEMS, LOOT_ITEMS, DARK_ITEMS, UTIL_ITEMS, MEDIC_ITEMS, ACTIONS, STAKES, EVENTS, CLUES, ASSASSIN_CLUES, SECRETS };
   g.UMBRAL_DATA = D;
   if (typeof module !== "undefined") module.exports = D;
 })(typeof globalThis !== "undefined" ? globalThis : this);

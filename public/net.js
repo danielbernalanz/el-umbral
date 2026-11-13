@@ -171,15 +171,15 @@
   /* Estado que ve ui.js: SOLO datos públicos de los demás + el jugador propio completo. */
   function buildState(v) {
     const players = v.players.map(function (p) {
-      return { id: p.id, name: p.name, dead: p.dead, dying: p.dying, exposed: p.exposed, visibleHealth: p.visibleHealth, ready: p.ready, online: p.online, absent: p.absent, host: p.host, alignment: p.exposed ? "asesino" : undefined };
+      return { id: p.id, name: p.name, dead: p.dead, dying: p.dying, exposed: p.exposed, visibleHealth: p.visibleHealth, ready: p.ready, online: p.online, absent: p.absent, host: p.host, npc: !!p.npc, alignment: p.exposed ? "asesino" : undefined };
     });
     const pub = players[v.youId], me = v.me || {};
-    players[v.youId] = Object.assign({}, me, { dead: pub.dead, dying: pub.dying, exposed: pub.exposed, visibleHealth: pub.visibleHealth, ready: pub.ready, online: pub.online, absent: pub.absent, host: pub.host, protection: me.protected ? -1 : null });
+    players[v.youId] = Object.assign({}, me, { dead: pub.dead, dying: pub.dying, exposed: pub.exposed, visibleHealth: pub.visibleHealth, ready: pub.ready, online: pub.online, absent: pub.absent, host: pub.host, npc: !!pub.npc, protection: me.protected ? -1 : null });
     (me.risen || []).forEach(function (id) { if (players[id] && ((v.q || {}).risen || []).indexOf(players[id].name) !== -1) players[id].risenBy = v.youId; });
     const ex = players.find(function (p) { return p.exposed; });
     return { round: v.round, phase: v.phase, players: players, turn: v.youId, youId: v.youId, handoff: false, event: v.event, chronicle: v.chronicle || [], publicClues: v.publicClues || [],
       timeAsk: v.timeAsk || null, skipped: v.skipped || [], lastResolution: v.lastResolution || [], councilResults: v.councilResults || [], ending: v.ending || null,
-      votes: v.votes || {}, wait: v.wait || [], waitN: v.waitN || 0, assassinId: ex ? ex.id : null, maxRounds: v.maxRounds, endAt: v.endAt || null, order: players.map(function (p) { return p.id; }) };
+      votes: v.votes || {}, wait: v.wait || [], waitN: v.waitN || 0, npcInfo: v.npcInfo || null, assassinId: ex ? ex.id : null, maxRounds: v.maxRounds, endAt: v.endAt || null, order: players.map(function (p) { return p.id; }) };
   }
   function onView(v, silent) {
     if (!v || typeof v !== "object") return;
@@ -268,6 +268,7 @@
     declare: function (pid, type, t) { return cmd("declare", [type, nn(t)]); },
     encounterAct: function (pid, oid) { return cmd("encounterAct", [oid]); },
     finishTurn: function () { return cmd("finishTurn", []); },
+    replaceWithNpc: function (pid) { return cmd("replaceWithNpc", [pid]); }, recoverSeat: function () { return cmd("recoverSeat", []); },
     councilReady: function () { return cmd("councilReady", []); },
     nextRound: function () { return cmd("continue", []); },
     answerTime: function (k) { return cmd("vote", [k]); }
@@ -347,13 +348,25 @@
     $("roomGuest").classList.toggle("hidden", host || !v);
     $("roomConnecting").classList.toggle("hidden", !!v);
     if (!v) { $("roomPlayers").innerHTML = ""; return; }
-    $("roomCount").textContent = v.players.length + " / " + v.max + " jugadores (mínimo " + v.min + ")";
+    const npcs = v.npcs || [], total = v.players.length + npcs.length;
+    $("roomCount").textContent = total + " / " + v.max + " jugadores (mínimo " + v.min + (npcs.length ? "; " + npcs.length + " NPC" : "") + ")";
     $("roomPlayers").innerHTML = v.players.map(function (p) {
       return '<div class="player rplayer"><div class="prow">' + ico("ui_jugador", "ic-md") + '<div class="grow"><b>' + esc(p.name) + '</b></div>' +
         (p.id === v.youId ? '<span class="chip mid">tú</span>' : '') + (p.host ? '<span class="chip good">anfitrión</span>' : '') + (p.online ? '' : '<span class="chip low">sin conexión</span>') + '</div></div>';
     }).join("");
+    const prof = v.profiles || {};
+    $("roomNpcs").innerHTML = npcs.map(function (n) {
+      return '<div class="player rplayer"><div class="prow">' + ico("ui_jugador", "ic-md") + '<div class="grow"><b>' + esc(n.name) + '</b></div><span class="chip mid">NPC</span>' +
+        (host ? '<span class="chip low">' + esc(String(prof[n.profile] || n.profile).toLowerCase()) + '</span><button class="ghost smallbtn" data-npcrm="' + n.id + '" aria-label="Quitar a ' + esc(n.name) + '">Quitar</button>' : '') + '</div></div>';
+    }).join("");
+    $("roomNpcCtl").classList.toggle("hidden", !host);
+    if (host && !$("npcProfSel").getAttribute("data-built")) {
+      $("npcProfSel").innerHTML = '<option value="">NPC · perfil al azar</option>' + Object.keys(prof).map(function (id) { return '<option value="' + esc(id) + '">NPC · ' + esc(String(prof[id]).toLowerCase()) + '</option>'; }).join("");
+      $("npcProfSel").setAttribute("data-built", "1");
+    }
+    $("btnOnNpcAdd").disabled = total >= v.max;
     $("btnOnStart").disabled = !v.canStart;
-    $("roomNeed").textContent = v.players.length < v.min ? "Hacen falta al menos " + v.min + " jugadores para empezar." : "";
+    $("roomNeed").textContent = total < v.min ? "Hacen falta al menos " + v.min + " jugadores (con NPC) para empezar." : "";
     refreshNetEnd();
   }
   function refreshNetEnd() {
@@ -362,6 +375,13 @@
     if (pe.ok) { el.className = "small endinfo"; el.textContent = "Terminará a las " + UI().hm(pe.t) + " (unos " + pe.mins + " min desde ahora)."; }
     else { el.className = "small endinfo bad"; el.textContent = pe.msg; }
     if ($("btnOnStart") && lobby) $("btnOnStart").disabled = !(pe.ok && lobby.canStart);
+  }
+  function npcOp(body) {
+    if (!session) return;
+    post("/api/npc", body, session.token).then(function (r) {
+      if (isUnknownRoom(r) || r.status === 401) { roomGone(r); return; }
+      if (!r.ok) UI().toast(r.msg || "No se pudo cambiar los NPC.", true);
+    });
   }
   function startGame() {
     const pe = UI().parseEnd("", "netEnd");
@@ -393,6 +413,8 @@
     $("onName").onkeydown = function (e) { if (e.key === "Enter") ($("onCode").value ? joinRoom() : createRoom()); };
     $("btnOnLeave").onclick = function () { leaveRoom(false); };
     $("btnOnStart").onclick = startGame;
+    $("btnOnNpcAdd").onclick = function () { npcOp({ op: "add", profile: $("npcProfSel").value || undefined }); };
+    $("roomNpcs").addEventListener("click", function (e) { const b = e.target.closest ? e.target.closest("[data-npcrm]") : null; if (b) npcOp({ op: "remove", index: Number(b.getAttribute("data-npcrm")) }); });
     $("btnOnCopy").onclick = function () { copyText(lobby ? lobby.code : "", "Código copiado."); };
     $("btnOnShare").onclick = function () {
       const link = shareLink();

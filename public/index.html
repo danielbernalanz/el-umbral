@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0d0a11">
-<title>EL UMBRAL — v1.6.2</title>
+<title>EL UMBRAL — v1.7.0</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="manifest" href="manifest.webmanifest">
@@ -48,7 +48,7 @@
     <div class="card stack hidden" id="onlineCard">
       <h2 class="h2i" data-ic="ui_jugadores">Jugar en línea</h2>
       <div id="onHome" class="stack">
-        <p class="muted">Cada jugador usa su propio móvil. Una persona crea la sala y comparte el código de 5 letras; los demás se unen con él (de 3 a 10 jugadores).</p>
+        <p class="muted">Cada jugador usa su propio móvil. Una persona crea la sala y comparte el código de 5 letras; los demás se unen con él (de 2 a 10 jugadores; el anfitrión puede añadir NPC).</p>
         <label class="fl" data-ic="ui_jugador">Tu nombre<input id="onName" maxlength="16" autocomplete="off" placeholder="Tu nombre"></label>
         <button class="primary big" id="btnOnCreate" data-ic="ui_nuevo">Crear sala</button>
         <p class="small muted center">— o únete a una sala —</p>
@@ -75,6 +75,8 @@
         <p class="small center muted hidden" id="roomConnecting">Conectando con la sala…</p>
         <p class="small center" id="roomCount"></p>
         <div id="roomPlayers" class="stack tight roomplayers"></div>
+        <div id="roomNpcs" class="stack tight roomplayers"></div>
+        <div id="roomNpcCtl" class="row hidden"><select id="npcProfSel" class="seatsel" aria-label="Perfil del NPC"></select><button class="ghost smallbtn" id="btnOnNpcAdd" data-ic="ui_jugadores">+ NPC</button></div>
         <p class="small center muted" id="roomNeed"></p>
         <div id="roomHost" class="stack hidden">
           <label class="fl" data-ic="ui_reloj">¿A qué hora queréis terminar?<input id="netEnd" type="time" step="60" value="20:00"></label>
@@ -95,20 +97,13 @@
 
     <div class="card stack" id="localCard">
       <h2 class="h2i" data-ic="ui_nuevo">Preparad la partida</h2>
-      <p class="muted">Elige a qué hora queréis terminar y el juego ajustará las rondas para acabar a tiempo (entre 5 y 120 minutos desde ahora). Puedes jugar de 3 a 10 personas, pero está equilibrado para 3 a 5; con más gente cada ronda dura más, así que dad más tiempo. Un solo móvil, tiradas de dado y un Consejo por ronda.</p>
+      <p class="muted">Elige a qué hora queréis terminar y el juego ajustará las rondas para acabar a tiempo (entre 5 y 120 minutos desde ahora). Puedes jugar de 2 a 10 (las personas que falten pueden ser NPC), pero está equilibrado para 3 a 5; con más gente cada ronda dura más, así que dad más tiempo. Un solo móvil, tiradas de dado y un Consejo por ronda.</p>
       <label class="fl" data-ic="ui_reloj">¿A qué hora queréis terminar?<input id="gameEnd" type="time" step="60" value="20:00"></label>
       <p class="small endinfo" id="endInfo" aria-live="polite"></p>
-      <label class="fl" data-ic="ui_jugadores">Número de jugadores<select id="playerCount"><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select></label>
-      <label class="fl" data-ic="ui_jugador">Nombre del jugador 1<input id="name0" value="Jugador 1" maxlength="16"></label>
-      <label class="fl" data-ic="ui_jugador">Nombre del jugador 2<input id="name1" value="Jugador 2" maxlength="16"></label>
-      <label class="fl" data-ic="ui_jugador">Nombre del jugador 3<input id="name2" value="Jugador 3" maxlength="16"></label>
-      <label class="fl" id="nameRow3" style="display:none" data-ic="ui_jugador">Nombre del jugador 4<input id="name3" value="Jugador 4" maxlength="16"></label>
-      <label class="fl" id="nameRow4" style="display:none" data-ic="ui_jugador">Nombre del jugador 5<input id="name4" value="Jugador 5" maxlength="16"></label>
-      <label class="fl" id="nameRow5" style="display:none" data-ic="ui_jugador">Nombre del jugador 6<input id="name5" value="Jugador 6" maxlength="16"></label>
-      <label class="fl" id="nameRow6" style="display:none" data-ic="ui_jugador">Nombre del jugador 7<input id="name6" value="Jugador 7" maxlength="16"></label>
-      <label class="fl" id="nameRow7" style="display:none" data-ic="ui_jugador">Nombre del jugador 8<input id="name7" value="Jugador 8" maxlength="16"></label>
-      <label class="fl" id="nameRow8" style="display:none" data-ic="ui_jugador">Nombre del jugador 9<input id="name8" value="Jugador 9" maxlength="16"></label>
-      <label class="fl" id="nameRow9" style="display:none" data-ic="ui_jugador">Nombre del jugador 10<input id="name9" value="Jugador 10" maxlength="16"></label>
+      <label class="fl" data-ic="ui_jugadores">Número de jugadores (contando NPC)<select id="playerCount"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select></label>
+      <div id="playerRows" class="stack tight"></div>
+      <button class="ghost smallbtn" id="btnAddNpc" data-ic="ui_jugadores">+ NPC</button>
+      <p class="small muted" id="npcHint">Un NPC es un jugador más controlado por la app: juega solo en su turno y puede acabar siendo el Asesino. Se ve siempre como «NPC».</p>
       <button class="primary big" id="btnStart" data-ic="ui_nuevo">Comenzar partida</button>
       <button class="ghost hidden" id="btnContinue" data-ic="ui_continuar">Continuar partida guardada</button>
       <p class="small" id="saveInfo"></p>
@@ -419,6 +414,7 @@
 <script src="news.js"></script>
 <script src="data.js"></script>
 <script src="engine.js"></script>
+<script src="npc.js"></script>
 <script src="fx.js"></script>
 <script src="ui.js"></script>
 <script src="net.js"></script>
