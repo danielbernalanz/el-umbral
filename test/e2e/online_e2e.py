@@ -635,7 +635,8 @@ def scenario_csp(pw):
 def scenario_external(pw):
     b = pw.chromium.launch(); c = Client(b, "ext")
     try:
-        c.pg.goto("file://" + os.environ.get("WWW", "/tmp/claude-0/-home-claude/7b586fea-69a6-5d02-a28a-5cd182c7f952/scratchpad/apk/assets/www") + "/index.html")
+        www = os.environ.get("WWW", os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "public")))
+        c.pg.goto("file://" + www + "/index.html")
         check("external: por defecto el menú local sigue visible", c.vis("#localCard") and c.vis("#btnStart"))
         urls = []
         c.ctx.on("request", lambda r: urls.append(r.url))
