@@ -1202,6 +1202,20 @@
     return resolveOffer(p, !!accept);
   }
   function mkItem(id) { return { id: id }; }
+  /* Oficios (v1.8, F0): contadores visibles por familia de daño. Solo cuentan acciones, nunca el reloj. */
+  function newOficios() { return { filo: 0, veneno: 0, trampa: 0, fuego: 0, social: 0 }; }
+  function ensureOficios(p) {
+    if (!p.oficios || typeof p.oficios !== "object") p.oficios = newOficios();
+    else { const base = newOficios(); Object.keys(base).forEach(function (k) { const n = Number(p.oficios[k]); p.oficios[k] = isFinite(n) ? n : 0; }); }
+    return p.oficios;
+  }
+  /* Migración de partidas guardadas: la cola de daño arranca vacía y los oficios a 0 si faltan. */
+  function ensureHarmState() {
+    if (!state) return;
+    if (!Array.isArray(state.harm)) state.harm = [];
+    (state.players || []).forEach(ensureOficios);
+  }
+  function oficioOf(p, family) { return (p && p.oficios && p.oficios[family]) || 0; }
   function hasItem(p, id) { return !!(p && p.items && p.items.some(function (i) { return i.id === id; })); }
   function hasFire(p) { return hasItem(p, "antorcha") || hasItem(p, "linterna"); }
   function itemName(id) { return (D.ITEMS[id] && D.ITEMS[id].name) || id; }
@@ -1259,7 +1273,7 @@
       roundDefense: 0, roundAttack: 0, protection: null, shield: false,
       usedItem: false, acted: false, action: null, actionTarget: null,
       spells: [], stolen: [], betrayals: 0, keptPacts: 0, successfulAccusations: 0, status: [],
-      aggr: 0, agg: {}, dom: { wins: 0 }, risen: []
+      aggr: 0, agg: {}, dom: { wins: 0 }, risen: [], oficios: newOficios()
     };
     p.hp = maxHp(p); p.zones = { cabeza: 0, torso: 0, brazos: 0, piernas: 0 }; p.dying = false;
     initHealth(p);
@@ -1286,7 +1300,7 @@
     });
     state = {
       v: VERSION, round: 1, turn: 0, phase: "private", handoff: false,
-      players: players, chronicle: [], publicClues: [],
+      players: players, chronicle: [], publicClues: [], harm: [],
       pacts: [], pactOffers: [], council: null, lastResolution: [],
       event: null, umbralAbierto: false, assassinId: null, assassinExposed: false, ending: null,
       createdAt: Date.now(), durationMin: minutes, playedMs: 0, hands: []
@@ -3371,6 +3385,7 @@
       if (!Array.isArray(state.eventsSeen)) state.eventsSeen = [];
       if (state.event && typeof state.event.effectText !== "string") state.event.effectText = "";
       if (!state.lastResolution) state.lastResolution = [];
+      ensureHarmState();
       state.players.forEach(function (p) { if (typeof p.dead !== "boolean") p.dead = false; p.focus = clamp(Number(p.focus) || 0, 0, 2); if (!Array.isArray(p.notes)) p.notes = []; if (!Array.isArray(p.status)) p.status = []; if (typeof p.aggr !== "number") p.aggr = 0; if (!p.agg || typeof p.agg !== "object") p.agg = {}; if (!p.dom || typeof p.dom !== "object") p.dom = { wins: 0 }; if (!Array.isArray(p.risen)) p.risen = []; initHealth(p); });
       if (typeof state.assassinExposed !== "boolean") state.assassinExposed = false;
       if (state.assassinExposed && state.assassinId !== null && state.players[state.assassinId] && !state.players.some(function (p) { return p.exposed; })) state.players[state.assassinId].exposed = true;
@@ -3405,6 +3420,7 @@
     act: wrapLog("act", act), pushLuck: wrapLog("pushLuck", pushLuck), useItem: wrapLog("useItem", useItem),
     maxHp: maxHp, visibleHealth: visibleHealth, healthInfo: healthInfo,
     _health: { damage: damage, heal: heal, finish: finish, stabilize: stabilize, pickZone: pickZone, zoneLvl: zoneLvl, zoneMod: zoneMod, initHealth: initHealth },
+    _harm: { newOficios: newOficios, ensureOficios: ensureOficios, ensureState: ensureHarmState, oficioOf: oficioOf },
     getSince: getSince, endAtTs: endAtTs, extEnd: extEnd, hhmm: hhmm, assassinGoal: assassinGoal, visibleActions: visibleActions, spellInfo: spellInfo, actionOdds: actionOdds, buildStory: buildStory, exportStory: exportStory, secretInfo: secretInfo, umbralInfo: umbralInfo, exportLog: exportLog, lastLogs: lastLogs, noteError: noteError,
     finishTurn: finishTurn, nextTurn: nextTurn, replaceWithNpc: replaceWithNpc, restoreFromNpc: restoreFromNpc, npcProfileFor: npcProfileFor,
     beginCouncil: beginCouncil, councilPrompt: councilPrompt,
