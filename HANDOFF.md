@@ -3,15 +3,15 @@
 Juego social de deducción para 2-10 jugadores (pasar el móvil en local, o en línea con salas por código). Empaquetado como APK firmado (WebView) + servidor Node en Render. Idioma de todo: español.
 
 ## Estado
-- **v1.7.0 cerrada en repo, pendiente de desplegar**: commit 609d847 + arreglos de compatibilidad Windows en 915d24e. `npm test` 59/59, versiones y CACHE `umbral-v17-0` coherentes. APK firmado v1.7.0 generado. Falta: desplegar en Render con la mesa vacía y pasar los E2E de navegador (Playwright de Python no está instalado en esta máquina).
+- **v1.7.0 cerrada Y DESPLEGADA** (2026-11-14, commit e75d11e, por API de Render con mesa vacía; verificada en vivo: `VERSION 1.7.0`, CACHE `umbral-v17-0`, create/join/start/leave OK). `npm test` 59/59; E2E online 18/18 escenarios (130 comprobaciones, Playwright ya instalado). APK firmado v1.7.0 entregado. Pendiente: Android real, humanos 6-10, Render bajo carga.
 - **Estable y desplegada: v1.6.2** (77b9db7), referencia de rollback. Servicio https://el-umbral-h1ki.onrender.com.
-- Ramas/worktrees de trabajo (2026-11-14): `feat-fixes` (`work/wt_fixes`) con el arreglo móvil de 360 px; `feat-dano` (`work/wt_dano`) con la capa F0 de v1.8.0 en curso. Plan de integración v1.9/v1.10 en `docs/designs/plan-v19-v110.md`.
+- Ramas/worktrees de trabajo (2026-11-14): `feat-dano` (`work/wt_dano`) con la capa F0 de v1.8.0 hecha (63/63 tests verdes en ese worktree; queda F1-F6). `feat-fixes` ya fusionada. Plan de integración v1.9/v1.10 en `docs/designs/plan-v19-v110.md`.
 - Si `git status` está sucio o hay un tag `pre-v170`, compruébalo antes de seguir; vuelve a 77b9db7 si no pasa `npm test`.
 
 ## Estructura
 - `public/` = cliente web/APK (engine.js motor, data.js datos, ui.js interfaz, net.js modo en línea, fx.js, npc.js [v1.7], news.js novedades, sw.js, index.html, styles.css, img/). **Ahora la fuente es `public/`** (antes era una carpeta externa `apk/assets/www` + `scripts/sync-client.js`; ignora ese script).
 - `server/` servidor sin dependencias (http+SSE+POST, `vm` por sala con engine.js/data.js intactos, vista filtrada por jugador, snapshots cifrados).
-- `test/` (`npm test`, 59 tests, fugas de privacidad incluidas) y `test/e2e/online_e2e.py` (Playwright de Python; ver README allí). En esta máquina falta `pip install playwright` + navegador; los E2E de navegador no se han podido ejecutar.
+- `test/` (`npm test`, 59 tests, fugas de privacidad incluidas) y `test/e2e/online_e2e.py` (Playwright de Python; ver README allí). Instalado en esta máquina (`pip install playwright`); escenarios uno por uno.
 - `tools/work/` simuladores y scripts de UI/balance (smart.js, smart_human.js, sim10.js, bh/fuzz.js, ui_run.py, ix_ui.py, fuzz_ui.py…). Aceptan `WWW=<carpeta del cliente>`; apúntalos a `public/`.
 - `docs/designs/` diseños: magia, daño con riesgo, salud, online. `docs/NOTAS_PROYECTO.md` = notas históricas completas (decisiones, balance, estados por versión).
 
@@ -32,7 +32,7 @@ Juego social de deducción para 2-10 jugadores (pasar el móvil en local, o en l
 4. v1.10.0 salud recortada (3 zonas) — `docs/designs/salud.md`.
 5. Sospecha acumulada (acusar sin certeza; cooperación contra el Asesino).
 6. Salas públicas (lista de salas sin empezar, nombre, límites anti-abuso) — AL FINAL.
-Pendientes menores: pactos de una sola ronda (secreto «Palabra dada» casi imposible), `useItem` con error muta estado (fuzz), 10 jugadores a 20 min sin Asesino, pruebas en Android real y con personas. El texto de NPC recortado a 360 px está arreglado en `feat-fixes` (pendiente de merge). El falso positivo del escaneo de privacidad de `persist` no se reprodujo en 15 ejecuciones seguidas (2026-11-14): vigilarlo en el E2E `persist`.
+Pendientes menores: pactos de una sola ronda (secreto «Palabra dada» casi imposible), `useItem` con error muta estado (fuzz), 10 jugadores a 20 min sin Asesino, pruebas en Android real y con personas. El texto de NPC a 360 px está arreglado y fusionado (`feat-fixes`, ebcd352). El falso positivo del escaneo de privacidad de `persist` no se reprodujo en 15 ejecuciones seguidas (2026-11-14): vigilarlo en el E2E `persist`.
 
 ## Cómo probar
 `npm test` (≈1 min). E2E online: `python3 test/e2e/online_e2e.py <escenario>` uno por uno (lobby, game 1-3, restart, stun, timers, time, presence, dual, persist, persisthard, csp, absvote, external, desktop, small [+ npc2, npcroom, npcsub en v1.7]); en paralelo se satura y da falsos timeouts. Local: `tools/work/ui_run.py 2`, `ix_ui.py`, `fuzz_ui.py`. Balance: `WWW=public node tools/work/smart_human.js` (mira su cabecera para N/minutos).
