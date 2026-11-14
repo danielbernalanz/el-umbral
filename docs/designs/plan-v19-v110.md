@@ -1,186 +1,173 @@
-# El Umbral — Plan de integración v1.9.0 y v1.10.0
+# Plan de integración v1.9.0 y v1.10.0
 
-Estado del repo al escribir: `main`, commit `915d24e`, árbol limpio, `data.js` en `1.7.0`.
-Marcas usadas: **[H]** hecho verificado en el código o en los documentos citados; **[S]** suposición razonada; **[D]** decisión pendiente del usuario.
-
----
+> Base verificada: `main` @ `915d24e`, árbol limpio (2026-11-14). Este documento es solo análisis: no modifica código.
+> **Hecho**: todo lo citado con archivo y línea existe en esa base. **Suposición**: v1.8.0 (`docs/designs/dano.md`) se fusiona en otra rama antes de v1.10.0; si no, aplican los acoplamientos de §3.
+> **Recorte propuesto** (pendiente, §7.4): v1.9.0 = reto único + magia T1/T2 sin T3/T4 ni ritos; v1.10.0 = 3 zonas con tick determinista y tratamientos básicos.
 
 ## 1. Resumen ejecutivo
 
-1. v1.8.0 (daño con riesgo) no es solo anterior en la cola: es la **dependencia dura** de v1.9 y v1.10 porque define la firma de `damage` y la cola `state.harm` sobre la que se apoyan la magia diferida y el tick de salud.
-2. v1.9.0 se puede partir en dos: el **reto de habilidad** (infraestructura de servidor + UI, paralelizable desde ya) y el **recorte de magia** (toca `cast`, `spellInfo` y `beginCouncil`, que v1.8 también toca).
-3. v1.10.0 debe entregarse en dos cortes: **modelo de 3 zonas + tick determinista** primero, **tratamientos y UI de silueta** después; el diseño `salud.md` completo son 24-26 sesiones y no cabe en una versión.
-4. Todo lo que añada una consulta a `q` obliga a tocar `leakcheck.Q_KEYS` (`test/helpers/leakcheck.js:5`) y `test/pure.test.js:14-25`; sin eso la suite falla aunque el código sea correcto.
-5. Estimación realista: **v1.9 ≈ 6 sesiones**, **v1.10 ≈ 9 sesiones**, más 1 de cierre y despliegue; el orden de merge es v1.8 → reto → magia → salud.
+- **v1.9.0** tiene dos bloques separables: (A) el reto de habilidad único, opcional, con ventana fija y validación en servidor; (B) «magia recortada»: metadatos de escuela/tier, cola `state.arcane` y resolución por capas solo para T1 (los 13 conjuros actuales) y un T2 mínimo, sin T3/T4, ritos ni afinidad de escuela.
+- El reto **no toca `rollCheck`** (`public/engine.js` l.1714): se aplica después de la tirada como corrección de probabilidad; el dado, la pifia y el crítico no cambian. Es la única forma de que v1.8.0, v1.9.0 y v1.10.0 compartan tirada.
+- **v1.10.0** reduce el cuerpo de 4 zonas (`ZONES` l.46) a 3, sustituye el azar de sangrado/infección (`damage` l.138-139; `startRound` l.1672-1678) por un tick determinista y añade la vista pública `look` + tratamiento básico («Atender»). Mantiene `hp` como único número de supervivencia.
+- La integración con v1.8.0 es el riesgo principal: comparte `damage`, `tickStatus`, `act`, `beginCouncil`, `view.js` y el hash de snapshots. Sin contratos congelados (§3), las tres versiones se pisan.
+- Ninguna versión puede desplegarse con salas vivas: cambiar `engine.js`/`data.js` cambia `engineId` y toda restauración devuelve **409** (`server/room.js` l.336; `HANDOFF.md` l.40).
+- Presupuesto: ~14-18 jornadas de agente; v1.9.0 ~7-9, v1.10.0 ~6-8, más 1 de contratos y línea base.
 
----
+## 2. Inventario de cambios por versión
 
-## 2. Inventario por versión
+### 2.1 v1.9.0 — reto de habilidad único
 
-### 2.1 v1.9.0 — reto de habilidad único + magia recortada
+| Pieza | Archivo | Función / línea real | Cambio |
+|---|---|---|---|
+| Núcleo de tirada | `public/engine.js` | `rollCheck` l.1714; `pSuccess` l.1209 | No tocar. Añadir `applySkill(res, delta)`: si `delta>0` y falló, pasa a éxito con `delta/(1−p)`; si `delta<0` y acertó, pasa a fallo con `|delta|/p`. Pifia/crítico solo del dado. |
+| Puntos de llamada | `public/engine.js` | `cast` l.786; `act` l.1727+ (cada `rollCheck`); `learnSpell` l.839 | Aceptar un 5.º argumento `skill` (token ya puntuado o delta local) y aplicarlo justo después de la tirada. |
+| Datos | `public/data.js` | junto a `STAKES` l.123 | `D.SKILL = { windowMs: 8000, floor: -6, ceil: 15 }`. Sin acciones nuevas. |
+| Servidor | `server/game.js` | `COMMANDS` l.455; `act` l.456; `cast` l.468 | `challenge` (emite seed/issuedAt) y `challengeSubmit` (valida traza y firma token); pasar `skill` en `act`/`cast`. |
+| Módulo nuevo | `server/challenge.js` | — | Puntuación, plausibilidad (≥120 ms entre eventos), ventana 8 s + 1,5 s de gracia, un envío por seed. Sin estado en la sala. |
+| Cliente | `public/ui.js` | `renderPrivate` l.624; `renderActions` l.814; `renderSpellPicker` l.962 | Overlay de reto al confirmar CUALQUIER acción; misma forma y duración para todos. «Sin retos» = delta 0 con pantalla de respiración. |
+| Accesibilidad | `ui.js`, `index.html`, `styles.css` | ajustes existentes | «Reto sencillo» (misma ventana, objetivos mayores y más lentos) y «Sin retos». Nunca cambia las opciones disponibles. |
+| Privacidad | `server/view.js` | `TOP_KEYS` l.11 | No exponer seed, puntuación ni delta ajenos. El seed propio va en la respuesta del comando, no en `q`. |
+| Versión | `data.js` l.233; `engine.js` l.9 | `D.VERSION` y `VERSION` (formato de guardado) | Subir ambos y migrar saves (§3.9). |
 
-**Objetivo de HANDOFF (`HANDOFF.md:29`):** un solo reto, opcional, bonus −6..+15, misma forma y duración para todas las acciones, validación en servidor; magia recortada según `magia.md`.
+### 2.2 v1.9.0 — magia recortada
 
-| Pieza | Punto real | Trabajo |
+| Pieza | Archivo | Función / línea real | Cambio |
+|---|---|---|---|
+| Metadatos | `engine.js` | `SPELL_FORMS` l.597; `SPELL_ASPECTS` l.612 | Añadir `school`, `tier`, `layer`, `cost`; `spellMeta(sp)` con fallback T1 para partidas viejas. |
+| Tirada vs efecto | `engine.js` | `cast` l.752-821 | Mantener tirada y costes en el acto (l.785-804); mover el efecto a `queueArcane()`. |
+| Cola y capas | `engine.js` | `applySpell` l.662 | `state.arcane` + `resolveArcane()` por capas C1-C6; misma entrada, mismo resultado, sin importar el orden de llegada. |
+| Hook único | `engine.js` | `beginCouncil` l.2403-2406 | `resolveArcane()` antes de `shadowStrike()` (l.2405). Un solo punto de resolución. |
+| Limpieza | `engine.js` | `startRound` l.1637-1690 | Vaciar `state.arcane`; caducar `p.charge`/wards; no tocar el orden de `tickStatus`. |
+| Información | `engine.js` | `spellInfo` l.736 | Devolver tier, escuela y capa; nunca wards ni colas ajenas. |
+| Estudio | `engine.js` | `studyOptions` l.830; `learnSpell` l.839; `improveSpell` l.861 | Tope por peso (sustituye `p.spells.length >= 4` de l.851); solo T1/T2. |
+| UI | `ui.js` | `renderSpellPicker` l.962; `renderModePicker` l.1047; `spellsHTML` l.921 | Agrupar por escuela, chip de tier, capacidad por peso; T3/T4 no aparecen. |
+| Vista y snapshots | `view.js` l.10 y l.100-104; `snapshot.js` l.12 | lista blanca; `SCHEMA` | Excluir `state.arcane`, `p.charge`, wards ajenos; neutralizar defensas ocultas como ya se hace con `protection`; `SCHEMA` 2. |
+| Datos | `data.js` | `SPELL_DB` | 13 T1 + ≤8 T2 con textos, costes y requisitos; sin grimorio mayor ni libro sin nombre. |
+
+### 2.3 v1.10.0 — salud a 3 zonas
+
+| Pieza | Archivo | Función / línea real | Cambio |
+|---|---|---|---|
+| Zonas | `engine.js` | `ZONES` l.46; `ZONE_LABEL` l.47; `ZONE_IN` l.48; `ZONE_W` l.49 | Pasar a 3 zonas (propuesta: `cabeza`, `torso`, `miembros`); migrar pesos y textos. |
+| Modelo | `engine.js` | `initHealth` l.79; `zoneLvl` l.61; `zoneMod` l.67; `legPen`/`armPen` l.65-66 | `p.inj[z] = { t, n, bleed, inf, tx }`; `n` 1-3; penalizadores derivados con tope −2. |
+| Daño | `engine.js` | `damage` l.120; `hitNote` l.145; `ZONE_DESC` l.162 | `opts.tipo` escribe la lesión; **eliminar** el sangrado aleatorio l.138-139; conservar `dying`/`fast` l.132-137. |
+| Tick | `engine.js` | `tickStatus` l.1034-1054 | Hemorragia, infección y veneno deterministas; tope 4 hp/ronda; previsión «caes en N rondas». |
+| Inicio de ronda | `engine.js` | `startRound` l.1637-1690 | Quitar la infección aleatoria l.1672-1678; conservar la ventana del moribundo l.1647-1657. |
+| Público | `engine.js` | `visibleHealth` l.168; `healthInfo` l.184 | `publicLook(p)` con enum cerrado de signos (máx. 3); `healthInfo` amplía zonas y previsión solo para el propio. |
+| Vista | `view.js` | `PUBLIC_PLAYER_KEYS` l.10; `q.health` l.69 | Añadir `look` a la lista blanca; `q.health` crece con `inj`, `sist`, `dolor`, `prevision`; `ME_EXCLUDE` l.13 sigue ocultando identidades. |
+| Tratamiento | `data.js` l.94; `engine.js` `act` l.1727 | `ACTIONS`; motor | Nueva acción «Atender»: Presionar / Vendar / Limpiar / Descansar / Socorrer. Sin cirugía ni oficio en esta versión. |
+| UI | `ui.js` | `statsHTML` l.589-622 (zones l.606); `renderSheet` l.754; `openActionSheet` l.881 | Silueta de 3 zonas, panel «qué te pasa y qué hacer», probabilidad y consecuencia visibles. |
+| Migración | `engine.js` | `loadGame` l.3350-3374 | `p.zones` numérico → `p.inj`; estados `sangrado`/`infeccion` → flags; aceptar saves de formato 5 (hoy l.3364 rechaza todo lo que no sea `VERSION`). |
+
+## 3. Dependencias y conflictos con v1.8.0
+
+1. **`damage()` (l.120) — conflicto duro.** v1.8 añade `{tipo, nivelMin}` y 24 formas que dirigen zonas; v1.10 necesita ese mismo contrato para escribir `p.inj`. *Resolución*: congelar ya `damage(p, amount, {src, zone, tipo, noBleed, fast})`; v1.8 debe enviar `tipo` y `zone` siempre, y v1.10 lo consume sin cambiar la firma.
+2. **`tickStatus()` (l.1034-1054) — conflicto duro.** v1.8 mete estados nuevos (veneno lento, sopor, cepo) por ronda; v1.10 reescribe el tick entero. *Resolución*: v1.10 es dueño del bucle; v1.8 registra sus efectos por ronda en una tabla (`state.harm`/hooks), no en líneas nuevas del `forEach`.
+3. **`act()` (l.1727) y el reto — conflicto duro.** v1.8 añade `stake` (4.º argumento) y 13 acciones; v1.9 añade `skill` (5.º). *Resolución*: `act(actorId, actionId, targetId, stakeId, skill)`, con `stakeId` y `skill` opcionales y validados por separado; `server/game.js` l.456 serializa ambos.
+4. **`beginCouncil()` (l.2403-2406) — conflicto duro.** v1.8 quiere H1 (plantadas/mechas) y H2 (diferidos) después de la magia y antes de `shadowStrike`; v1.9 quiere `resolveArcane` en ese mismo punto. *Resolución*: orden fijo y documentado: `resolveArcane()` → `resolveHarm()` (H1/H2) → `shadowStrike()`. Un solo PR puede introducir el esqueleto.
+5. **Zonas y `ZONE_W` (l.46-52) — conflicto de datos.** `dano.md` reparte daño por `brazos`/`piernas`/`cabeza`; v1.10 los funde. *Resolución*: si v1.8 entra antes, sus 24 formas y pesos se migran en v1.10 con una tabla `src→zona3`; si v1.10 entra antes, v1.8 nace ya en 3 zonas. No puede haber dos `ZONE_W`.
+6. **`view.js` y `leakcheck` — conflicto de lista blanca.** v1.8 debe ocultar `state.harm` y marcas ajenas; v1.9 `state.arcane`/wards; v1.10 `look`/`q.health`. Los tres tocan `PUBLIC_PLAYER_KEYS` l.10, `queriesFor` l.58 y `Q_KEYS` (`test/helpers/leakcheck.js` l.5). *Resolución*: un solo PR «vista» por versión, con `Q_KEYS` actualizado en el mismo commit; nunca dos ramas añadiendo claves a la vez.
+7. **`startRound()` (l.1637) — conflicto medio.** v1.8 puede necesitar limpiar marcas/cepos; v1.10 quita la infección aleatoria l.1672-1678. *Resolución*: v1.10 conserva el bloque de moribundos (l.1647-1657) y mueve la infección a `p.inj`; v1.8 no añade azar nuevo al inicio de ronda.
+8. **Snapshots y `engineId` — conflicto de despliegue.** Cada cambio de `engine.js`/`data.js`/`npc.js` invalida salas (409). Tres versiones = tres ventanas de invalidación. *Resolución*: desplegar con mesa vacía, aviso en cliente y `SCHEMA` incrementado una sola vez por versión.
+9. **Saves locales — conflicto silencioso.** `loadGame` l.3364 rechaza cualquier `data.v !== VERSION` (hoy 5). Subir `VERSION` sin conversión borra la partida en curso. *Resolución*: mantener 5 si los cambios son aditivos; si hay migración, aceptar 5 y convertir en `initHealth`/`initArcane` antes de validar.
+10. **UI de acciones — conflicto blando.** v1.8 añade el selector de riesgo en `openActionSheet` l.881 y 13 acciones; v1.9 añade el overlay de reto; v1.10 «Atender» y la silueta. *Resolución*: v1.8 y v1.10 solo añaden filas a `ACTIONS`/`ACTION_GROUPS` (l.543-549); el overlay de reto es un componente único invocado desde `renderPrivate`.
+
+## 4. Qué se puede paralelizar y qué no
+
+**Sí, en paralelo (contratos de §3 congelados primero):**
+- `server/challenge.js` + sus unitarios y el `challenge`/`challengeSubmit` de `server/game.js`, siempre que `act`/`cast` acepten `skill` opcional.
+- `SPELL_DB` T1/T2 y textos de `data.js`; no toca el motor.
+- Overlay de reto y ajustes de accesibilidad en `ui.js`/`styles.css`, con una maqueta de `skill`.
+- Tests de no-fuga y de snapshots escritos contra las claves nuevas, antes de implementarlas.
+- Documentación, `news.js` y checklist de despliegue.
+- Maqueta de la silueta de 3 zonas y del panel «qué hacer», con datos falsos.
+
+**No, en paralelo:**
+- `damage`, `tickStatus`, `act`, `beginCouncil`, `startRound`, `rollCheck`: un solo dueño por versión.
+- `view.js` + `Q_KEYS` + `SCHEMA`: una sola rama por ventana.
+- Subida de `VERSION`/`D.VERSION` y `news.js`: al final de cada versión, nunca en paralelo.
+- Balance final y E2E online: necesitan el árbol integrado y la mesa vacía.
+
+```
+contratos §3 ──┬─> v1.9-A reto (servidor+UI) ──┐
+               ├─> v1.9-B magia T1/T2 ─────────┼─> v1.9.0 integrada ─> v1.10 motor ─> v1.10 UI/vista ─> balance
+               └─> v1.8 (otra rama) ───────────┘
+```
+
+## 5. Plan de pruebas por versión
+
+### 5.1 v1.9.0
+
+| Tipo | Qué se prueba | Criterio |
 |---|---|---|
-| Reto: tirada | `engine.js:1714-1724` (`rollCheck`) | **[H]** No se toca: el diseño exige aplicar el delta después de la tirada (`magia.md:150`). Se añade un envoltorio, no se reescribe el dado. |
-| Reto: acción | `engine.js:1727` (`act`), tirada en `1824` | **[H]** Añadir el token de reto a la firma y aplicarlo antes de la pifia/crítico. Es el punto que v1.8 también modifica. |
-| Reto: conjuro | `engine.js:752` (`cast`), `713` (`spellCheck`) | **[H]** Mismo token; `cast` ya valida turno, usos y objetivos antes de tirar. |
-| Reto: servidor | `server/game.js:455-555` (`COMMANDS`), `act:456`, `cast:468` | **[H]** Nuevos comandos `challenge` / `challengeSubmit`; el cliente nunca envía `delta` (`magia.md:154`). |
-| Reto: vista | `server/view.js:58-109` (`queriesFor`) | **[H]** Exponer estado del reto solo al jugador que lo juega; no hay dato público nuevo. |
-| Reto: tests | `test/helpers/leakcheck.js:5` (`Q_KEYS`), `test/pure.test.js:14-25` | **[H]** Lista cerrada: cualquier `q.challenge` debe añadirse aquí o `checkView` falla (`leakcheck.js:54`). |
-| Reto: UI | `ui.js:814` (`renderActions`), `1153` (`doAction`), `939` (`doCast`) | **[H]** Overlay de 8 s; `doAction` ya centraliza el envío de acciones. |
-| Magia: resolución | `engine.js:2403-2417` (`beginCouncil`), `2405` (`shadowStrike`) | **[H]** Insertar `resolveArcane()` antes de `shadowStrike`, como pide `magia.md:9`. |
-| Magia: cola | `engine.js:2866` (`nextRound`), `663-681` (`applySpell`) | **[H]** `state.arcane` se vacía al cerrar ronda; `applySpell` pasa a aplicarse desde la cola. |
-| Magia: info | `engine.js:736-751` (`spellInfo`) | **[H]** Añadir capa/tier/escuela y textos de interacción sin revelar defensas ocultas. |
-| Magia: recorte | `magia.md:54-99` (37 conjuros), `data.js:94-120` (`ACTIONS`) | **[D]** Qué tiers sobreviven; el documento propone T1-T2 en una entrega y T3-T4 en otra (`magia.md:181`). |
-| Magia: vista | `server/view.js:93-107` (`q.spells`), `102-103` (`protection=null`) | **[H]** Cualquier defensa nueva (ward/reflect/ally/conc) debe neutralizarse igual que hoy. |
-| Magia: UI | `ui.js:962-1008` (`renderSpellPicker`), `954` (`spellLine`), `958` (`probChip`) | **[H]** Agrupar por escuela/tier y mostrar probabilidad antes de elegir. |
+| Unitario | `applySkill`: media desplazada exactamente `delta`; pifia/crítico intactos; `delta=0` idéntico a hoy. | 10 000 tiradas por celda, error < 0,5 pp. |
+| Unitario | `resolveArcane`: mismas entradas en distinto orden → mismo estado; contrahechizo/ward/reflejo; muerte del lanzador antes de C4. | Estado serializado idéntico. |
+| Unitario | Estudio: tope por peso, T2 solo con Practicante, save viejo → T1 por `spellMeta`. | Sin excepciones ni pérdida de conjuros. |
+| No-fuga | `test/leak.test.js` l.18 y l.116; `Q_KEYS` con `skill`/`arcane` si aplica; seed y delta ajenos nunca en la vista. | 0 aciertos del detector; control negativo sigue fallando. |
+| Snapshots | `test/persist.test.js`: restauración exacta a mitad de fase; motor distinto → 409; `SCHEMA=2`. | Salas viejas rechazadas limpiamente; vistas idénticas. |
+| E2E | `python3 test/e2e/online_e2e.py game1|game2|game3|stun|timers|persist|persisthard` + flujo de reto. | Un escenario a la vez; sin timeouts; reto caducado = base. |
+| Balance | `WWW=public node tools/work/smart_human.js 300 10|12|15 human|allgood|aggro`. | Asesino 31/46-50/37-45 % ±4 pp; allgood ≥88 %; conjuros 12-25 % de acciones; muertes por conjuro ≤25 %. |
 
-**[S]** El recorte de magia no debería tocar el catálogo de 37 conjuros en esta versión: basta con limitar el acceso (tiers, coste, escuela) y dejar el dato preparado. Reescribir `SPELL_DB` entero es el mayor riesgo de regresión de `cast`.
+### 5.2 v1.10.0
 
-### 2.2 v1.10.0 — salud recortada a 3 zonas
-
-**Objetivo de HANDOFF (`HANDOFF.md:30`):** salud recortada a 3 zonas. `salud.md` diseña 6 zonas (`salud.md:15`), así que el recorte es una decisión, no una traducción.
-
-| Pieza | Punto real | Trabajo |
+| Tipo | Qué se prueba | Criterio |
 |---|---|---|
-| Zonas | `engine.js:46` (`ZONES`), `56-59` (`pickZone`), `61-63` (`zoneLvl`) | **[H]** Cambiar el array rompe `damage`, `heal`, `healthInfo`, `visibleHealth`, `tickStatus` y `startRound`. |
-| Daño | `engine.js:120-142` (`damage`), `112-118` (`bleed`) | **[H]** Añadir `tipo`/`nivel` y quitar el azar de sangrado (`139`), hoy 25 % / 45 % en torso. |
-| Curación | `engine.js:150-161` (`heal`) | **[H]** Hoy reparte la curación por la zona más dañada; con lesiones por zona hay que decidir el orden. |
-| Público | `engine.js:168-182` (`visibleHealth`), `184-195` (`healthInfo`) | **[H]** `visibleHealth` ya produce marcas (`174-181`); el diseño añade un vocabulario cerrado (`salud.md:85-97`). |
-| Tick | `engine.js:1034-1054` (`tickStatus`) | **[H]** Aquí vive el sangrado (`1038-1043`) y la infección (`1044-1048`); el diseño los quiere deterministas. |
-| Inicio de ronda | `engine.js:1668` (tick), `1672-1678` (infección aleatoria 40 %) | **[H]** La infección aleatoria contradice el tick determinista de `salud.md:8`. |
-| Objetos | `engine.js:2261-2344` (`useItem`), `data.js:51-87` (`ITEMS`) | **[H]** Añadir zona al uso de vendas/hierbas; ojo al bug conocido: `useItem` muta estado al fallar. |
-| Acciones | `engine.js:2094-2105` (`descansar`), `2111-2123` (`socorrer`) | **[H]** Puntos de enganche de Atender/Presionar; `socorrer` ya estabiliza (`2116`). |
-| Consejo | `engine.js:2640` (`resolveAmbush`) | **[H]** La emboscada aplica daño; debe pasar por la nueva firma. |
-| Vista | `server/view.js:10` (`PUBLIC_PLAYER_KEYS`), `69` (`q.health`), `158` (`visibleHealth`) | **[H]** `look` entra en la lista blanca; `q.health` crece solo para el propio jugador. |
-| UI | `ui.js:589-622` (`statsHTML`), `606-609` (zonas) | **[H]** Cuatro chips de zona pasan a tres; hay clases CSS y sprites `z_brazos`/`z_piernas` que quedan huérfanos. |
-| Persistencia | `server/snapshot.js:12` (`SCHEMA`), `17-21` (`engineId`), `engine.js:3350` (`loadGame`) | **[H]** `engineId` ya invalida snapshots al cambiar `engine.js`/`data.js`; `SCHEMA` solo sube si cambia el formato del snapshot, no el estado interno. |
-| Migración | `engine.js:79` (`initHealth`), `3350` (`loadGame`) | **[H]** Partidas guardadas tienen `zones: {cabeza,torso,brazos,piernas}`; hay que fusionar brazos/piernas sin perder daño. |
+| Unitario | `damage`/`heal` con `p.inj`: niveles 1-3, fusión de tipos, tope 4 hp/ronda, previsión determinista. | Misma secuencia → mismo resultado; sin `Math.random` en el tick. |
+| Unitario | `initHealth`: migración de `zones` numérico y estados viejos; `stabilize`/`finish`. | Save de formato 5 conserva hp, zonas y moribundos. |
+| No-fuga | `look` idéntico para mismo `inj` con `corr`, `alignment` o `cause` distintos; `q.health` solo propio; `PUBLIC_PLAYER_KEYS` sin campos nuevos. | 48 partidas × configuraciones, 0 diferencias; detector ampliado. |
+| Snapshots | `SCHEMA=3`; restauración con `p.inj` y `state.harm`/`arcane`. | 409 en blobs viejos; estado y vistas idénticos tras restaurar. |
+| E2E | Los mismos escenarios + `persist`, `dual`, `small`, `npc2`. | Nadie ve menos acciones; «Atender» aparece para todos. |
+| Balance | Igual que 5.1, midiendo muertes por causa y moribundos socorridos. | Muertes naturales ≤0,25/partida a 3j/12 min; ≥65 % de moribundos estabilizados; duración ±0,5 min; asesino ±4 pp. |
 
----
-
-## 3. Conflictos con v1.8.0
-
-### C1. Una sola firma de `damage`, dos dueños
-`dano.md:95` y `salud.md:121` proponen contratos distintos: `damage(p, amount, {src, zone, tipo, nivelMin, noBleed})` y una tabla `src→tipo`. **[H]** La función actual (`engine.js:120`) ya acepta `{src, zone, noZone, noBleed}` y elige zona por pesos (`pickZone`, `56-59`). **[S]** Si v1.8 reescribe `damage` y v1.10 lo vuelve a reescribir, el merge pierde el sangrado, la muerte y las notas privadas. **Regla propuesta:** v1.8 congela la firma completa (incluido `tipo` y `nivel`) aunque aún no la use; v1.10 solo añade cuerpo, nunca cambia parámetros.
-
-### C2. Aleatoriedad contra tick determinista
-**[H]** Hoy el sangrado se decide al azar en `damage:138-140` (25 %, 45 % en torso) y la infección en `startRound:1677` (40 %). **[H]** `salud.md:8` y `:36-45` exigen tick determinista y previsión «caes en N rondas»; `dano.md:11` exige capas deterministas al cierre. **[S]** Tres fuentes de azar distintas en la misma ronda hacen imposible el objetivo de balance de HANDOFF: el jugador no puede explicar por qué cae. **Decisión:** el azar se queda solo en la tirada de tratamiento y en el reto.
-
-### C3. 4 zonas → 3 zonas rompe el catálogo de daño
-**[H]** `ZONES` (`engine.js:46`) alimenta `pickZone` (`58`), `initHealth` (`88`), `healthInfo` (`191`), `visibleHealth` (`174-176`), `heal` (`156-157`), `tickStatus` (`1039`) y `startRound` (`1675`). **[H]** `dano.md:21-25` describe 24 formas con efectos por zona (`torso`, `brazos`, `piernas`, `cabeza`). **[H]** `salud.md:15` pide 6 zonas. **[D]** Qué tres zonas: (a) cabeza/torso/miembros, (b) cabeza/torso/piernas, (c) cabeza/torso/brazos. Elegir (a) obliga a reescribir las 24 filas de `D.HARM`; elegir (b) o (c) deja una zona sin cubrir. Sea cual sea, hay que decidir si se conserva el modelo de lesión `{t,n,bleed,inf,tx}` o solo buckets de daño.
-
-### C4. El token de reto entra por la puerta de v1.8
-**[H]** `dano.md:84-88` ya pide reto en TODAS las acciones privadas y token firmado en `act`. **[H]** `magia.md:150-154` define el mismo reto para `cast` y para cada turno, con ventana fija de 8 s. **[H]** La firma actual es `act(actorId, actionId, targetId, stakeId)` (`engine.js:1727`) y la llamada del servidor `run("act", [aid, t, st])` (`server/game.js:205`). **[S]** Si v1.8 añade el token como quinto argumento y v1.9 lo añade como objeto de opciones, hay que tocar `act`, `game.js:205/456`, `ui.js:1153` y los bots. **Decisión:** forma del token (`{seed,sig}`? `{seed,score}`?) y si viaja como argumento o dentro de un objeto `opts`.
-
-### C5. Acciones, objetos y listas cerradas se pisan
-**[H]** v1.8 propone 13 acciones nuevas (`dano.md:59`) sobre `D.ACTIONS` (`data.js:94-120`). v1.10 añade Atender/tratamientos sobre el mismo array y sobre `D.ITEMS` (`51-87`). **[H]** `isUnlocked` (`engine.js:537`) y `visibleActions` (`550`) gobiernan qué ve cada jugador; `q.actions` (`server/view.js:86-87`) y `test/leak.test.js:116-132` verifican que no se filtren acciones bloqueadas. **[H]** `ui.js:789` (`SHORT`) y `814` (`renderActions`) tienen textos y grupos por acción. **[S]** Cualquier acción nueva exige tocar cuatro sitios y un test; si v1.8 y v1.10 lo hacen en ramas distintas, el conflicto es seguro.
-
-### C6 (menor, pero bloqueante). `useItem` muta estado al fallar
-**[H]** `useItem` (`engine.js:2261-2344`) valida dentro del `switch` y varios `return err(...)` ocurren después de `antiAct(p)`/`darkAct(p)` (`2273-2274`) y de mensajes ya calculados. **[H]** HANDOFF lo lista como pendiente (`HANDOFF.md:33`). **[S]** v1.10 multiplica los usos de objeto sobre salud; arreglarlo antes es una sesión pequeña y aislada, no un extra.
-
----
-
-## 4. Paralelización real
-
-### 4.1 Se puede hacer en paralelo desde hoy
-
-| Rama | Contenido | Por qué no choca |
-|---|---|---|
-| `feat-reto` | Servidor `challenge`/`challengeSubmit`, validación de traza, overlay UI 8 s, ajustes «Sin retos» / «Reto sencillo» | Archivos nuevos o zonas no tocadas por v1.8; no edita `act`, `cast` ni `damage`. |
-| `feat-salud-modelo` | `p.inj`/3 zonas, previsión, migración de guardado, tests unitarios del modelo | Trabaja sobre helpers nuevos; solo se integra en `damage`/`tickStatus` al final. |
-| `feat-look` | Vocabulario público (`salud.md:85-97`), `publicLook`, ampliación de `PUBLIC_PLAYER_KEYS` y tests de fuga | Aditivo en `view.js:10` y `leakcheck`; no toca la resolución. |
-
-### 4.2 No se puede paralelizar (mismo archivo o misma función)
-
-- `engine.js`: `act` (v1.8 + reto + Atender), `startRound` (v1.8 H1/H2 + infección + tick), `damage`/`heal`/`tickStatus` (v1.8 + v1.10), `beginCouncil` (harm + arcane + salud), `useItem`.
-- `data.js`: `ACTIONS` (`94-120`), `ITEMS` (`51-87`), `STATUS` (`220-227`).
-- `server/view.js`: `queriesFor` (`58-109`) y `q.spells` (`93-107`) comparten lista blanca y tests.
-- `ui.js`: `renderActions` (`814`) y `statsHTML` (`589-622`).
-- `test/helpers/leakcheck.js:5` y `test/pure.test.js:14-25`: listas cerradas.
-
-### 4.3 Debe esperar a v1.8 mergeada
-
-- Cualquier cambio en el orden de capas de `state.harm` y su hook en `beginCouncil`.
-- El contador `p.oficios` (`dano.md:104-118`): v1.9 y v1.10 quieren colgar de él sus desbloqueos.
-- `AGGR_ACT` (`engine.js:527`) y `DARK_ACTS` (`946`): las acciones nuevas de salud/magia deben declarar si cuentan.
-- La firma definitiva de `damage`, que condiciona todo el modelo de zonas.
-
-**Orden de merge propuesto:** `v1.8` → `feat-reto` → `feat-magia` (recorte) → `feat-salud` (modelo+tick) → `feat-salud-ui` (tratamientos). El reto va primero dentro de v1.9 porque es la dependencia del token en `act` y `cast`.
-
----
-
-## 5. Plan de pruebas
-
-| Nivel | Qué se prueba | Dónde |
-|---|---|---|
-| Unitario motor | 3 zonas, tick determinista, previsión, migración de `zones`; delta del reto aplicado sin tocar dado ni pifia | `npm test`, nuevos casos en `test/` |
-| Pureza | Toda consulta nueva de `q` es pura o está declarada impura | `test/pure.test.js:14-25`, lista esperada `50-52` |
-| No fuga | `look`, `q.health`, `q.treatOptions`, `q.challenge` no revelan `corr`, autor, herida interna ni defensas ocultas | `test/leak.test.js`, `leakcheck.js:5,42-75` |
-| Matriz de fuga | Mismo cuerpo con `corr` distinta produce el mismo `look`; 48 partidas × configuraciones (`salud.md:100`) | harness existente + caso nuevo |
-| Persistencia | Guardado local migra `brazos`/`piernas`; snapshot viejo se rechaza por `engineId`; `SCHEMA` solo sube si cambia el formato | `test/persist.test.js:48-66,167-169`, `snapshot.js:12-21` |
-| E2E | Escenarios de a uno: `game`, `stun`, `timers`, `persist`, `persisthard`, `dual`, `absvote`, `npc2`, `npcroom`; nuevo escenario de reto (caducar = delta 0, reenvío rechazado) | `python3 test/e2e/online_e2e.py <escenario>` |
-| Balance | 3 jugadores 10/12/15 min; asesino 31/46-50/37-45 %, supervivientes ≥88 %, ±4 pp | `WWW=public node tools/work/smart_human.js N minutos [perfil]` |
-| Magia | Conjuros 12-25 % de las acciones, muertes por conjuro ≤25 %, éxito 55-65 % | `magia.md:170`, `smart_human` |
-| Manual | Reto táctil en Android real; 6-10 jugadores; no verificado nunca | `HANDOFF.md:45` |
-
-**Puertas de salida:** `npm test` verde (≈1 min), sin consultas impuras inesperadas, sin claves nuevas en `q` fuera de `Q_KEYS`, y balance dentro de ±4 pp. **[H]** El E2E no se ejecuta en paralelo: se satura (`test/e2e/README.md`).
-
----
-
-## 6. Riesgos
+## 6. Riesgos y mitigaciones
 
 | Riesgo | Prob. | Impacto | Mitigación |
 |---|---|---|---|
-| `damage` con dos dueños y merge destructivo | Alta | Alto | Congelar firma en v1.8; v1.10 solo añade campos; un test de contrato con `src`/`zona`/`tipo` |
-| Reto de 8 s alarga la partida 4-10 min y rompe objetivos de duración | Media | Alto | Reto opt-in, por defecto off en local >5; medir con `smart_human` antes de activarlo |
-| Colapso a 3 zonas rompe las 24 formas de `D.HARM` | Alta | Alto | Tabla de mapeo zona→zona y migración en `initHealth`; entregar 3 zonas antes de tratamientos |
-| Fuga por `look`/`treatOptions` (corrupción, autor, herida interna) | Media | Alto | Calcular con protecciones a `null` como `view.js:102-103`; caso «mismo cuerpo, distinta corr» |
-| `useItem` muta estado al fallar y se amplifica con salud | Alta | Medio | Arreglar antes de v1.10 (cambio aislado en `2261-2344`) |
-| «Magia recortada» deja a alguien con menos opciones | Media | Alto | Recortar por coste/tier, nunca por jugador; los 13 T1 siguen disponibles para todos |
-| Alcance de `salud.md` (24-26 sesiones) se intenta meter en v1.10 | Alta | Alto | Dos cortes: modelo+tick (v1.10.0) y tratamientos (v1.11.0) |
-| Números de versión de los diseños no coinciden con HANDOFF | Alta | Bajo | Renumerar `magia.md` (dice v1.7/v1.8) y `salud.md` (dice v1.8/v1.9/v2.0) al cerrar |
+| El reto alarga la partida 4-10 min y cansa | Alta | Alto | Opcional y «Sin retos»; por defecto solo en online; medir tiempo real y abandonos. |
+| Validación de traza frágil (latencia, trampas) | Media | Medio | Caducidad = delta 0, nunca penaliza; gracia 1,5 s; tope +15; token firmado, el cliente nunca manda delta. |
+| La magia recortada se convierte en las 37 piezas | Alta | Alto | Puerta de alcance: T1+T2 máximo, sin T3/T4, ritos, afinidad ni grimorio mayor. |
+| v1.8 y v1.9 tocan las mismas funciones | Alta | Alto | Contratos §3 congelados; PRs pequeños; rebase diario; un dueño por función. |
+| 3 zonas rompen el balance y la curación | Media | Alto | Tick determinista, presupuesto de daño, línea base F0 y revertir el dial si >4 pp. |
+| `look` delata corrupción/rol | Media | Alto | Enum cerrado, máx. 3 signos, orden fijo; test «mismo cuerpo, distinta corrupción → mismo look». |
+| 409 en salas vivas | Alta | Medio | Desplegar con mesa vacía; aviso en cliente; snapshot final antes de cerrar. |
+| Saves locales borrados por subir `VERSION` | Media | Alto | Migración explícita o mantener 5; probar `loadGame` con save real de v1.7.0. |
 
----
-
-## 7. Orden, estimación y checklist de cierre
+## 7. Orden recomendado, estimaciones y checklist de cierre
 
 ### 7.1 Fases
 
-| # | Fase | Depende de | Sesiones |
+| Fase | Contenido | Est. (jornadas) | Depende de |
 |---|---|---|---|
-| S0 | Contrato con v1.8: firma de `damage`, orden de capas, forma del token | — | 0,5 |
-| S1 | v1.9 reto: servidor `challenge` + validación de traza + overlay UI | S0 | 2 |
-| S2 | v1.9 magia: recorte de acceso, `spellInfo`, `resolveArcane` en `beginCouncil`, UI de escuelas | S0 | 2 |
-| S3 | v1.9 enganche del token en `act`/`cast`, bots, tests, balance | S1+S2+v1.8 | 1,5 |
-| S4 | v1.10 modelo 3 zonas + `damage`/`heal` + tick determinista + migración | v1.8, S0 | 2 |
-| S5 | v1.10 `publicLook` + `view.js` + tests de fuga | S4 | 2 |
-| S6 | v1.10 UI silueta/panel + Atender/Presionar (si entran) | S4, S5 | 2 |
-| S7 | Integración harm/arcane/salud, bots, balance 3j 10/12/15, E2E | S3, S6 | 2 |
-| S8 | Cierre: versiones, `news.js`, APK, despliegue con mesa vacía | todo | 1 |
+| F0 | Congelar contratos §3; línea base de balance y de muertes por causa | 1 | — |
+| F1 | v1.9-A: `applySkill`, `server/challenge.js`, comandos, overlay, tests | 3-4 | F0 |
+| F2 | v1.9-B: metadatos, `state.arcane`, `resolveArcane`, estudio T2, UI, vista | 4-5 | F1 (hook) y F0 |
+| F3 | v1.10 motor: 3 zonas, `p.inj`, `damage`, tick, migración | 3-4 | F2 + v1.8 fusionada |
+| F4 | v1.10 vista y UI: `publicLook`, `q.health`, silueta, «Atender» | 3-4 | F3 |
+| F5 | Balance, E2E, snapshots, APK y despliegue de cada versión | 2-3 | F1-F4 |
 
-**Total ≈ 14,5 sesiones.** v1.9 ≈ 6; v1.10 ≈ 9 (frente a las 24-26 de `salud.md:140`, porque se recorta a 3 zonas y se dejan cirugía/órganos/oficio para después).
+### 7.2 Checklist de cierre por versión
 
-### 7.2 Checklist de cierre (por versión)
+- [ ] `npm test` verde (incluye `leak`, `persist`, `pure`, `online`, `npc`).
+- [ ] `Q_KEYS`/`PUBLIC_PLAYER_KEYS` actualizados en el mismo commit que la vista.
+- [ ] `D.VERSION`, `VERSION` (formato), `sw.js` (CACHE), `news.js` e `index.html` alineados.
+- [ ] Save local de la versión anterior cargado y continuado sin pérdida.
+- [ ] `SCHEMA` incrementado; restauración vieja devuelve 409 y mensaje claro.
+- [ ] E2E online uno por uno; sin falsos timeouts por ejecución paralela.
+- [ ] Balance ±4 pp en 10/12/15 min; métricas nuevas dentro de objetivo.
+- [ ] Sin fugas: `look`, `q.health`, `arcane`, `harm` y marcas ajenas fuera de la vista.
+- [ ] APK firmado verificado (`unzip -l`: `img/`, `styles.css`, `fx.js`, `net.js`, `news.js`, `npc.js`).
+- [ ] Despliegue manual en Render con mesa vacía; `/healthz` correcto.
+- [ ] `HANDOFF.md` y `docs/NOTAS_PROYECTO.md` actualizados con la versión cerrada.
 
-- [ ] Versión en los seis sitios: `data.js:233`, `engine.js:1`, `ui.js:1`, `fx.js:1`, `index.html:7`, `sw.js:1` (CACHE), más entrada al principio de `news.js:8`.
-- [ ] `npm test` verde: unitarios, pureza, fuga y persistencia.
-- [ ] E2E escenario a escenario, incluido el nuevo de reto; nunca en paralelo.
-- [ ] Balance 3j 10/12/15 dentro de ±4 pp; `allgood` ≥88 %; sin cambios fuera de rango.
-- [ ] Sin restos de 4 zonas: `grep` de `ZONES`, `brazos`, `piernas`, `z_brazos`, `z_piernas` y clases `.zone`.
-- [ ] Snapshots: desplegar con la mesa vacía; `/healthz` responde; primera carga tras reposo puede dar 503 ~1 min.
-- [ ] APK con `tools/work/build_signed.py`; verificar `img/`, `styles.css`, `fx.js`, `net.js`, `news.js`, `npc.js`.
-- [ ] Actualizar `HANDOFF.md`, renumerar `magia.md`/`salud.md` y anotar decisiones tomadas.
+### 7.3 Puerta entre versiones
 
-### 7.3 Decisiones pendientes
+No abrir v1.10 hasta que v1.9 esté desplegada y con una semana de partidas sin incidencias de reto/magia. Si v1.8 se retrasa, v1.9 puede entregarse sin ella **solo** si el reto se integra con `act`/`cast` actuales y no se toca `damage`; v1.10 queda bloqueada hasta v1.8.
 
-1. **[D] Alcance de «magia recortada»:** ¿qué tiers sobreviven en v1.9 y entra `state.arcane`/`resolveArcane` o se pospone?
-2. **[D] Las 3 zonas:** ¿cuáles y se conserva el modelo `{t,n,bleed,inf,tx}` o solo buckets de daño?
-3. **[D] Suelo del reto:** HANDOFF fija −6; `magia.md:184` recomienda −6 pero `magia.md:150` formula −10. Confirmar −6 y tope +15.
-4. **[D] Obligatoriedad:** ¿reto opcional por ajuste (recomendado) u obligatorio? ¿Distinto en local y online?
-5. **[D] Forma del token y validación:** `{seed,sig}` firmado, recálculo en servidor, y si `act` crece a cinco argumentos.
-6. **[D] Orden de capas:** harm (H1/H2) → arcane (C0-C8) → salud, o al revés; y qué ocurre antes de `shadowStrike` (`engine.js:2405`).
-7. **[D] Alcance de v1.10:** ¿solo modelo + tick, o también Atender/torniquete/cirugía?
-8. **[D] Numeración:** los diseños usan v1.7/v1.8; HANDOFF manda v1.9/v1.10. Renumerar antes de implementar para que las citas no se crucen.
+### 7.4 Decisiones pendientes del usuario
+
+1. **Suelo del reto**: `−6` (HANDOFF l.29) o `−10` (magia.md §9.1). Recomendado `−6`; el techo +15 se mantiene.
+2. **Alcance de «magia recortada»**: ¿T1+T2 sin T3/T4/ritos (recomendado) o solo T1 con metadatos y cola?
+3. **3 zonas**: ¿`cabeza / torso / miembros` (recomendado) o `cabeza / torso / piernas`? Cambia `ZONE_W`, la silueta y los penalizadores.
+4. **Reto por defecto**: ¿activado en online y desactivado en local con >5 jugadores (recomendado), o siempre opcional?
+5. **Salud recortada**: ¿entran «Limpiar» y la previsión «caes en N rondas» en v1.10, o solo Presionar/Vendar/Descansar/Socorrer?
+6. **Migración de saves**: ¿mantener formato 5 con campos aditivos (recomendado) o subir a 6 con conversión explícita?
