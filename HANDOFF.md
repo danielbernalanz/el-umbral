@@ -3,14 +3,15 @@
 Juego social de deducción para 2-10 jugadores (pasar el móvil en local, o en línea con salas por código). Empaquetado como APK firmado (WebView) + servidor Node en Render. Idioma de todo: español.
 
 ## Estado
-- **Estable y desplegada: v1.6.2** (APK + https://el-umbral-h1ki.onrender.com). Commit 77b9db7.
-- **v1.7.0 en curso (puede estar a medias en el árbol de trabajo)**: arreglos del log real + jugar con 2 + NPC (añadir y sustituir). Si `git status` está sucio o hay un tag `pre-v170`, comprueba antes de seguir; vuelve a 77b9db7 si no pasa `npm test`.
-- Ramas aisladas (si existen en tu copia): `feat-reto`, `feat-dano` (parciales, sin terminar).
+- **v1.7.0 cerrada en repo, pendiente de desplegar**: commit 609d847 + arreglos de compatibilidad Windows en 915d24e. `npm test` 59/59, versiones y CACHE `umbral-v17-0` coherentes. APK firmado v1.7.0 generado. Falta: desplegar en Render con la mesa vacía y pasar los E2E de navegador (Playwright de Python no está instalado en esta máquina).
+- **Estable y desplegada: v1.6.2** (77b9db7), referencia de rollback. Servicio https://el-umbral-h1ki.onrender.com.
+- Ramas/worktrees de trabajo (2026-11-14): `feat-fixes` (`work/wt_fixes`) con el arreglo móvil de 360 px; `feat-dano` (`work/wt_dano`) con la capa F0 de v1.8.0 en curso. Plan de integración v1.9/v1.10 en `docs/designs/plan-v19-v110.md`.
+- Si `git status` está sucio o hay un tag `pre-v170`, compruébalo antes de seguir; vuelve a 77b9db7 si no pasa `npm test`.
 
 ## Estructura
 - `public/` = cliente web/APK (engine.js motor, data.js datos, ui.js interfaz, net.js modo en línea, fx.js, npc.js [v1.7], news.js novedades, sw.js, index.html, styles.css, img/). **Ahora la fuente es `public/`** (antes era una carpeta externa `apk/assets/www` + `scripts/sync-client.js`; ignora ese script).
 - `server/` servidor sin dependencias (http+SSE+POST, `vm` por sala con engine.js/data.js intactos, vista filtrada por jugador, snapshots cifrados).
-- `test/` (`npm test`, ~51+ tests, fugas de privacidad incluidas) y `test/e2e/online_e2e.py` (Playwright; ver README allí).
+- `test/` (`npm test`, 59 tests, fugas de privacidad incluidas) y `test/e2e/online_e2e.py` (Playwright de Python; ver README allí). En esta máquina falta `pip install playwright` + navegador; los E2E de navegador no se han podido ejecutar.
 - `tools/work/` simuladores y scripts de UI/balance (smart.js, smart_human.js, sim10.js, bh/fuzz.js, ui_run.py, ix_ui.py, fuzz_ui.py…). Aceptan `WWW=<carpeta del cliente>`; apúntalos a `public/`.
 - `docs/designs/` diseños: magia, daño con riesgo, salud, online. `docs/NOTAS_PROYECTO.md` = notas históricas completas (decisiones, balance, estados por versión).
 
@@ -22,6 +23,7 @@ Juego social de deducción para 2-10 jugadores (pasar el móvil en local, o en l
 - Animaciones solo ligadas a la acción. El juego nunca termina en seco por tiempo (rondas extras). Hora de fin, no duración.
 - Asesino emergente por tentación (sin roles al inicio); acusar no debe dar certeza 100 % (pendiente: sospecha acumulada); sin «batalla final»; sin contención que inhabilite.
 - Balance objetivo 3 jugadores 10/12/15 min (smart_human): gana asesino ≈ 31/46-50/37-45 %, supervivientes con bots buenos ≥ 88 %; cambios dentro de ±4 pp.
+- **Nunca perder progreso**: antes de apagar el PC o cerrar la sesión, haz commit (aunque sea WIP) en `main` y en cada worktree/rama, y comprueba `git status`. No se apaga nada con cambios sin guardar.
 
 ## Cola de trabajo (en este orden)
 1. Cerrar v1.7.0 (ver arriba), subir versión en data.js/engine.js/fx.js/ui.js/index.html/sw.js(CACHE)/news.js (añadir entrada), APK y desplegar.
@@ -30,7 +32,7 @@ Juego social de deducción para 2-10 jugadores (pasar el móvil en local, o en l
 4. v1.10.0 salud recortada (3 zonas) — `docs/designs/salud.md`.
 5. Sospecha acumulada (acusar sin certeza; cooperación contra el Asesino).
 6. Salas públicas (lista de salas sin empezar, nombre, límites anti-abuso) — AL FINAL.
-Pendientes menores: Socorrer poco visible (v1.7 lo destaca), pactos de una sola ronda (secreto «Palabra dada» casi imposible), `useItem` con error muta estado (fuzz), 10 jugadores a 20 min sin Asesino, pruebas en Android real y con personas.
+Pendientes menores: pactos de una sola ronda (secreto «Palabra dada» casi imposible), `useItem` con error muta estado (fuzz), 10 jugadores a 20 min sin Asesino, pruebas en Android real y con personas. El texto de NPC recortado a 360 px está arreglado en `feat-fixes` (pendiente de merge). El falso positivo del escaneo de privacidad de `persist` no se reprodujo en 15 ejecuciones seguidas (2026-11-14): vigilarlo en el E2E `persist`.
 
 ## Cómo probar
 `npm test` (≈1 min). E2E online: `python3 test/e2e/online_e2e.py <escenario>` uno por uno (lobby, game 1-3, restart, stun, timers, time, presence, dual, persist, persisthard, csp, absvote, external, desktop, small [+ npc2, npcroom, npcsub en v1.7]); en paralelo se satura y da falsos timeouts. Local: `tools/work/ui_run.py 2`, `ix_ui.py`, `fuzz_ui.py`. Balance: `WWW=public node tools/work/smart_human.js` (mira su cabecera para N/minutos).
