@@ -12,7 +12,9 @@ function counting(seed) { const r = seeded(seed), f = () => { f.calls++; return 
 
 /* Consultas del motor (U.*) que ui.js llama, con constructor de argumentos. */
 const QUERIES = {
-  getOffer: (U, S, p) => [p.id], unlockNotices: (U, S, p) => [p], studyOptions: (U, S, p) => [p.id, Math.max(0, p.items.findIndex((i) => i.id === "grimorio"))],
+  getOffer: (U, S, p) => [p.id], unlockNotices: (U, S, p) => [p],
+  /* studyOptions solo es perezosa con un grimorio en la mano: se garantiza la precondición aquí. Si no, la auditoría dependía del azar del botín y a veces nadie tenía grimorio (v1.8 amplía las tablas de objetos). */
+  studyOptions: (U, S, p) => { if (!p.items.some((i) => i.id === "grimorio")) p.items.push({ id: "grimorio" }); return [p.id, Math.max(0, p.items.findIndex((i) => i.id === "grimorio"))]; },
   encounterStart: (U, S, p) => [p.id],
   getHandOffer: (U, S, p) => [p.id], getPactOffers: (U, S, p) => [p.id], declareOptions: (U, S, p) => [p.id], secretInfo: (U, S, p) => [p.id],
   umbralInfo: (U, S, p) => [p.id], healthInfo: (U, S, p) => [p], xpInfo: (U, S, p) => [p], domInfo: (U, S, p) => [p], activePacts: (U, S, p) => [p.id],
