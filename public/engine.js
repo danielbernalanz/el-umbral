@@ -1,4 +1,4 @@
-/* EL UMBRAL — motor de juego (v1.8.1)
+/* EL UMBRAL — motor de juego (v1.8.2)
    Sin DOM. Toda la lógica vive aquí para poder probarla con Node. */
 (function (g) {
   "use strict";
@@ -954,6 +954,26 @@
   const ANTI_ACTS = ["resistir", "meditar", "bendecir"];
   function umbralLevel(p) { return !p || isAssassin(p) ? 0 : p.corr >= UMBRAL_HIGH ? 2 : p.corr >= UMBRAL_MID ? 1 : 0; }
   function umbralDmg(p) { const l = umbralLevel(p); return l === 0 ? 0 : l === 1 ? 1 : p.corr >= 70 ? 3 : 2; }
+  /* ---------- v1.8.2: SOSPECHA ACUMULADA. Marcador PÚBLICO 0-4 por jugador (p.susp) derivado de puntos internos (p.suspPts 0-8).
+     Sube por acusaciones de DISTINTOS jugadores (la misma persona no suma dos veces), contradicciones probadas y emboscadas públicas.
+     Baja con una ronda sin incidentes y con actos de bien (socorrer, bendecir, proteger con éxito). NO es el rol y puede señalar a un inocente.
+     Efectos cooperativos moderados: con nivel 2+ enfrentarse a esa persona ya no es a ciegas y varias emboscadas en el mismo Consejo la debilitan
+     (−1 defensa por cada atacante previo, máx. −2); con nivel 3+ sus pistas salen completas y, si es Asesino, cazar le cuesta +1. Nada la inhabilita. ---------- */
+  const SUSP_MAX = 8;
+  function suspLevel(p) { return p ? Math.min(4, Math.floor((p.suspPts || 0) / 2)) : 0; }
+  function addSusp(p, n) { if (!p || p.dead || !state) return; p.suspPts = clamp((p.suspPts || 0) + n, 0, SUSP_MAX); p.suspHit = state.round; p.susp = suspLevel(p); }
+  function suspDecay() {
+    state.players.forEach(function (p) {
+      if (p.dead) return;
+      let d = p.suspHit === state.round ? 0 : 1;
+      if (p.suspGood === state.round) d += 1;
+      if (d && (p.suspPts || 0) > 0) p.suspPts = Math.max(0, p.suspPts - d);
+      p.susp = suspLevel(p);
+    });
+  }
+  const SUSP_NAMES = ["sin sospechas", "alguna duda", "desconfianza", "bajo sospecha", "muy señalado"];
+  function suspName(lv) { return SUSP_NAMES[lv] || SUSP_NAMES[0]; }
+
   function darkAct(p) { if (p && state) p.darkRound = state.round; }
   function antiAct(p) { if (p && state) p.antiRound = state.round; }
   const UMBRAL_LOWER = "Resistir, Meditar, Socorrer o Proteger con éxito, un objeto de curación o de purificación (Agua bendita, vendas, hierbas, antídoto...) o una bendición frenan su cobro; bajar tu oscuridad lo suprime.";
@@ -1068,7 +1088,7 @@
 
   /* ---------- v1.8.0: daño con riesgo (veneno retardado, trampas, sabotaje) y firmas internas ----------
      state.harm = { sigs, traps, sabs, poisons }. NADA de esto sale en la vista pública ni en las notas ajenas; las firmas son datos
-     internos para una futura indagación (v1.8.1): pistas, nunca certeza de autor. */
+     internos para una futura indagación (v1.8.2): pistas, nunca certeza de autor. */
   function harmSt() {
     if (!state) return { sigs: [], traps: [], sabs: [], poisons: [] };
     const h = state.harm || (state.harm = {});
@@ -1125,7 +1145,7 @@
       const lo = Math.max(1, sg.round - (h % 2));
       const det = h % 3 !== 0 ? leadDetail(sg) : null;
       const txt = "Sobre " + (v.id === p.id ? "ti" : v.name) + ": " + LEAD_TXT[sg.sig] + ", entre las rondas " + lo + " y " + (lo + 1) + (det ? " (" + det + ")" : "") + ". No dice quién fue.";
-      p.leads.push({ round: state.round, sig: sg.sig, text: txt }); p.leadSeen.push(i); lines.push(txt);
+      p.leadSeq = (p.leadSeq || 0) + 1; p.leads.push({ round: state.round, sig: sg.sig, text: txt, i: i, k: p.leadSeq }); p.leadSeen.push(i); lines.push(txt);
     });
     while (p.leads.length > 8) p.leads.shift();
     return { text: "Examinas los rastros. " + lines.join(" "), log: null };
@@ -1226,13 +1246,13 @@
     const gains = [
       (fin ? "Oferta final: recuperas 4 de vitalidad y +2 de foco al instante (sin los +1 de atributo de la primera tentación)." : "+1 Cuerpo y +1 Sombra (hasta el máximo de 6), y recuperas 4 de vitalidad."),
       "Cazar: un ataque nocturno que hiere " + hr[0] + "-" + hr[1] + (maxRounds() <= 4 ? "" : " (+2 si es crítico)") + " y te cura 2; remata sin tirada a quien ya está moribundo" + (maxRounds() < 10 ? ", y a quien dejas moribundo solo le queda lo que reste de la ronda para ser socorrido." : "."),
-      "Máscara: las pistas que consigan sobre ti son una fuerza más débiles mientras no te desenmascaren; si te desenmascaran, cazas acorralado (−2 de dificultad) y la asamblea no puede bloquearte la caza dos noches seguidas.",
+      "Máscara: las pistas que consigan sobre ti son una fuerza más débiles mientras la sospecha pública sobre ti sea baja. Si la sospecha se acumula (nivel 3 o más), las pistas salen completas, enfrentarte ya no es a ciegas y cazar te cuesta más; nadie tiene certeza de quién eres.",
       "Dominio de las sombras nivel 1 (Susurrador): Sombras espías ya, guardianas y hostigadoras en las próximas rondas, y Alzar a un caído (nigromancia) después.",
       "Vences si, al amanecer, sigues en pie y han caído o están moribundos al menos " + goalText(goal) + " de los " + non + " demás (quien está al borde de caer cuenta la mitad), o si eliminas a todos."
     ];
     const losses = [
       "Tu identidad: dejas de ser superviviente y tu objetivo secreto ya no cuenta. Ganas o pierdes con el Asesino.",
-      "Los supervivientes vencen si te derrotan: te acusarán, te emboscarán y, si te desenmascaran con pruebas, no podrás cazar esa noche.",
+      "Los supervivientes vencen si te derrotan: te acusarán, te contradecirán y, si la sospecha sobre ti se acumula, cooperarán contra ti (sin saber con certeza que eres tú).",
       "−10 de virtud y +10 de oscuridad ahora mismo, y no hay vuelta atrás: ya no podrás redimirte.",
       "Si no quieres, rechaza: ganas +2 de virtud y el Umbral esperará un par de rondas antes de insistir."
     ];
@@ -1301,7 +1321,7 @@
       p.deeds.push({ round: state.round, kind: "trato", target: null, ok: true });
       p.notes.push("Ronda " + state.round + ": aceptaste la tentación del Umbral y te convertiste en el Asesino (+1 Cuerpo, +1 Sombra" + (h > 0 ? ", +" + h + " de vitalidad" : "") + "; −10 de virtud, +10 de oscuridad).");
       save();
-      return { ok: true, accepted: true, msg: "Eres el Asesino. +1 Cuerpo, +1 Sombra" + (h > 0 ? ", +" + h + " de vitalidad" : "") + ", −10 de virtud y +10 de oscuridad. Tu objetivo ahora es cobrar el tributo de la noche sin que te desenmascaren." };
+      return { ok: true, accepted: true, msg: "Eres el Asesino. +1 Cuerpo, +1 Sombra" + (h > 0 ? ", +" + h + " de vitalidad" : "") + ", −10 de virtud y +10 de oscuridad. Tu objetivo ahora es cobrar el tributo de la noche sin que la sospecha se acumule sobre ti." };
     }
     if (accept) {
       epi("trato_si", p.id, null, o.id);
@@ -1401,7 +1421,7 @@
       dead: false, focus: 0,
       roundDefense: 0, roundAttack: 0, protection: null, shield: false,
       usedItem: false, acted: false, action: null, actionTarget: null,
-      spells: [], stolen: [], betrayals: 0, keptPacts: 0, successfulAccusations: 0, status: [],
+      spells: [], stolen: [], betrayals: 0, keptPacts: 0, successfulAccusations: 0, status: [], susp: 0, suspPts: 0, suspBy: [],
       aggr: 0, agg: {}, dom: { wins: 0 }, risen: []
     };
     p.hp = maxHp(p); p.zones = { cabeza: 0, torso: 0, brazos: 0, piernas: 0 }; p.dying = false;
@@ -1555,7 +1575,7 @@
     } else {
       text = rumorFor(target);
     }
-    if (isAssassin(target) && !target.exposed) str = Math.max(1, str - 1); /* Máscara: el Asesino oculto deja rastros más flojos */
+    if (isAssassin(target) && suspLevel(target) < 3 && !target.watchRound) str = Math.max(1, str - 1); /* Máscara: el Asesino oculto deja rastros más flojos */
     return { about: target.id, strength: str, text: text };
   }
 
@@ -1945,7 +1965,7 @@
       if (dFocus) t.focus = 0;
       const defBonus = t.stats.cuerpo + Math.floor(t.stats.mente / 2) + t.roundDefense + dFocus + statusMod(t) +
         (hasPassive(t, "defenseBonus") ? 2 : 0) + (t.protection !== null ? 2 : 0) - t.wounds - legPen(t);
-      diff = d6() + defBonus - huntEdge() + p.wounds - (riseCount(p) > 0 ? 1 : 0) - (p.exposed && maxRounds() < 10 ? 2 : 0);
+      diff = d6() + defBonus - huntEdge() + p.wounds - (riseCount(p) > 0 ? 1 : 0) + (suspLevel(p) >= 3 ? 2 : suspLevel(p) >= 2 ? 1 : 0);
     }
     if (SOMBRAS.indexOf(a.id) !== -1 && domLevel(p) >= 1) diff -= 1;
     if (umbralLevel(p) >= 2 && (a.id === "proteger" || a.id === "socorrer")) diff += 1;
@@ -1982,6 +2002,7 @@
     if (sabX) out.text += " Además, " + (D.ITEMS[a.needs] ? D.ITEMS[a.needs].name.toLowerCase() : "el objeto") + " " + sabBackfire(p, D.ITEMS[a.needs] ? D.ITEMS[a.needs].name : "El objeto") + ".";
     if (DARK_ACTS.indexOf(a.id) !== -1) darkAct(p);
     else if (ANTI_ACTS.indexOf(a.id) !== -1 || ((a.id === "socorrer" || a.id === "proteger") && r.success)) antiAct(p);
+    if ((a.id === "socorrer" || a.id === "proteger" || a.id === "bendecir") && r.success) p.suspGood = state.round;
     if (prepMod) usePrep(p, a.id);
     if (AGGR_ACT[a.id] && !r.blocked) noteAggr(p, AGGR_ACT[a.id][1], AGGR_ACT[a.id][0] + (wasDyingT && a.hostile ? 1 : 0));
     if (a.hostile && t && !r.blocked && t.guardRound === state.round && (t.guardLv || 0) >= 2 && !t.dead) t.notes.push("Ronda " + state.round + ": tus sombras guardianas vieron quién te agredía: fue " + p.name + ".");
@@ -2607,14 +2628,14 @@
   }
 
   function councilPrompt() {
-    const exposed = assassinsOf().filter(function (p) { return p.exposed && !p.dead; });
-    if (exposed.length) return (exposed.length > 1 ? "Los Asesinos han sido identificados: " : "El Asesino ha sido identificado: ") + exposed.map(function (p) { return p.name; }).join(", ") + ". Los supervivientes pueden unirse para detenerle; ya no hay secretos que proteger.";
-    return ""; /* Sin mensaje de ambiente: solo se muestra información que cambia lo que puedes hacer. */
+    const hot = state.players.filter(function (p) { return !p.dead && suspLevel(p) >= 3; });
+    if (!hot.length) return ""; /* Sin mensaje de ambiente: solo se muestra información que cambia lo que puedes hacer. */
+    return "La sospecha pesa sobre " + hot.map(function (p) { return p.name; }).join(", ") + ": nada es seguro, pero la asamblea puede cooperar contra " + (hot.length > 1 ? "ellos" : "esa persona") + ".";
   }
 
   /* ---------- Pactos e intenciones: se gestionan en privado, durante el turno ---------- */
   const PACT_LABEL = { pacto_no_agresion: "no agresión", pacto_silencio: "silencio", pacto_proteccion: "protección" };
-  const INTENTS = ["acusacion", "emboscada", "romper"];
+  const INTENTS = ["acusacion", "emboscada", "romper", "contradiccion"];
   function pactOffers() { return state.pactOffers || (state.pactOffers = []); }
   function canDeclare(p) {
     return !!(state && state.phase === "private" && !state.handoff && state.turn === p.id && p.acted && !p.dead && !p.dying && state.players.some(function (q) { return q.id !== p.id && !q.dead; }));
@@ -2626,13 +2647,14 @@
     const targets = state.players.filter(function (q) { return q.id !== p.id && !q.dead; });
     const hand = hands().filter(function (x) { return x.status === "active" && x.to === p.id && !state.players[x.from].dead; }).map(function (x) { return x.from; });
     return {
-      targets: targets.map(function (q) { return { id: q.id, name: q.name, dying: !!q.dying, clues: p.clues.filter(function (c) { return c.about === q.id; }).length }; }),
+      targets: targets.map(function (q) { return { id: q.id, name: q.name, dying: !!q.dying, clues: p.clues.filter(function (c) { return c.about === q.id; }).length, susp: suspLevel(q) }; }),
       romper: hand,
+      leads: (p.leads || []).filter(function (l) { return typeof l.k === "number" && !l.used; }).map(function (l) { return { i: l.k, text: l.text }; }),
       final: state.round >= maxRounds()
     };
   }
   /* Una declaración por turno: o una intención para el Consejo o una propuesta de pacto. */
-  function declare(pid, type, targetId) {
+  function declare(pid, type, targetId, leadId) {
     const p = state && state.players[pid];
     if (!p) return err("Jugador desconocido.");
     if (!canDeclare(p)) return err("Ahora no puedes declarar nada para el Consejo.");
@@ -2641,6 +2663,13 @@
     if (!t || t.id === p.id || t.dead) return err("Elige a otro jugador que siga en juego.");
     if (INTENTS.indexOf(type) !== -1) {
       if (type === "romper" && !hands().some(function (x) { return x.status === "active" && x.from === t.id && x.to === p.id; })) return err("No has recibido ninguna mano de " + t.name + " que puedas romper.");
+      if (type === "contradiccion") {
+        const ld = (p.leads || []).find(function (l) { return typeof l.k === "number" && l.k === leadId && !l.used; });
+        if (!ld) return err("Elige una pista tuya que aún no hayas usado.");
+        p.intent = { type: type, target: t.id, round: state.round, lead: ld.k };
+        save();
+        return { ok: true, text: "Declarado en secreto. Se resolverá en público al cerrar el Consejo." };
+      }
       p.intent = { type: type, target: t.id, round: state.round };
       save();
       return { ok: true, text: "Declarado en secreto. Se resolverá en público al cerrar el Consejo." };
@@ -2701,17 +2730,17 @@
       if (!it) return;
       p.intent = null;
       if (it.round !== state.round) return;
-      const r = registerLogged(p.id, it.type, it.target);
+      const r = registerLogged(p.id, it.type, it.target, it.lead);
       if (r.ok) out.push({ actor: p.id, type: it.type, target: it.target, res: r });
     });
     save();
     return out;
   }
 
-  function registerInteraction(actorId, type, targetId) {
+  function registerInteraction(actorId, type, targetId, leadId) {
     if (!state || state.phase !== "council") return err("El consejo no está abierto.");
     if (!state.council || !state.council.used) return err("El Consejo no está preparado.");
-    const allowed = ["acusacion", "emboscada", "romper"];
+    const allowed = ["acusacion", "emboscada", "romper", "contradiccion"];
     if (allowed.indexOf(type) === -1) return err("Interacción desconocida.");
     const actor = state.players[actorId];
     const target = state.players[targetId];
@@ -2721,6 +2750,7 @@
     if (!used) return err("Jugador desconocido.");
 
     if (type === "acusacion" && used.accuse >= 1) return err(actor.name + " ya ha acusado en este consejo.");
+    if (type === "contradiccion" && (used.con || 0) >= 1) return err(actor.name + " ya ha contradicho a alguien en este consejo.");
     if (type === "emboscada" && used.plot >= 1) return err(actor.name + " ya ha tramado algo en este consejo.");
 
     if (type === "emboscada" && actor.dead) return err("Un jugador eliminado no puede actuar.");
@@ -2741,7 +2771,12 @@
       result.roll = res.roll;
       result.text = res.text;
       result.log = res.log;
-      result.revealedAssassin = !!res.revealedAssassin;
+      result.revealedAssassin = false; /* v1.8.2: acusar ya no revela el rol */
+      entry.resolved = true;
+    } else if (type === "contradiccion") {
+      used.con = (used.con || 0) + 1;
+      const res = resolveContradiction(actor, target, leadId);
+      result.kind = "text"; result.text = res.text; result.log = res.log;
       entry.resolved = true;
     } else if (type === "emboscada") {
       used.plot += 1;
@@ -2776,6 +2811,8 @@
     return result;
   }
 
+  /* v1.8.2: ACUSAR ya no revela el rol. El resultado público es idéntico acierte o falle (nadie ve la tirada); solo el acusador lo sabe en privado.
+     La sospecha pública sube +1 la primera vez que ESE jugador acusa a ESA persona (varios acusadores distintos suman). */
   function resolveAccusation(actor, target) {
     const clues = actor.clues.filter(function (c) { return c.about === target.id; });
     let evidence = clues.reduce(function (s, c) { return s + c.strength; }, 0);
@@ -2789,42 +2826,55 @@
       target.shield = false;
       r.success = false; r.crit = false; r.shielded = true;
     }
-
+    target.suspBy = target.suspBy || [];
+    if (target.suspBy.indexOf(actor.id) === -1) { target.suspBy.push(actor.id); addSusp(target, state.players.filter(function (x) { return !x.dead; }).length <= 3 ? 2 : 1); }
     const isAss = isAssassin(target);
+    const pub = { success: false, roll: null, revealedAssassin: false,
+      text: actor.name + " acusa a " + target.name + " ante el Consejo. Nadie puede comprobarlo: la asamblea solo sopesa quién más desconfía de " + target.name + ".",
+      log: actor.name + " acusó a " + target.name + " ante el Consejo." };
     if (r.success && isAss) {
       target.corr = clamp(target.corr + 6, 0, 100);
       target.virtue = clamp(target.virtue - 6, 0, 100);
       actor.virtue = clamp(actor.virtue + 4, 0, 100);
       actor.successfulAccusations += 1;
-      const best = clues.slice().sort(function (a, b) { return b.strength - a.strength; })[0];
-      if (best) state.publicClues.push({ round: state.round, text: testimony(actor, best.text), about: target.id });
-      state.assassinExposed = true;
-      target.exposed = true;
-      /* La asamblea no puede vigilarlo dos noches seguidas: tras bloquear una caza, la siguiente noche sale libre. */
+      /* Efecto cooperativo OCULTO (nada se publica): la mesa le vigila. Sus pistas salen completas y, con cierta probabilidad, no se atreve a cazar la próxima noche
+         (nunca dos noches seguidas). Los demás solo ven que no ocurre nada. */
+      target.watchRound = state.round + 1;
       target.huntBlocked = Math.random() < 1 / (1 + bigTable() * 0.3) && (maxRounds() >= 10 || state.round - (target.lastBlock === undefined ? -9 : target.lastBlock) >= 2);
       if (target.huntBlocked) target.lastBlock = state.round;
-      target.notes.push("Ronda " + state.round + ": " + actor.name + " te acusó y la asamblea te identificó como Asesino.");
-      return {
-        success: true, roll: r, revealedAssassin: true,
-        text: "La acusación da en el blanco. " + target.name + " es el Asesino. Su identidad queda revelada y no podrá cazar la próxima ronda.",
-        log: actor.name + " ha desenmascarado al Asesino: " + target.name + "."
-      };
+      actor.notes.push("Ronda " + state.round + ": acusaste a " + target.name + " y tus pruebas encajan con lo que ocurre. La asamblea no tiene certeza, pero tu convicción es fuerte (+4 virtud).");
+      target.notes.push("Ronda " + state.round + ": " + actor.name + " te acusó ante el Consejo.");
+      return pub;
     }
-    if (r.success && !isAss) {
-      r.success = false; r.crit = false; r.falseAccusation = true;
-    }
+    if (r.success && !isAss) { r.success = false; r.crit = false; r.falseAccusation = true; }
     actor.corr = clamp(actor.corr + 5, 0, 100); darkAct(actor);
     actor.virtue = clamp(actor.virtue - 5, 0, 100);
     target.virtue = clamp(target.virtue + 2, 0, 100);
     if (!isAss) state.falseAccusations = (state.falseAccusations || 0) + 1;
-    target.notes.push("Ronda " + state.round + ": " + actor.name + " te acusó sin demostrar que fueras el Asesino.");
-    return {
-      success: false, roll: r, revealedAssassin: false,
-      text: r.falseAccusation
-        ? "La prueba parecía convincente, pero has señalado a un inocente. La sospecha recae sobre ti."
-        : (shielded ? "La coartada de " + target.name + " absorbe la acusación: estaba escrita con tan buena letra que da vergüenza discutirla. La sospecha recae sobre ti." : "Tus pruebas no convencen a la asamblea. La duda cae sobre ti."),
-      log: actor.name + " acusó a " + target.name + ", pero no logró desenmascarar al Asesino."
-    };
+    target.notes.push("Ronda " + state.round + ": " + actor.name + " te acusó ante el Consejo.");
+    actor.notes.push("Ronda " + state.round + ": acusaste a " + target.name + ": " + (r.falseAccusation ? "tus pruebas parecían convincentes, pero te has equivocado" : (shielded ? "su coartada absorbió la acusación" : "tus pruebas no bastan para convencer")) + " (+5 corrupción, −5 virtud).");
+    return pub;
+  }
+
+  /* Contradecir: una pista PROPIA de Indagar (veraz) frente a la conducta de otra persona. Si el autor real del rastro es esa persona, su sospecha sube 2 puntos;
+     si no, no pasa nada, salvo que la pista se gasta. El texto público es idéntico y no revela ni la pista ni el autor. */
+  function resolveContradiction(actor, target, leadId) {
+    const ld = (actor.leads || []).find(function (l) { return typeof l.k === "number" && l.k === leadId && !l.used; });
+    const pub = { text: actor.name + " contradice a " + target.name + " ante el Consejo: «lo que dices no encaja con lo que se ha visto».", log: actor.name + " contradijo a " + target.name + " ante el Consejo." };
+    if (!ld) { actor.notes.push("Ronda " + state.round + ": ya no tenías esa pista; la contradicción no tuvo efecto."); return pub; }
+    ld.used = true;
+    const sg = harmSt().sigs[ld.i];
+    const hit = !!sg && sg.author === target.id && sg.victim !== target.id;
+    if (hit) {
+      addSusp(target, 2);
+      actor.virtue = clamp(actor.virtue + 2, 0, 100);
+      actor.notes.push("Ronda " + state.round + ": tu pista choca con lo que dice " + target.name + ": su sospecha sube ante la asamblea.");
+      target.notes.push("Ronda " + state.round + ": " + actor.name + " te contradijo ante el Consejo y la asamblea le dio la razón.");
+    } else {
+      actor.notes.push("Ronda " + state.round + ": tu pista no choca con lo que dice " + target.name + ". La pista queda gastada; nadie sabe qué decía.");
+      target.notes.push("Ronda " + state.round + ": " + actor.name + " intentó contradecirte ante el Consejo.");
+    }
+    return pub;
   }
 
   function resolveAmbush(actor, target) {
@@ -2835,15 +2885,17 @@
     const atkBonus = actor.stats.cuerpo + Math.floor(actor.stats.sombra / 2) + actor.roundAttack + atkFocus + statusMod(actor) +
       (actor.corr >= 40 ? 2 : 0) + (hasItem(actor, "daga") ? 2 : 0) + (hasPassive(actor, "attackBonus") ? 1 : 0) + (isAssassin(actor) ? 1 : 0) - actor.wounds - armPen(actor);
     const defBonus = target.stats.cuerpo + Math.floor(target.stats.mente / 2) + target.roundDefense + defFocus + statusMod(target) + (hasItem(target, "manto") ? 1 : 0) +
-      (hasPassive(target, "defenseBonus") ? 2 : 0) + (target.protection !== null ? 2 : 0) - target.wounds - legPen(target);
+      (hasPassive(target, "defenseBonus") ? 2 : 0) + (target.protection !== null ? 2 : 0) - target.wounds - legPen(target) -
+      (suspLevel(target) >= 2 ? Math.min(2, (state.council.ambushes || []).filter(function (x) { return x.target === target.id && x.attacker !== actor.id; }).length) : 0);
     const a = rollRaw(atkBonus, 0);
     const d = rollRaw(defBonus, 0);
     /* Moribundo ya antes de esta ronda: victoria automática y muerte (regla clásica). Si cayó en ESTA ronda por un enfrentamiento, se tira normal y no se le remata. */
     const droppedNow = !!target.dying && target.ambDy === state.round;
     const attackerWins = (!!target.dying && !droppedNow) || a.total > d.total || (a.total === d.total && a.die > d.die);
     noteAggr(actor, "ambush", attackerWins ? 4 : 3);
+    addSusp(actor, 1); /* una emboscada pública es un acto hostil visible */
     /* Coste del error: enfrentar sin ninguna pista sobre el objetivo (ni pista propia ni Asesino ya expuesto). Los Asesinos no pagan este recargo. */
-    const blind = !isAssassin(actor) && !target.exposed && !actor.clues.some(function (c) { return c.about === target.id; });
+    const blind = !isAssassin(actor) && suspLevel(target) < 2 && !actor.clues.some(function (c) { return c.about === target.id; });
     if (blind) {
       actor.corr = clamp(actor.corr + 4, 0, 100); darkAct(actor);
       actor.virtue = clamp(actor.virtue - 4, 0, 100);
@@ -2984,6 +3036,7 @@
       push("✧ El Umbral se ha abierto: todos habéis cedido. La oscuridad ya no tienta; ahora compite.");
     }
 
+    suspDecay();
     checkSecretRewards();
     { const ru = makeRumor(); if (ru) push(ru); }
     state.players.forEach(function (p) {
@@ -3512,6 +3565,7 @@
       const atk = actsOf(p.id, ATK); if (atk.length) S.push("Fue a por " + list(byTarget(atk)));
       const robs = actsOf(p.id, ["robar"]); if (robs.length) S.push("Metió la mano en el equipaje de " + list(byTarget(robs)));
       const acu = intsOf(p.id, "acusacion"); if (acu.length) S.push("Acusó a " + list(byTarget(acu)) + " ante el Consejo");
+      const con = intsOf(p.id, "contradiccion"); if (con.length) S.push("Contradijo a " + list(byTarget(con)) + " ante el Consejo");
       const emb = intsOf(p.id, "emboscada"); if (emb.length) S.push("Tendió una emboscada a " + list(byTarget(emb)));
       const soc = E.filter(function (e) { return e.k === "socorre" && e.a === p.id; });
       const socOk = soc.filter(function (e) { return e.x === 1; }).map(function (e) { return e.b; });
@@ -3565,7 +3619,7 @@
       if (!Array.isArray(state.eventsSeen)) state.eventsSeen = [];
       if (state.event && typeof state.event.effectText !== "string") state.event.effectText = "";
       if (!state.lastResolution) state.lastResolution = [];
-      state.players.forEach(function (p) { if (typeof p.dead !== "boolean") p.dead = false; p.focus = clamp(Number(p.focus) || 0, 0, 2); if (!Array.isArray(p.notes)) p.notes = []; if (!Array.isArray(p.status)) p.status = []; if (typeof p.aggr !== "number") p.aggr = 0; if (!p.agg || typeof p.agg !== "object") p.agg = {}; if (!p.dom || typeof p.dom !== "object") p.dom = { wins: 0 }; if (!Array.isArray(p.risen)) p.risen = []; initHealth(p); });
+      state.players.forEach(function (p) { if (typeof p.dead !== "boolean") p.dead = false; p.focus = clamp(Number(p.focus) || 0, 0, 2); if (!Array.isArray(p.notes)) p.notes = []; if (!Array.isArray(p.status)) p.status = []; if (typeof p.aggr !== "number") p.aggr = 0; if (!p.agg || typeof p.agg !== "object") p.agg = {}; if (!p.dom || typeof p.dom !== "object") p.dom = { wins: 0 }; if (!Array.isArray(p.risen)) p.risen = []; if (typeof p.suspPts !== "number") p.suspPts = 0; if (!Array.isArray(p.suspBy)) p.suspBy = []; p.susp = suspLevel(p); initHealth(p); });
       if (typeof state.assassinExposed !== "boolean") state.assassinExposed = false;
       if (state.assassinExposed && state.assassinId !== null && state.players[state.assassinId] && !state.players.some(function (p) { return p.exposed; })) state.players[state.assassinId].exposed = true;
       if (state.phase === "council" && !state.council) {
@@ -3599,7 +3653,7 @@
     act: wrapLog("act", act), pushLuck: wrapLog("pushLuck", pushLuck), useItem: wrapLog("useItem", useItem),
     maxHp: maxHp, visibleHealth: visibleHealth, healthInfo: healthInfo,
     _health: { damage: damage, heal: heal, finish: finish, stabilize: stabilize, pickZone: pickZone, zoneLvl: zoneLvl, zoneMod: zoneMod, initHealth: initHealth },
-    getSince: getSince, endAtTs: endAtTs, extEnd: extEnd, hhmm: hhmm, assassinGoal: assassinGoal, visibleActions: visibleActions, spellInfo: spellInfo, actionOdds: actionOdds, buildStory: buildStory, exportStory: exportStory, secretInfo: secretInfo, umbralInfo: umbralInfo, indagarInfo: indagarInfo, exportLog: exportLog, lastLogs: lastLogs, noteError: noteError,
+    getSince: getSince, endAtTs: endAtTs, extEnd: extEnd, hhmm: hhmm, assassinGoal: assassinGoal, visibleActions: visibleActions, spellInfo: spellInfo, actionOdds: actionOdds, buildStory: buildStory, exportStory: exportStory, secretInfo: secretInfo, umbralInfo: umbralInfo, indagarInfo: indagarInfo, suspLevel: suspLevel, suspName: suspName, exportLog: exportLog, lastLogs: lastLogs, noteError: noteError,
     finishTurn: finishTurn, nextTurn: nextTurn, replaceWithNpc: replaceWithNpc, restoreFromNpc: restoreFromNpc, npcProfileFor: npcProfileFor,
     beginCouncil: beginCouncil, councilPrompt: councilPrompt,
     registerInteraction: registerLogged, endCouncil: endCouncil, resolveCouncil: resolveCouncil,

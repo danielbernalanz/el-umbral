@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0d0a11">
-<title>EL UMBRAL — v1.8.1</title>
+<title>EL UMBRAL — v1.8.2</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="manifest" href="manifest.webmanifest">
@@ -170,6 +170,7 @@
       <p class="small">Si quieres, declara ahora UNA cosa. Se resolverá en público al cerrar el Consejo, pero nadie sabrá qué has elegido. Contar pistas o sospechas no hace falta registrarlo: se dice hablando (o mintiendo).</p>
       <div id="prepCards" class="stack tight"></div>
       <label id="prepKindLabel" class="hidden"><span id="prepKindIco" class="kindico"></span>Tipo de pacto<select id="prepKind"><option value="pacto_no_agresion">No agresión</option><option value="pacto_silencio">Silencio</option><option value="pacto_proteccion">Protección</option></select></label>
+      <label id="prepLeadLabel" class="hidden">Pista que usas<select id="prepLead"></select></label>
       <label id="prepTargetLabel" class="hidden" data-ic="ui_jugador">Con quién<select id="prepTarget"></select></label>
       <p class="small" id="prepHint"></p>
       <div class="row"><button class="primary" id="btnPrepSave" data-ic="ui_guardar">Guardar y pasar el móvil</button><button class="ghost" id="btnPrepSkip" data-ic="a_abstener">No declarar nada</button></div>
@@ -303,7 +304,7 @@
         <li>Cada ronda: una acción secreta por jugador. Las acciones arriesgadas se resuelven con tirada de dado; Meditar, Ceder, Resistir, Descansar, Entrenar y Tender la mano son seguras; Conjurar tiene su propia tirada (con % visible y tres niveles de empeño).</li>
         <li>Un 6 es éxito automático; un 1 es fallo automático.</li>
         <li>Tras un éxito arriesgado puedes <b>forzar el destino</b>: más premio, o más daño y más oscuridad.</li>
-        <li>Tras actuar, en tu turno privado puedes declarar en secreto UNA cosa: acusar, enfrentarte, romper un silencio o proponer un pacto. Lo declarado se resuelve en público al cerrar el Consejo; lo que contáis o mostráis de palabra (pistas, sospechas, ayudas) no cuenta, y podéis mentir.</li>
+        <li>Tras actuar, en tu turno privado puedes declarar en secreto UNA cosa: acusar, contradecir (con una pista de Indagar), enfrentarte, romper un silencio o proponer un pacto. Acusar y contradecir nunca revelan el rol: solo mueven el marcador público de sospecha (0-4) de esa persona, que no es el rol y puede señalar a un inocente. Lo declarado se resuelve en público al cerrar el Consejo; lo que contáis o mostráis de palabra (pistas, sospechas, ayudas) no cuenta, y podéis mentir.</li>
         <li>Los pactos se proponen en secreto y el otro los acepta en su turno privado; son secretos entre los dos; se evalúan al final de la ronda siguiente y, si alguien rompe uno, solo lo sabe la otra persona: que lo cuente o lo calle.</li>
         <li>La corrupción da poder, pero cobra su precio en silencio: nadie te dirá cuánta tienes, solo notarás cómo cambia tu sombra. La virtud abre otros finales.</li>
         <li>La hora de fin la eliges al empezar (hasta 120 minutos desde ahora): el número de rondas se ajusta a vuestro ritmo y, si vais lentos, el Consejo se acorta, y cuando se agota el tiempo la partida termina de inmediato. El Asesino vence si elimina a los demás o si, al amanecer, ya ha eliminado (o dejado moribundos) a la mitad o más de los demás (en mesas de 6 o más, a un quinto, mínimo 2: hay más gente a la que acusarle; en partidas cortas, de 4 a 10 jugadores, medio punto menos —quien está al borde de caer cuenta la mitad—; en mesas de 8 a 10 con partida larga, uno más); los supervivientes vencen si lo derrotan o si al amanecer han perdido a menos de la mitad.</li>

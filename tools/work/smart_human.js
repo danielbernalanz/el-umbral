@@ -54,11 +54,13 @@ for(let g=0;g<N;g++){
       { const cp=U.currentPlayer(); const en=cp&&U.encounterStart(cp.id); if(en){ const st=style[cp.id]; let opts=en.options; if(st!=="agresivo") opts=opts.filter(o=>!/atacar|matar|atrapar/.test(o.id)); const o=opts[rnd(opts.length)]; const r=U.encounterAct(cp.id,o.id); if(!r.ok) throw new Error('enc '+r.msg);} }
       adv(30000);
       { const cp=U.currentPlayer(); if(cp&&cp.acted&&!cp.dead&&!cp.dying){ const st=style[cp.id]; const al2=s.players.filter(x=>x.id!==cp.id&&!x.dead); let best=null,bs=0; al2.forEach(x=>{const sc=cp.clues.filter(c=>c.about===x.id).reduce((a,c)=>a+c.strength,0); if(sc>bs){bs=sc;best=x;}});
-        if(best&&bs>=3&&Math.random()<0.7){ const dr=U.declare(cp.id,"acusacion",best.id); if(dr.ok) res.acc=(res.acc||0)+1; }
+        const dop=U.declareOptions(cp.id); const ldz=(dop&&dop.leads)||[];
+        if(best&&bs>=2&&ldz.length&&Math.random()<0.5){ const dr=U.declare(cp.id,"contradiccion",best.id,ldz[0].i); if(dr.ok) res.contra=(res.contra||0)+1; }
+        else if(best&&bs>=3&&Math.random()<0.7){ const dr=U.declare(cp.id,"acusacion",best.id); if(dr.ok) res.acc=(res.acc||0)+1; }
         else if(st==="agresivo"&&al2.length&&Math.random()<0.45) U.declare(cp.id,"emboscada",al2[rnd(al2.length)].id); } }
       U.finishTurn(); }
     else if(s.phase==="council"){ for(const x of U.resolveCouncil()) if(x.res.revealedAssassin) res.accok=(res.accok||0)+1; adv(60000); U.endCouncil(); }
-    else if(s.phase==="resolution"){ if(U.nextRound()) break; ansT(U); }
+    else if(s.phase==="resolution"){ s.players.forEach(p=>{ if(p.alignment==="asesino"&&!p.dead){ const L=(p.susp||0); (res.lvl=res.lvl||[0,0,0,0,0])[L]++; } else if(!p.dead&&p.alignment!=="asesino"){ (res.lvlI=res.lvlI||[0,0,0,0,0])[(p.susp||0)]++; } }); if(U.nextRound()) break; ansT(U); }
   }
   const e=U.getEnding(); const s=U.getState(); if(!e){res.errs++;continue;}
   res.rounds+=s.round; res.titles[e.title]=(res.titles[e.title]||0)+1; if(e.timedOut) res.tiempo++;
@@ -70,5 +72,6 @@ for(let g=0;g<N;g++){
 }
 if(process.env.COUNT){ console.log("ronda | turnos | principales | en «Más acciones» | total | máx | % con acciones de sombras"); Object.keys(CNT).map(Number).sort((a,b)=>a-b).forEach(k=>{const c=CNT[k]; console.log(String(k).padStart(2),"|",c.n,"|",(c.main/c.n).toFixed(1),"|",(c.hid/c.n).toFixed(1),"|",((c.main+c.hid)/c.n).toFixed(1),"|",c.max,"|",(100*c.sw/c.n).toFixed(0)+"%");}); }
 const pc=x=>(100*x/res.games).toFixed(1);
+if(process.env.LVL) console.log("niveles asesino por ronda",JSON.stringify(res.lvl),"inocentes",JSON.stringify(res.lvlI),"contra",res.contra);
 console.log(MODE,"NP",NAMES.length,"min",MIN,"N",res.games,"| asesino emergente",pc(res.withAss)+"%","| gana asesino (de todas)",pc(res.asesino)+"%","| gana asesino (de las con asesino)",(100*res.assWin/Math.max(1,res.withAss)).toFixed(1)+"%","| supers",pc(res.supers)+"%","| ofertas",res.offers,"aceptadas",res.accepts,"| partidas con oferta",pc(res.gamesWithOffer)+"%","| via",JSON.stringify(res.via),"| ronda media conversión",(res.assRound/Math.max(1,res.withAss)).toFixed(1),"| rondas",(res.rounds/res.games).toFixed(1),"muertes",(res.muertes/res.games).toFixed(2),"| sombras",JSON.stringify(res.sombra),"alzar",res.alzar,"acus",res.acc||0,"acusOK",res.accok||0,"tiempo",res.tiempo,"errs",res.errs);
 console.log("preguntas de tiempo:",global.ASK||0,"rondas añadidas:",global.EXT||0,"terminar ahora:",global.TEND||0,"tiempoAgotadoSinDesenlace(timedOut):",res.tiempo);

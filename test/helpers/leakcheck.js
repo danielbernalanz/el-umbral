@@ -3,7 +3,7 @@
 const { PUBLIC_PLAYER_KEYS, TOP_KEYS } = require("../../server/view");
 
 const Q_KEYS = ["maxRounds", "turnSeconds", "councilSeconds", "councilPrompt", "behindSchedule", "timeWarn", "timeLeftMs", "extEnd", "health", "xp", "dom", "secret", "umbral", "lead", "pacts", "risen", "since", "offer", "unlocks", "encounter", "handOffer", "declare", "pactOffers", "unlocked", "locked", "actions", "odds", "targets", "itemTargets", "spellTargets", "spells"];
-const ME_FORBIDDEN = ["socBy", "risenBy", "lastSeen"];
+const ME_FORBIDDEN = ["socBy", "risenBy", "lastSeen", "suspBy"];
 
 function strings(o, out, minLen) {
   if (o === null || o === undefined) return out;

@@ -74,7 +74,7 @@ class Client:
         self.pg = self.ctx.new_page()
         self.pg.expose_function("__handhit", lambda t, n=name: HAND_HITS.append((n, t)))
         self.errors = []; self.cmds = []; self.resp = []
-        self.pg.on("pageerror", lambda e: self.errors.append("PAGEERR " + str(e)[:200]))
+        self.pg.on("pageerror", lambda e: self.errors.append("PAGEERR " + str(e)[:200] + " @ " + str(getattr(e, "stack", ""))[:400]))
         self.pg.on("console", lambda m: self.errors.append("CONSOLE " + m.text[:200]) if m.type == "error" and "Failed to load resource" not in m.text and "ERR_" not in m.text and "navigator.vibrate" not in m.text else None)
         self.pg.on("dialog", lambda d: (self.errors.append("DIALOGO " + d.message[:80]), d.dismiss()))
         self.pg.on("request", lambda r: self.cmds.append(r.post_data) if r.method == "POST" and r.url.endswith("/cmd") else None)
@@ -226,7 +226,7 @@ def bot_step(c, rnd):
         return "wait"
     return "wait"
 
-PUBLIC_KEYS = {"npc", "id", "name", "dead", "dying", "exposed", "visibleHealth", "ready", "online", "absent", "host", "alignment", "risenBy"}
+PUBLIC_KEYS = {"npc", "id", "name", "dead", "dying", "exposed", "visibleHealth", "ready", "online", "absent", "host", "alignment", "risenBy", "susp"}
 
 TOKENS_JS = """()=>{const B=UmbralNet.backend,s=B.getState();if(!s)return null;const me=s.players[s.youId];
   const sec=B.secretInfo()||{};const pub=(s.chronicle||[]).map(x=>x.text).concat((s.publicClues||[]).map(x=>x.text));

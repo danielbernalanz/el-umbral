@@ -4,6 +4,7 @@ Juego social de deducción para 2-10 jugadores (pasar el móvil en local, o en l
 
 ## Estado
 - **v1.7.0 cerrada Y DESPLEGADA** (2026-11-14, commit e75d11e, por API de Render con mesa vacía; verificada en vivo: `VERSION 1.7.0`, CACHE `umbral-v17-0`, create/join/start/leave OK). `npm test` 59/59; E2E online 18/18 escenarios (130 comprobaciones, Playwright ya instalado). APK firmado v1.7.0 entregado. Pendiente: Android real, humanos 6-10, Render bajo carga.
+- v1.8.2 (rama feat-v182, sin fusionar): sospecha acumulada + contradecir (ver NOTAS_PROYECTO).
 - **Estable y desplegada: v1.6.2** (77b9db7), referencia de rollback. Servicio https://el-umbral-h1ki.onrender.com.
 - Ramas/worktrees de trabajo (2026-11-14): `feat-dano` (`work/wt_dano`) con la capa F0 de v1.8.0 hecha (63/63 tests verdes en ese worktree; queda F1-F6). `feat-fixes` ya fusionada. Plan de integración v1.9/v1.10 en `docs/designs/plan-v19-v110.md`.
 - Si `git status` está sucio o hay un tag `pre-v170`, compruébalo antes de seguir; vuelve a 77b9db7 si no pasa `npm test`.

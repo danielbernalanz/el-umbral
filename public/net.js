@@ -171,10 +171,10 @@
   /* Estado que ve ui.js: SOLO datos públicos de los demás + el jugador propio completo. */
   function buildState(v) {
     const players = v.players.map(function (p) {
-      return { id: p.id, name: p.name, dead: p.dead, dying: p.dying, exposed: p.exposed, visibleHealth: p.visibleHealth, ready: p.ready, online: p.online, absent: p.absent, host: p.host, npc: !!p.npc, alignment: p.exposed ? "asesino" : undefined };
+      return { id: p.id, name: p.name, dead: p.dead, dying: p.dying, exposed: p.exposed, susp: p.susp || 0, visibleHealth: p.visibleHealth, ready: p.ready, online: p.online, absent: p.absent, host: p.host, npc: !!p.npc, alignment: p.exposed ? "asesino" : undefined };
     });
     const pub = players[v.youId], me = v.me || {};
-    players[v.youId] = Object.assign({}, me, { dead: pub.dead, dying: pub.dying, exposed: pub.exposed, visibleHealth: pub.visibleHealth, ready: pub.ready, online: pub.online, absent: pub.absent, host: pub.host, npc: !!pub.npc, protection: me.protected ? -1 : null });
+    players[v.youId] = Object.assign({}, me, { dead: pub.dead, dying: pub.dying, exposed: pub.exposed, susp: pub.susp || 0, visibleHealth: pub.visibleHealth, ready: pub.ready, online: pub.online, absent: pub.absent, host: pub.host, npc: !!pub.npc, protection: me.protected ? -1 : null });
     (me.risen || []).forEach(function (id) { if (players[id] && ((v.q || {}).risen || []).indexOf(players[id].name) !== -1) players[id].risenBy = v.youId; });
     const ex = players.find(function (p) { return p.exposed; });
     return { round: v.round, phase: v.phase, players: players, turn: v.youId, youId: v.youId, handoff: false, event: v.event, chronicle: v.chronicle || [], publicClues: v.publicClues || [],
@@ -237,7 +237,7 @@
     unlockNotices: function () { /* una sola vez por aviso */
       return (qv().unlocks || []).filter(function (t) { const k = (st ? st.round : 0) + ":" + t; if (seenUnlock[k]) return false; seenUnlock[k] = 1; return true; });
     },
-    pactTerms: function (t, a, b) { return LOCAL.pactTerms(t, a, b); }, pSuccess: function (b, d) { return LOCAL.pSuccess(b, d); }, hhmm: function (ts) { return LOCAL.hhmm(ts); },
+    suspName: function (l) { return LOCAL.suspName(l); }, suspLevel: function (p) { return (p && p.susp) || 0; }, pactTerms: function (t, a, b) { return LOCAL.pactTerms(t, a, b); }, pSuccess: function (b, d) { return LOCAL.pSuccess(b, d); }, hhmm: function (ts) { return LOCAL.hhmm(ts); },
     turnSeconds: function () { return qv().turnSeconds || 75; }, councilSeconds: function () { return qv().councilSeconds || 90; },
     councilPrompt: function () { return qv().councilPrompt || ""; }, behindSchedule: function () { return !!qv().behindSchedule; },
     timeLeftMs: leftMs, endAtTs: function () { return cur ? cur.endAt || null : null; }, elapsedMin: function () { return 0; },
@@ -265,7 +265,7 @@
     improveSpell: function (pid, sid) { return cmd("improveSpell", [sid]); },
     answerOffer: function (pid, yes) { return cmd("answerOffer", [!!yes]); }, answerHand: function (pid, yes) { return cmd("answerHand", [!!yes]); },
     answerPact: function (pid, idx, yes) { return cmd("answerPact", [idx, !!yes]); },
-    declare: function (pid, type, t) { return cmd("declare", [type, nn(t)]); },
+    declare: function (pid, type, t, lead) { return cmd("declare", lead === undefined || lead === null ? [type, nn(t)] : [type, nn(t), lead]); },
     encounterAct: function (pid, oid) { return cmd("encounterAct", [oid]); },
     finishTurn: function () { return cmd("finishTurn", []); },
     replaceWithNpc: function (pid) { return cmd("replaceWithNpc", [pid]); }, recoverSeat: function () { return cmd("recoverSeat", []); },

@@ -633,3 +633,5 @@ button.primary.big:disabled{opacity:.45}
   .seat{grid-template-columns:1fr}
   .seatsel{max-width:none;width:100%;font-size:13px}
 }
+
+.susp{letter-spacing:.5px;color:var(--gold)}.susp.s3{color:#e0a64a}.susp.s4{color:#e06a5a}

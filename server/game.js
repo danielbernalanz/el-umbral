@@ -209,7 +209,7 @@ class Game {
       answerOffer: (id, b) => run("answerOffer", [!!b]),
       answerHand: (id, b) => run("answerHand", [!!b]),
       answerPact: (id, idx, b) => run("answerPact", [idx, !!b]),
-      declare: (id, type, t) => run("declare", [type, t == null ? null : t]),
+      declare: (id, type, t, lead) => run("declare", lead == null ? [type, t == null ? null : t] : [type, t, lead]),
       encounterAct: (id, o) => run("encounterAct", [o]),
       finishTurn: () => run("finishTurn", [])
     };
@@ -496,11 +496,11 @@ const COMMANDS = {
       return g._runAs(pid, () => g.U.answerPact(pid, gi, a[1]));
     }),
   declare: priv(
-    (g, pid, a) => isStr(a[0], 24) && isIdOrNull(a[1]),
+    (g, pid, a) => isStr(a[0], 24) && isIdOrNull(a[1]) && (a[2] === undefined || a[2] === null || Number.isInteger(a[2])),
     (g, pid, a) => {
       if (a[0] !== "ninguna" && view.aliveOthers(g, pid).indexOf(a[1]) === -1) return bad(GENERIC_BAD_TARGET);
       if (a[0] === "romper") { const d = view.asPlayer(g, pid, () => g.U.declareOptions(pid)); if (!d || d.romper.indexOf(a[1]) === -1) return bad(GENERIC_BAD_TARGET); }
-      return g._runAs(pid, () => g.U.declare(pid, a[0], a[0] === "ninguna" ? null : a[1]));
+      return g._runAs(pid, () => g.U.declare(pid, a[0], a[0] === "ninguna" ? null : a[1], a[2]));
     }),
   encounterAct: priv((g, pid, a) => isStr(a[0], 24), (g, pid, a) => g._runAs(pid, () => g.U.encounterAct(pid, a[0]))),
   finishTurn: priv((g, pid, a) => a.length === 0, (g, pid) => {

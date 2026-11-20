@@ -173,6 +173,8 @@
     const score = function (t) { return (p.clues || []).filter(function (c) { return c.about === t.id; }).reduce(function (a, c) { return a + c.strength; }, 0); };
     let best = null, bs = 0;
     op.targets.forEach(function (t) { const sc = score(t); if (sc > bs) { bs = sc; best = t; } });
+    const leads = op.leads || [];
+    if (best && bs >= 2 && leads.length && R() < 0.5 && io.declare(pid, "contradiccion", best.id, leads[0].i).ok) return;
     if (best && bs >= 3 && R() < prof.accuse) { io.declare(pid, "acusacion", best.id); return; }
     if (op.romper && op.romper.length && R() < 0.05) { io.declare(pid, "romper", op.romper[0]); return; }
     const free = op.targets.filter(function (t) { return !t.dying && (!best || t.id !== best.id || bs < 2); });

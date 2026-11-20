@@ -5,6 +5,13 @@
 (function (w) {
   "use strict";
   w.UMBRAL_NEWS = [
+    { version: "1.8.2", fecha: "2026-11-20", titulo: "Sospecha y contradicciones", puntos: [
+      "Acusar ya no revela quién es el Asesino con certeza: nadie ve si tus pruebas eran buenas. Solo sube la sospecha pública sobre esa persona.",
+      "Cada jugador tiene un marcador público de sospecha (0 a 4). Sube cuando varios jugadores distintos le acusan, cuando le contradicen con éxito y con actos hostiles a la vista; baja con rondas tranquilas y con actos de bien.",
+      "El marcador no es el rol y puede señalar a un inocente. Con sospecha alta, la mesa coopera mejor: enfrentarte a esa persona ya no es a ciegas y varios ataques seguidos le pesan más.",
+      "Nueva declaración secreta: Contradecir. Usas una pista de Indagar contra alguien; si encaja, su sospecha sube. Si no encaja, solo gastas la pista. No se revela tu pista ni de quién era el rastro.",
+      "Los NPC también acusan y contradicen."
+    ] },
     { version: "1.8.1", fecha: "2026-11-20", titulo: "Indagar: seguir los rastros", puntos: [
       "Nueva acción para todos: Indagar. Gastas el turno en examinar las heridas y muertes de las últimas rondas y obtienes una pista.",
       "La pista es veraz pero parcial: el tipo de rastro (golpe, marca oscura, síntomas, mecanismo u objeto manipulado), la ronda aproximada y, a veces, un detalle vago.",

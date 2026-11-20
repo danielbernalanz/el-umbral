@@ -1,4 +1,4 @@
-/* EL UMBRAL — interfaz (v1.8.1) */
+/* EL UMBRAL — interfaz (v1.8.2) */
 (function () {
   "use strict";
 
@@ -1135,6 +1135,13 @@
   }
 
   /* Medallón de un jugador: solo estado público (vivo / necesita socorro / eliminado). */
+  /* Marcador público de sospecha 0-4 (no es el rol: se calcula con conductas visibles y puede señalar a un inocente). */
+  function suspTag(p) {
+    const lv = Math.max(0, Math.min(4, Number(p && p.susp) || 0));
+    if (p.dead || !lv) return "";
+    let dots = ""; for (let k = 1; k <= 4; k++) dots += k <= lv ? "●" : "○";
+    return '<div class="small susp s' + lv + '" title="Sospecha pública: se calcula con conductas visibles y puede señalar a un inocente">Sospecha ' + dots + ' ' + esc(U.suspName(lv)) + '</div>';
+  }
   function playerMedal(t) { return medal(t.dead ? "s_muerto" : t.dying ? "s_moribundo" : "ui_jugador", "md", t.dead ? "mist" : t.dying ? "danger" : "gold"); }
   function addCancel(box) {
     const b = document.createElement("button");
@@ -1389,7 +1396,8 @@
 
   /* Declaraciones secretas del turno: se resuelven en público al cerrar el Consejo. */
   const IX_INFO = [
-    { v: "acusacion", ik: "a_acusar", t: "Acusar al Asesino", s: "Dices en público que alguien es el Asesino. Tus pistas deciden la tirada.", fx: ["Aciertas: queda identificado, no cazará la próxima ronda; +4 virtud para ti.", "Fallas o es inocente: +5 corrupción y −5 virtud para ti; el acusado gana 2 de virtud.", "Cuantas más pistas fuertes tengas sobre él, más probable es acertar."] },
+    { v: "acusacion", ik: "a_acusar", t: "Acusar ante el Consejo", s: "Dices en público que desconfías de alguien. Nadie sabrá si tus pruebas eran buenas: solo sube su sospecha.", fx: ["La sospecha pública sobre esa persona sube un punto la primera vez que TÚ la acusas; varios acusadores distintos suman.", "Tus pistas deciden en privado si aciertas (solo tú lo sabrás, sin certeza para los demás): +4 virtud. Si fallas: +5 corrupción y −5 virtud.", "Con sospecha 2+ enfrentarte a esa persona ya no es a ciegas; con 3+ sus pistas salen completas."] },
+    { v: "contradiccion", ik: "a_indagar", t: "Contradecir", s: "Usas una pista tuya de Indagar contra lo que dice alguien. Si encaja, sube su sospecha; si no, solo gastas la pista.", fx: ["No se revela tu pista ni de quién fue el rastro.", "Si la pista es veraz y señala a esa persona: su sospecha sube 2 puntos y ganas 2 de virtud.", "Si no encaja: no pasa nada, salvo que la pista queda gastada. Una por Consejo."] },
     { v: "emboscada", ik: "a_enfrentar", t: "Enfrentarte a alguien", s: "Atacas a alguien en público. Ambos tiráis dados.", fx: ["Si ganas: le causas daño (más si uno de los dos es Asesino); +8 corrupción y −3 virtud para ti.", "Si pierdes: −8 virtud y +6 corrupción para ti, y todos lo ven.", "Es lo más arriesgado del Consejo."] },
     { v: "romper", ik: "a_romper", t: "Romper un silencio", s: "Cuentas que alguien te tendió la mano en secreto.", fx: ["Solo si recibiste una mano de esa persona y sigue activa.", "Tú pierdes 4 virtud. Si su mano era sincera, ella gana 2.", "Nadie puede comprobar lo que dices."] },
     { v: "pacto", ik: "a_pacto", t: "Proponer un pacto secreto", s: "Se lo propones a alguien; lo verá y aceptará en su próximo turno privado.", fx: ["Solo lo sabéis los dos.", "Cumplido: +3 virtud para ambos. Roto: +8 corrupción y −6 virtud al que rompe; solo lo sabrá el otro.", "Se evalúa al final de la ronda siguiente a su aceptación (si es la última ronda, en esa misma)."] }
@@ -1414,6 +1422,7 @@
     box.innerHTML = "";
     IX_INFO.forEach(function (x) {
       if (x.v === "romper" && !o.romper.length) return;
+      if (x.v === "contradiccion" && !(o.leads && o.leads.length)) return;
       const b = document.createElement("button");
       b.type = "button";
       b.className = "ixcard" + (x.v === prepSel ? " sel" : "");
@@ -1424,13 +1433,15 @@
     $("prepKindLabel").classList.toggle("hidden", prepSel !== "pacto");
     $("prepTargetLabel").classList.toggle("hidden", !prepSel);
     $("btnPrepSave").classList.toggle("hidden", !prepSel);
+    $("prepLeadLabel").classList.toggle("hidden", prepSel !== "contradiccion");
+    if (prepSel === "contradiccion") fillSelect($("prepLead"), (o.leads || []).map(function (l) { return { v: l.i, t: l.text.replace(/ No dice quién fue\.$/, "") }; }), $("prepLead").value);
     if (prepSel) {
       const list = prepSel === "romper" ? o.targets.filter(function (t) { return o.romper.indexOf(t.id) !== -1; }) : prepSel === "pacto" ? o.targets.filter(function (t) { return !t.dying; }) : o.targets;
       $("prepTargetLabel").classList.toggle("hidden", !list.length);
       $("btnPrepSave").classList.toggle("hidden", !list.length);
       const prev = $("prepTarget").value;
-      fillSelect($("prepTarget"), list.map(function (t) { return { v: t.id, t: t.name + (prepSel === "acusacion" ? " (" + t.clues + " pista" + (t.clues === 1 ? "" : "s") + ")" : "") }; }), prev);
-      $("prepTargetLabel").firstChild.textContent = prepSel === "pacto" ? "Con quién " : prepSel === "romper" ? "Silencio de " : prepSel === "acusacion" ? "Acusar a " : "Enfrentarte a ";
+      fillSelect($("prepTarget"), list.map(function (t) { return { v: t.id, t: t.name + (prepSel === "acusacion" ? " (" + t.clues + " pista" + (t.clues === 1 ? "" : "s") + ")" : "") + (t.susp ? " · sospecha " + t.susp + "/4" : "") }; }), prev);
+      $("prepTargetLabel").firstChild.textContent = prepSel === "pacto" ? "Con quién " : prepSel === "romper" ? "Silencio de " : prepSel === "acusacion" ? "Acusar a " : prepSel === "contradiccion" ? "Contradecir a " : "Enfrentarte a ";
     }
     $("prepKind").onchange = prepTerms;
     $("prepTarget").onchange = prepTerms;
@@ -1445,7 +1456,7 @@
     if (!prepSel) { onPrepSkip(); return; }
     const type = prepSel === "pacto" ? $("prepKind").value : prepSel;
     if ($("prepTarget").value === "") { $("prepHint").textContent = "No hay nadie a quien dirigirlo."; return; }
-    run(U.declare(p.id, type, Number($("prepTarget").value)), function (r) {
+    run(U.declare(p.id, type, Number($("prepTarget").value), type === "contradiccion" ? Number($("prepLead").value) : undefined), function (r) {
       if (!r.ok) { $("prepHint").textContent = r.msg; return; }
       leaveTurn();
     });
@@ -1488,8 +1499,8 @@
     hideAll(); $("councilPanel").classList.remove("hidden");
     /* Solo lo ya público: acusación = foco; emboscada = tajo (parada si pierde el duelo); romper silencio = sello que se parte. */
     const cok = r.duel ? r.duel.attacker.total > r.duel.defender.total : r.roll ? !!r.roll.success : true;
-    const cfx = list[i].type === "acusacion" ? { name: "focus", fam: "danger", ok: true } : list[i].type === "emboscada" ? { name: "slash", fam: "danger", ok: cok } : list[i].type === "romper" ? { name: "crack", fam: "gold", ok: true } : null;
-    showRoll({ title: "RESOLUCIÓN PÚBLICA", fx: cfx, icon: list[i].type === "acusacion" ? "a_acusar" : list[i].type === "emboscada" ? "a_enfrentar" : list[i].type === "romper" ? "a_romper" : "ph_resolucion", result: r.kind === "roll" ? r.roll : {}, duel: r.duel, text: r.text, buttons: [next] });
+    const cfx = list[i].type === "acusacion" ? { name: "focus", fam: "danger", ok: true } : list[i].type === "emboscada" ? { name: "slash", fam: "danger", ok: cok } : list[i].type === "romper" ? { name: "crack", fam: "gold", ok: true } : list[i].type === "contradiccion" ? { name: "focus", fam: "lore", ok: true } : null;
+    showRoll({ title: "RESOLUCIÓN PÚBLICA", fx: cfx, icon: list[i].type === "acusacion" ? "a_acusar" : list[i].type === "emboscada" ? "a_enfrentar" : list[i].type === "romper" ? "a_romper" : list[i].type === "contradiccion" ? "a_indagar" : "ph_resolucion", result: r.kind === "roll" ? r.roll : {}, duel: r.duel, text: r.text, buttons: [next] });
   }
 
   /* ---------------- resolución ---------------- */
@@ -1509,7 +1520,7 @@
     }).join("") : '<p class="small">Ronda tranquila: nada se ha hecho público. Lo que cada uno haya hecho en secreto sigue en secreto.</p>';
     $("resPlayers").innerHTML = s.players.map(function (p) {
       return '<div class="player' + (p.dead ? " dead" : "") + '"><div class="prow">' + playerMedal(p) + '<div class="grow"><div class="row between"><b>' + dn(p) + '</b><span class="small">' + (p.dead ? 'Eliminado' : p.dying ? 'Necesita socorro' : 'En juego') + '</span></div>' +
-        '<div class="small">' + esc(U.visibleHealth(p)) + '</div></div></div></div>';
+        '<div class="small">' + esc(U.visibleHealth(p)) + '</div>' + suspTag(p) + '</div></div></div>';
     }).join("");
     { const g = fxGameKey(), rows = $("resPlayers").children;
       s.players.forEach(function (p, i) {
@@ -1665,7 +1676,7 @@
       const active = s.phase === "private" && s.turn === p.id && !s.handoff;
       return '<div class="player' + (active ? " active" : "") + (p.dead ? " dead" : "") + '"><div class="prow">' + playerMedal(p) + '<div class="grow">' +
         '<div class="row between"><b>' + dn(p) + '</b><span class="small">' + (p.dead ? 'Eliminado' : p.dying ? 'Necesita socorro' : 'En juego') + '</span></div>' +
-        '<div class="small">' + esc(U.visibleHealth(p)) + '</div>' + npcCtl(p, s) + '</div></div></div>';
+        '<div class="small">' + esc(U.visibleHealth(p)) + '</div>' + suspTag(p) + npcCtl(p, s) + '</div></div></div>';
     }).join("");
     $("clueCount").textContent = s.publicClues.length;
     $("publicClues").innerHTML = s.publicClues.length ? s.publicClues.slice(-4).map(function (c) {
@@ -1674,8 +1685,6 @@
     const living = s.players.filter(function (p) { return !p.dead; });
     const known = living.filter(function (p) { return typeof p.corr === "number"; }); /* en línea solo se conoce la propia */
     const avg = known.length ? Math.round(known.reduce(function (a, p) { return a + p.corr; }, 0) / known.length) : 100;
-    const exposedAss = s.players.filter(function (p) { return p.alignment === "asesino" && p.exposed && !p.dead; });
-    if (exposedAss.length) { $("worldState").textContent = (exposedAss.length > 1 ? "Asesinos identificados: " : "Asesino identificado: ") + exposedAss.map(function (p) { return p.name; }).join(", ") + "."; return; }
     $("worldState").textContent = avg < 15 ? "El aire aún conserva algo de esperanza."
       : avg < 40 ? "La magia oscura se filtra en los caminos."
       : avg < 65 ? "El Umbral se ha abierto y la realidad empieza a deformarse."
