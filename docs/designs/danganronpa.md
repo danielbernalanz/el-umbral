@@ -47,3 +47,14 @@ Cada fase: versión nueva, news.js, npm test, sin desplegar con salas abiertas.
 - Exceso de texto en móvil: pistas en fichas cortas con icono.
 - Bots (smart/smart_human) deben aprender a investigar o el balance se sesga.
 - Decidir: ¿cuántas indagaciones por ronda? ¿una muerte «sin firma clara»? Recomendado: 1 indagación/ronda, 2 si hay muerte.
+
+---
+## VERSIÓN RECORTADA APROBADA (2026-11-20) — es la que se implementa
+Sustituye a los apartados anteriores en caso de conflicto.
+1. Firmas en lo que ya existe: enfrentar (golpe), hechizos oscuros (marca), veneno/objetos (síntomas). Pistas, nunca certeza de autor.
+2. Solo 3 métodos nuevos: veneno retardado (dosis fija, 1-2 rondas, sin mejora de riesgo), trampa (se coloca una ronda, salta después; puede herir a un inocente), sabotaje de objeto (el objeto de otro falla o se vuelve contra él). Cada uno con coste/riesgo visible ANTES de elegir. Fuera: empujón, ahogar, maldición lenta.
+3. Indagar: una acción más del turno privado (como Socorrer), disponible para todos, gasta el turno; 1 por ronda (2 si hubo muerte, solo mesas ≤4). Pistas veraces y parciales en lista corta con icono. Sin libreta compleja.
+4. Contradecir en el consejo reutiliza «sospecha acumulada» (sin revelar rol). Va en la última fase.
+5. APLAZADO: motivos Monokuma, coartadas por presencia, pistas falsas plantadas.
+Orden: (a) firmas + 3 métodos = v1.8.0 junto a daño con riesgo (docs/designs/dano.md), (b) indagar, (c) sospecha+contradicción.
+Balance: el Asesino baja con pistas; los métodos silenciosos lo compensan. Medir smart_human 3j 10/12/15 y 2j; objetivo gana asesino ≈ 32/47/45 ±4 pp. 6-10j: pistas escasas.
