@@ -227,6 +227,15 @@ hr{border:0;border-top:1px solid var(--line);margin:13px 0}
 .hearts .ic{width:18px;height:18px;color:#e5606e;filter:drop-shadow(0 0 3px rgba(229,96,110,.45))}
 .hearts .ic.off{opacity:.2;color:#8b7a87;filter:none}
 .hearts.crit .ic:not(.off){animation:pulse 1.1s ease-in-out 6}
+.silbox{display:flex;align-items:center;gap:10px;margin:6px 0}
+.sil{width:64px;height:80px;flex:none}
+.sil .sz{cursor:pointer;fill:#2a2433;stroke:var(--line);stroke-width:1.5;outline:none}
+.sil .sz.n1{fill:#5a4a22;stroke:#c9ad5a}
+.sil .sz.n2{fill:#6a2a34;stroke:#e08b95}
+.sil .sz.n3{fill:#8b1f2f;stroke:#ff9aa6}
+.sil .sz.sel,.sil .sz:focus-visible{stroke:#fff;stroke-width:2.5}
+.zdet{font-size:12px;line-height:1.35;color:var(--muted);min-height:34px}
+.choice.off{opacity:.55}
 .zones{display:flex;flex-wrap:wrap;gap:5px;margin:5px 0 6px}
 .zone{display:inline-flex;align-items:center;gap:4px;padding:3px 9px 3px 6px;border-radius:99px;border:1px solid var(--line);background:#16121b;font-size:11px;color:var(--muted)}
 .zone .ic{width:15px;height:15px}

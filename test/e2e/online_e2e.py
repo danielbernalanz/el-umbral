@@ -210,7 +210,7 @@ def bot_step(c, rnd):
         if rnd.random() < .25:
             l = c.pg.locator("[data-item]:not([disabled]):visible")
             if l.count(): l.nth(rnd.randrange(l.count())).click(); return "act"
-        ch = c.pg.locator("#actionChoices button"); k = ch.count()
+        ch = c.pg.locator("#actionChoices button:not([disabled])"); k = ch.count()
         if not k: c.pg.wait_for_timeout(150); return "wait"
         for _ in range(6):
             i = rnd.randrange(k)

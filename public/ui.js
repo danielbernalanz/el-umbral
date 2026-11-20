@@ -1,4 +1,4 @@
-/* EL UMBRAL — interfaz (v1.12.0) */
+/* EL UMBRAL — interfaz (v1.13.0) */
 (function () {
   "use strict";
 
@@ -584,6 +584,35 @@
     });
     return parts.length ? '<div class="small">Práctica: ' + parts.join(" · ") + '</div>' : "";
   }
+  /* v1.13.0: silueta tocable (3 zonas) de TU cuerpo. Color por gravedad; al tocar una zona se ve su lesión y qué hacer. */
+  const ZADV = { cabeza: "Descansar o unas vendas ayudan; una conmoción grave nubla tus tiradas de mente.", torso: "Descansar, vendas o un botiquín curan; si sangra, que te atiendan.", miembros: "Entablillar (con vendas) quita el estorbo de un brazo o una pierna; Descansar cura el resto." };
+  function zoneDetail(z) {
+    if (!z) return "Toca una zona de la silueta para ver su lesión.";
+    return "<b>" + esc(z.name) + "</b>: " + (z.n ? esc(z.nivel + (z.tipo ? " (" + z.tipo + ")" : "")) + ". " + esc(z.desc) + " " + esc(ZADV[z.id]) : "sin daño.");
+  }
+  function silhouette(hi) {
+    const zs = {}; (hi.zones || []).forEach(function (z) { zs[z.id] = z; });
+    const g = function (id, label, shapes) {
+      const z = zs[id] || { n: 0 };
+      return '<g class="sz n' + (z.n || 0) + '" role="button" tabindex="0" data-z="' + id + '" aria-label="' + esc(label + (z.n ? ", " + z.nivel : ", sin daño")) + '">' + shapes + '</g>';
+    };
+    const svg = '<svg class="sil" viewBox="0 0 120 150" role="group" aria-label="Tu cuerpo">' +
+      g("cabeza", "Cabeza", '<circle cx="60" cy="18" r="14"/>') +
+      g("torso", "Torso", '<rect x="42" y="36" width="36" height="52" rx="9"/>') +
+      g("miembros", "Brazos y piernas", '<rect x="22" y="38" width="15" height="50" rx="7"/><rect x="83" y="38" width="15" height="50" rx="7"/><rect x="43" y="92" width="16" height="52" rx="7"/><rect x="61" y="92" width="16" height="52" rx="7"/>') +
+      '</svg>';
+    return '<div class="silbox">' + svg + '<div class="zdet" aria-live="polite">' + zoneDetail(null) + '</div></div>';
+  }
+  document.addEventListener("click", function (ev) {
+    const g = ev.target && ev.target.closest ? ev.target.closest("g.sz[data-z]") : null; if (!g) return;
+    const box = g.closest(".silbox"), p = U.currentPlayer(); if (!box || !p) return;
+    const hi = U.healthInfo(p), z = (hi.zones || []).find(function (x) { return x.id === g.getAttribute("data-z"); });
+    box.querySelectorAll("g.sz").forEach(function (x) { x.classList.toggle("sel", x === g); });
+    box.querySelector(".zdet").innerHTML = zoneDetail(z);
+  });
+  document.addEventListener("keydown", function (ev) {
+    if ((ev.key === "Enter" || ev.key === " ") && ev.target && ev.target.matches && ev.target.matches("g.sz[data-z]")) { ev.preventDefault(); ev.target.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
+  });
   function statsHTML(p) {
     const status = [];
     const hi = U.healthInfo(p);
@@ -611,6 +640,7 @@
       '<div class="meter"><span class="virtue" style="width:' + p.virtue + '%"></span></div>' +
       '<div class="srow"><span class="lab f-danger"><span style="color:var(--ic)">' + ic("st_vitalidad") + '</span>Vitalidad <b>' + hi.hp + '/' + hi.max + '</b></span></div>' +
       '<div class="hearts' + (hi.pct <= 30 || hi.dying ? " crit" : "") + '" aria-hidden="true">' + hearts + '</div>' +
+      silhouette(hi) +
       '<div class="zones">' + zones + '</div>' +
       (hi.urgentes && hi.urgentes.length && !hi.dying ? '<div class="hurt"><b>' + ic("s_herido") + 'Qué te pasa y qué hacer</b>' + (function () { let last = ""; return hi.urgentes.map(function (u) { const t = u.todo && u.todo !== last ? u.todo : ""; if (u.todo) last = u.todo; return '<div class="small">' + esc(u.text) + (t ? ' <i>→ ' + esc(t) + '</i>' : '') + '</div>'; }).join(""); })() + '</div>' : '') +
       (chips.length ? '<div class="chips">' + chips.map(function (c) { return '<span class="schip ' + (c.k === "s_fortalecido" ? "good" : "bad") + '">' + ic(c.k) + esc(c.t) + '</span>'; }).join("") + '</div>' : '') +
@@ -1115,7 +1145,29 @@
     addCancel(box);
   }
 
+  /* v1.13.0: técnica de Atender. Efecto y coste a la vista; lo que no puedes hacer se atenúa con «falta: …». Mismas filas para todos. */
+  function renderTreatPicker(p) {
+    const t = U.getState().players[pendingMode.t], vh = String(U.visibleHealth(t) || "");
+    const sign = { presionar: /sangra/.test(vh), torniquete: /sangra/.test(vh), entablillar: /cojea|protege/.test(vh), cauterizar: /sangra|pálido/.test(vh) };
+    $("actionHint").textContent = "¿Cómo atiendes a " + t.name + "? Lo que se ve: " + vh + ". Solo tú sabes si había algo que tratar.";
+    $("actionHint").classList.remove("hidden");
+    const box = $("actionChoices");
+    box.className = "actions";
+    box.innerHTML = "";
+    U.treatOptions(p.id).forEach(function (o) {
+      const btn = document.createElement("button");
+      btn.className = "choice" + (o.ok ? "" : " off");
+      btn.disabled = !o.ok;
+      btn.setAttribute("data-treat", o.id);
+      btn.innerHTML = medal("a_atender", "md", o.ok ? "heal" : "mist") + '<span class="cbody"><span class="choiceTop"><b>' + esc(o.name) + '</b>' + (!o.ok ? '<span class="chip low">falta: ' + esc(o.falta) + '</span>' : sign[o.id] ? '<span class="chip good">encaja con lo que se ve</span>' : '') + '</span>' +
+        '<span class="small">' + esc(o.effect) + '</span><span class="tagline">Coste: ' + esc(o.cost) + '</span></span>';
+      btn.onclick = function () { const m = pendingMode; doAction(m.a, m.t, o.id); };
+      box.appendChild(btn);
+    });
+    addCancel(box);
+  }
   function renderModePicker(p) {
+    if (pendingMode && pendingMode.kind === "treat") { renderTreatPicker(p); return; }
     $("actionHint").textContent = "¿Cómo es tu mano? Solo tú lo sabrás.";
     $("actionHint").classList.remove("hidden");
     const box = $("actionChoices");
@@ -1161,7 +1213,7 @@
       const btn = document.createElement("button");
       btn.className = "choice";
       btn.innerHTML = playerMedal(t) + '<span class="cbody"><b>' + dn(t) + '</b><span class="small">' + esc(U.visibleHealth(t)) + '</span></span>';
-      btn.onclick = function () { if (pendingAction.mode) { pendingMode = { a: pendingAction, t: t.id }; pendingAction = null; renderPrivate(); return; } doAction(pendingAction, t.id, null); };
+      btn.onclick = function () { if (pendingAction.mode || pendingAction.id === "atender") { pendingMode = { a: pendingAction, t: t.id, kind: pendingAction.id === "atender" ? "treat" : "mode" }; pendingAction = null; renderPrivate(); return; } doAction(pendingAction, t.id, null); };
       box.appendChild(btn);
     });
     addCancel(box);

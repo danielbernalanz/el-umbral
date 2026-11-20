@@ -1,4 +1,4 @@
-const CACHE = "umbral-v112-2";
+const CACHE = "umbral-v113-0";
 const ASSETS = [
   "./",
   "./index.html",

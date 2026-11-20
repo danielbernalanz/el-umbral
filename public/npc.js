@@ -63,6 +63,13 @@
     return out;
   }
 
+  /* Técnica de Atender para un paciente que sangra: con fuego, cauteriza a veces; si no, torniquete a veces; si no, presionar. */
+  function treatFor(p, vh, R) {
+    const has = function (id) { return (p.items || []).some(function (i) { return i.id === id; }); };
+    if ((has("antorcha") || has("linterna")) && R() < 0.4) return "cauterizar";
+    if (R() < 0.25) return "torniquete";
+    return "presionar";
+  }
   function turn(io, s, p, R) {
     const pid = p.id, prof = PROF[p.npc] || PROF.prudente;
     if (p.dying) return { skipped: true };
@@ -108,7 +115,10 @@
     /* 3b) v1.10.0: atender a quien se ve sangrando (señal pública «sangra»); los prudentes y curanderos lo hacen más. */
     if (!asesino() && can("atender")) {
       const bl = al.find(function (x) { return !x.dying && /sangra/.test(String(io.visibleHealth ? io.visibleHealth(x) : "")); });
-      if (bl && R() < prof.soc * 0.6 && act("atender", bl.id)) return finishWith(io, s, p, R, prof, pickOf, "atender");
+      if (bl && R() < prof.soc * 0.6 && act("atender", bl.id, treatFor(p, io.visibleHealth(bl), R))) return finishWith(io, s, p, R, prof, pickOf, "atender");
+      /* v1.13.0: con vendas, entablilla a quien se ve cojeando o protegiendo un brazo (solo señales públicas). */
+      const lm = al.find(function (x) { return !x.dying && /cojea|protege/.test(String(io.visibleHealth ? io.visibleHealth(x) : "")); });
+      if (lm && R() < prof.soc * 0.35 && p.items.some(function (i) { return i.id === "vendas"; }) && act("atender", lm.id, "entablillar")) return finishWith(io, s, p, R, prof, pickOf, "atender");
     }
 
     /* 4) el Asesino cuando lo es (con menos puntería que un humano decidido) */

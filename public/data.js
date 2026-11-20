@@ -1,4 +1,4 @@
-/* EL UMBRAL — datos del juego (v1.12.0)
+/* EL UMBRAL — datos del juego (v1.13.0)
    Roles, afinidades, objetos, acciones, eventos, secretos y pistas. */
 (function (g) {
   "use strict";
@@ -114,7 +114,7 @@
     { id: "conjurar", lore: "Cada conjuro bien lanzado se asienta un poco más en tu memoria.", name: "Conjurar", tag: "MAGIA", attr: null, target: false, diff: 0, risk: false, desc: "Lanzas uno de tus conjuros. Primero eliges cuál (y sobre quién); luego, con cuánto empeño: con cautela (más fácil, no pierdes el uso si falla), normal, o desatado (más potente, pero más difícil, te mancha y si falla te estalla en las manos). Verás el % de éxito de cada opción antes de decidir. Los usos son limitados; Meditar repone uno." },
     { id: "tender", lore: "Una mano abierta puede ser refugio o cebo; solo quien la tiende lo sabe.", name: "Tender la mano", tag: "PROMESA", attr: null, target: true, diff: 0, risk: false, mode: true, desc: "Ofreces ayuda en secreto a otro jugador. Si confía en ti y calla, se abrirá una ventana a su favor. Solo tú sabes cómo es tu mano." },
     { id: "socorrer", lore: "Quien se arrodilla junto al caído descubre de qué está hecha su propia piedad.", name: "Socorrer", tag: "AUXILIO", attr: "mente", target: true, diff: 4, risk: true, pushable: false, canTarget: function (t) { return !!t.dying; }, desc: "Solo sobre un moribundo. Si sale bien, se estabiliza con 2 de vitalidad y tú ganas +5 virtud. Si fallas, quizá sea tarde." },
-    { id: "atender", lore: "Unas manos firmes y un poco de agua limpia valen más que muchas promesas.", name: "Atender", tag: "AUXILIO", attr: null, target: true, diff: 0, risk: false, pushable: false, canTarget: function (t) { return !t.dying; }, desc: "Cuidas a otro jugador sin objetos ni tirada: presionas su herida para cortar un sangrado y la lavas para frenar una infección o evitar que se infecte. No cura vitalidad (para eso, vendas, hierbas o descansar). Si no tenía nada que atender, pierdes la acción." },
+    { id: "atender", lore: "Unas manos firmes y un poco de agua limpia valen más que muchas promesas.", name: "Atender", tag: "AUXILIO", attr: null, target: true, diff: 0, risk: false, pushable: false, canTarget: function (t) { return !t.dying; }, desc: "Cuidas a otro jugador, sin tirada, con la técnica que elijas (antes de confirmar ves qué hace y qué cuesta cada una): presionar y limpiar (gratis), torniquete, entablillar (gasta vendas) o cauterizar (necesita fuego). No cura vitalidad. Si no había nada que tratar, pierdes la acción (y el objeto, si lo gastaste)." },
     { id: "sombra_espia", lore: "Una sombra bien enseñada recoge lo que la luz deja caer.", name: "Sombras espías", tag: "SOMBRAS", attr: "sombra", target: true, diff: 4, risk: true, pushable: false, desc: "Mandas a tus sombras tras otro jugador: obtienes una pista sobre él (más fuerte con dominio alto). Cuesta +2 de oscuridad (0 con dominio de Señor). No deja rastro público. Practicarlas sube tu dominio de las sombras." },
     { id: "sombra_guarda", lore: "Las sombras no duermen, y tampoco te dejan hacerlo a ti.", name: "Sombras guardianas", tag: "SOMBRAS", attr: "sombra", target: false, diff: 4, risk: true, pushable: false, desc: "Tus sombras te rodean esta ronda: +3 de defensa (+4 con dominio Domador, +5 Señor). Con dominio Domador o más, si alguien te agrede en privado antes de que acabe la ronda sabrás quién fue. Cuesta +2 de oscuridad (0 como Señor)." },
     { id: "sombra_hostiga", lore: "Hay susurros que solo sirven para arruinarle la noche a alguien.", name: "Sombras hostigadoras", tag: "SOMBRAS", attr: "sombra", target: true, diff: 5, risk: true, pushable: false, hostile: true, desc: "Tus sombras acosan a otro jugador: queda maldito (−1 a sus tiradas) una ronda (dos con dominio Domador) y se mancha de oscuridad (+3). Tú pagas +3 de oscuridad y −2 de virtud. En público solo se ve que las sombras se agitaron alrededor de la víctima, no quién las mandó." },
@@ -230,6 +230,16 @@
     fortalecido: { name: "Fortalecido", desc: "+1 a todas las tiradas (dos rondas)." }
   };
 
+
+  /* v1.13.0: técnicas de Atender. Todas disponibles de entrada para todos; las que exigen objeto se atenúan con «falta: …» (solo depende de TU mochila).
+     Efecto y coste se muestran antes de elegir. Ninguna lleva azar: el riesgo es de coste (objeto, vitalidad o miembro entumecido) y de acertar con las señales públicas. */
+  const TREATS = [
+    { id: "presionar", name: "Presionar y limpiar", effect: "Corta un sangrado leve y frena la infección; un sangrado fuerte solo baja a goteo.", cost: "Sin coste." },
+    { id: "torniquete", name: "Torniquete", effect: "Corta CUALQUIER sangrado al instante.", cost: "El paciente tiene un miembro entumecido hoy y mañana (−1 a cuerpo/ataque y a defensa). Solo si sangraba." },
+    { id: "entablillar", name: "Entablillar", effect: "Alinea un brazo o una pierna con lesión seria o grave: la lesión baja y deja de estorbar.", cost: "Gasta tus vendas aunque no hiciera falta (las vendas curarían 4 de vitalidad a alguien)." },
+    { id: "cauterizar", name: "Cauterizar", effect: "Sella al instante sangrado e infección, también los fuertes.", cost: "El paciente pierde 1 de vitalidad (si tiene 3 o más). Gasta una antorcha; una linterna no se gasta." }
+  ];
+
   /* NPC (jugadores controlados por la app): perfiles y nombres. */
   const NPC_PROFILES = { prudente: "Prudente", agresivo: "Agresivo", curandero: "Curandero", oscuro: "Oscuro", mixto: "Mixto" };
   const NPC_NAMES = ["Brisa", "Cuervo", "Dara", "Elan", "Fenn", "Gaia", "Hael", "Ibis", "Jora", "Kael", "Lumi", "Mirt", "Nox", "Orla", "Pyra", "Quill", "Rhea", "Sable", "Tilo", "Vesta"];
@@ -246,7 +256,7 @@
     tierNames: { 1: "Básico", 2: "Intermedio" },
     weight: { 1: 1, 2: 2 }, cap: 5
   };
-  const D = { VERSION: "1.12.0", SPELL_SCHOOLS, NPC_PROFILES, NPC_NAMES, STATUS, ROLES, AFFINITIES, ITEMS, LOOT_ITEMS, DARK_ITEMS, UTIL_ITEMS, MEDIC_ITEMS, ACTIONS, STAKES, EVENTS, CLUES, ASSASSIN_CLUES, SECRETS };
+  const D = { VERSION: "1.13.0", TREATS, SPELL_SCHOOLS, NPC_PROFILES, NPC_NAMES, STATUS, ROLES, AFFINITIES, ITEMS, LOOT_ITEMS, DARK_ITEMS, UTIL_ITEMS, MEDIC_ITEMS, ACTIONS, STAKES, EVENTS, CLUES, ASSASSIN_CLUES, SECRETS };
   g.UMBRAL_DATA = D;
   if (typeof module !== "undefined") module.exports = D;
 })(typeof globalThis !== "undefined" ? globalThis : this);

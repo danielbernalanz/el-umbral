@@ -84,12 +84,12 @@ test("infección determinista: herida abierta seria sin cuidar 2 rondas se infec
 test("Atender: corta sangrado e infección del otro; el actor recibe texto uniforme; el atendido lo sabe en privado", () => {
   const { U, S, H } = mk();
   const a = S.players[0], v = S.players[1];
-  v.status = [{ id: "sangrado", left: 2, sev: 2 }, { id: "infeccion", left: 2 }];
+  v.status = [{ id: "sangrado", left: 2, sev: 1 }, { id: "infeccion", left: 2 }];
   S.turn = 0; S.phase = "private"; S.handoff = false;
   const r = U.act(0, "atender", 1);
   assert.ok(r.ok);
   assert.ok(!v.status.some((s) => s.id === "sangrado" || s.id === "infeccion"));
-  assert.ok(v.notes.some((n) => /Ana te atendió las heridas/.test(n)));
+  assert.ok(v.notes.some((n) => /Ana te atendió/.test(n)));
   const textoConCosa = r.outcome;
   const { U: U2, S: S2 } = mk();
   S2.turn = 0; S2.phase = "private"; S2.handoff = false;

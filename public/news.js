@@ -5,6 +5,13 @@
 (function (w) {
   "use strict";
   w.UMBRAL_NEWS = [
+    { version: "1.13.0", fecha: "2026-11-20", titulo: "Atender con técnicas y silueta del cuerpo", puntos: [
+      "Atender ahora tiene cuatro técnicas, y antes de confirmar ves qué hace y qué cuesta cada una: presionar y limpiar (gratis), torniquete, entablillar y cauterizar.",
+      "Presionar corta un sangrado leve, pero uno fuerte solo lo baja a goteo. El torniquete corta cualquiera, pero deja un miembro entumecido hoy y mañana (−1 a cuerpo y defensa). Cauterizar sella sangrado e infección al instante a cambio de 1 de vitalidad del paciente; necesita una antorcha (una linterna sirve y no se gasta).",
+      "Entablillar gasta tus vendas y quita el estorbo de un brazo o una pierna con lesión seria. Si no había nada que alinear, las vendas se gastan igualmente: fíjate en lo que se ve (cojea, protege un brazo).",
+      "Tu ficha muestra una silueta tocable con tus tres zonas: el color indica la gravedad y, al tocar una zona, ves su lesión y qué hacer.",
+      "Los NPC también usan estas técnicas, con lo que ven a simple vista."
+    ] },
     { version: "1.12.0", fecha: "2026-11-20", titulo: "Presentar pistas y NPC con carácter", puntos: [
       "Contradecir desaparece: ahora puedes presentar ante el Consejo UNA de tus pistas de Indagar. Se muestra a todos con el mismo texto que viste, sin tu nombre, como pista verificada por el juego. Nada la compara con nadie: la mesa decide.",
       "La sospecha ya no sube por acertar con una pista: solo por acusaciones de varias personas y actos hostiles a la vista. Quien dejó un rastro sabrá en privado que ha salido a la luz, sin saber quién lo presentó.",

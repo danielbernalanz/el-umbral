@@ -67,6 +67,7 @@ function queriesFor(game, pid) {
   q.timeLeftMs = U.timeLeftMs();
   q.extEnd = S.timeAsk ? { 1: U.extEnd(1), 2: U.extEnd(2) } : null;
   q.health = U.healthInfo(p);
+  q.treat = U.treatOptions(pid);                                  /* técnicas de Atender: solo depende de MI mochila */
   q.xp = U.xpInfo(p);
   q.dom = U.domInfo(p);
   q.secret = U.secretInfo(pid);

@@ -37,7 +37,7 @@ with sync_playwright() as pw:
                 elif random.random()<.3 and page.locator("[data-item]:not([disabled]):visible").count():
                     stats["item"]+=1; l=page.locator("[data-item]:not([disabled]):visible"); l.nth(random.randrange(l.count())).click()
                 else:
-                    ch=page.locator("#actionChoices button"); k=ch.count()
+                    ch=page.locator("#actionChoices button:not([disabled])"); k=ch.count()
                     soc=page.locator("#actionChoices button:has-text('Socorrer')")
                     if k and soc.count() and random.random()<.85: stats["socorrer"]+=1; soc.first.click(timeout=3000)
                     elif k: ch.nth(random.randrange(k)).click(timeout=3000)
@@ -49,6 +49,8 @@ with sync_playwright() as pw:
                     if vis("#prepTarget"):
                         page.select_option("#prepTarget",index=random.randrange(max(1,page.locator("#prepTarget option").count())))
                         if random.random()<.5 and vis("#prepKind"): page.select_option("#prepKind",index=random.randrange(3))
+                    elif vis("#prepLead"):
+                        page.select_option("#prepLead",index=0); stats["pista"]=stats.get("pista",0)+1
                     elif vis("#btnPrepSave"): errors.append("PREPTARGET oculto con Guardar visible")
                     if vis("#btnPrepSave"):
                         bb=page.locator("#btnPrepSave").bounding_box()

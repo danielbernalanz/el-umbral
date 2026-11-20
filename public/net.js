@@ -248,7 +248,7 @@
     actionOdds: function (pid, aid) { return (qv().odds || {})[aid] || null; },
     spellInfo: function (pid, sid, tid, mode) { const e = (qv().spells || {})[sid], m = e && e.info[tid == null ? "-" : tid]; return (m && m[mode]) || null; },
     spellProgress: function (sp) { return LOCAL.spellProgress(sp); },
-    healthInfo: function () { return qv().health; }, xpInfo: function () { return qv().xp; }, domInfo: function () { return qv().dom; },
+    healthInfo: function () { return qv().health; }, treatOptions: function () { return qv().treat || []; }, xpInfo: function () { return qv().xp; }, domInfo: function () { return qv().dom; },
     secretInfo: function () { return gone(qv(), "secret"); }, umbralInfo: function () { return gone(qv(), "umbral"); }, indagarInfo: function () { return qv().lead || { avail: 0, per: 1 }; },
     activePacts: function () { return qv().pacts || []; }, getSince: function () { return gone(qv(), "since"); },
     getOffer: function () { return gone(qv(), "offer"); }, getHandOffer: function () { return gone(qv(), "handOffer"); },

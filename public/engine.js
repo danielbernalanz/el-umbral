@@ -1,4 +1,4 @@
-/* EL UMBRAL — motor de juego (v1.12.0)
+/* EL UMBRAL — motor de juego (v1.13.0)
    Sin DOM. Toda la lógica vive aquí para poder probarla con Node. */
 (function (g) {
   "use strict";
@@ -78,8 +78,10 @@
   /* Nivel de la lesión: 0 ninguna, 1 leve (1-3), 2 seria (4-5), 3 grave (6+). Penalizadores desde el nivel 2. */
   function zoneN(p, z) { const n = (p && p.zones && p.zones[z]) || 0; return n >= 6 ? 3 : n >= 4 ? 2 : n >= 1 ? 1 : 0; }
   function partOf(p) { return (p && p.inj && p.inj.miembros && p.inj.miembros.part) || null; }
-  function legPen(p) { return zoneN(p, "miembros") >= 2 && partOf(p) === "piernas" ? 1 : 0; }
-  function armPen(p) { return zoneN(p, "miembros") >= 2 && partOf(p) === "brazos" ? 1 : 0; }
+  /* v1.13.0: un torniquete entumece un miembro la ronda en que se pone y la siguiente (−1 cuerpo/ataque y −1 defensa). */
+  function tornActive(p) { return !!(p && state && typeof p.tournRound === "number" && state.round >= p.tournRound && state.round - p.tournRound <= 1); }
+  function legPen(p) { return (zoneN(p, "miembros") >= 2 && partOf(p) === "piernas") || tornActive(p) ? 1 : 0; }
+  function armPen(p) { return (zoneN(p, "miembros") >= 2 && partOf(p) === "brazos") || tornActive(p) ? 1 : 0; }
   function zoneMod(p, attr) {
     if (attr === "cuerpo") return -armPen(p);
     if (attr === "mente") return zoneLvl(p, "cabeza") >= 2 ? -1 : 0;
@@ -295,6 +297,16 @@
     if (vn) out.push({ key: "veneno", text: vn.dmg ? "Veneno: −" + vn.dmg + " de vitalidad por ronda." : "Veneno: te debilita.", todo: "Hierbas, antídoto o descansar lo frenan." });
     if (!sg && fc) out.push({ key: "caer", text: "Al ritmo actual, caes moribundo en " + fc.caer + " ronda" + (fc.caer > 1 ? "s" : "") + ".", todo: "" });
     return out.slice(0, 3);
+  }
+  /* v1.13.0: técnicas de Atender con su disponibilidad. Solo depende de la mochila de quien atiende (consulta pura, sin fugas). */
+  function treatOptions(pid) {
+    const p = state && state.players[pid];
+    return D.TREATS.map(function (t) {
+      let ok = true, falta = "";
+      if (t.id === "entablillar" && !hasItem(p, "vendas")) { ok = false; falta = "unas vendas"; }
+      if (t.id === "cauterizar" && !hasItem(p, "antorcha") && !hasItem(p, "linterna")) { ok = false; falta = "una antorcha o una linterna"; }
+      return { id: t.id, name: t.name, effect: t.effect, cost: t.cost, ok: ok, falta: falta };
+    });
   }
   function healthInfo(p) {
     const max = maxHp(p), pct = Math.round(100 * p.hp / max);
@@ -1317,7 +1329,7 @@
     return out;
   }
   function zoneWhy(p, attr) {
-    if (attr === "cuerpo" && armPen(p)) return ["tu brazo gravemente herido te estorba (−1)"];
+    if (attr === "cuerpo" && armPen(p)) return [tornActive(p) ? "el torniquete te entumece un miembro (−1)" : "tu brazo gravemente herido te estorba (−1)"];
     if (attr === "mente" && zoneLvl(p, "cabeza") >= 2) return ["la conmoción de tu cabeza te nubla (−1)"];
     return [];
   }
@@ -2199,6 +2211,13 @@
       if (riseCount(p) >= riseMax(p)) return err("Tus sombras sirvientes ya no dan abasto: ya tienes " + riseCount(p) + " alzada" + (riseCount(p) > 1 ? "s" : "") + ".");
     }
 
+    let tech = null;
+    if (a.id === "atender") {
+      tech = stakeId == null || stakeId === "" ? "presionar" : String(stakeId);
+      const to = treatOptions(p.id).find(function (x) { return x.id === tech; });
+      if (!to) return err("Elige una técnica de cuidados válida.");
+      if (!to.ok) return err("Te falta " + to.falta + " para esa técnica.");
+    }
     let mode = null;
     if (a.mode) {
       mode = stakeId === "trampa" ? "trampa" : stakeId === "sincera" ? "sincera" : null;
@@ -2278,7 +2297,7 @@
     /* Sabotaje: el frasco/pergamino/porra estropeado por otro falla siempre. */
     let sabX = null;
     if (a.needs && a.risk) { sabX = takeSab(p, a.needs); if (sabX) { r.success = false; r.crit = false; r.sabotaged = true; } }
-    const out = applyAction(p, a, t, r, a.mode ? mode : stake);
+    const out = applyAction(p, a, t, r, a.mode ? mode : a.id === "atender" ? tech : stake);
     if (sabX) out.text += " Además, " + (D.ITEMS[a.needs] ? D.ITEMS[a.needs].name.toLowerCase() : "el objeto") + " " + sabBackfire(p, D.ITEMS[a.needs] ? D.ITEMS[a.needs].name : "El objeto") + ".";
     if (DARK_ACTS.indexOf(a.id) !== -1) darkAct(p);
     else if (ANTI_ACTS.indexOf(a.id) !== -1 || ((a.id === "socorrer" || a.id === "proteger") && r.success)) antiAct(p);
@@ -2588,18 +2607,43 @@
       }
       case "indagar": return doIndagar(p);
       case "atender": {
-        /* v1.10.0: cuidados sin objetos ni tirada. Corta un sangrado y frena una infección o una herida abierta sin limpiar; no cura vitalidad.
-           Al actor no se le cuenta qué había (solo lo que ya vería a simple vista); el atendido lo sabe en privado. */
+        /* Cuidados sin tirada, con la técnica elegida (v1.13.0). Al actor no se le cuenta qué había (solo lo que ya vería a simple vista);
+           el atendido lo sabe en privado. Los objetos se gastan aunque no hicieran falta: el coste es de quien elige sin certeza. */
         if (t.dying) return { text: t.name + " está moribundo: eso es un Socorro, no unos cuidados.", log: null };
-        const did = [];
-        if (hasStatus(t, "sangrado")) { dropStatus(t, "sangrado"); did.push("cortas el sangrado"); }
-        if (hasStatus(t, "infeccion")) { dropStatus(t, "infeccion"); did.push("frenas la infección"); }
-        else if (dirtyAge(t) !== null) { did.push("limpias la herida abierta"); }
-        t.cleanRound = state.round; t.healRound = state.round;
-        if (did.length) {
-          t.notes.push("Ronda " + state.round + ": " + p.name + " te atendió las heridas: " + did.join(" y ").replace("cortas", "cortó").replace("frenas", "frenó").replace("limpias", "limpió") + ".");
+        const tech = stake || "presionar", did = [], extra = [];
+        const sg = (t.status || []).find(function (x) { return x.id === "sangrado"; });
+        const dropItem = function (id) { const ix = p.items.findIndex(function (i) { return i.id === id; }); if (ix >= 0) p.items.splice(ix, 1); };
+        if (tech === "presionar") {
+          if (sg) { if ((sg.sev || 1) >= 2) { sg.sev = 1; did.push("rebajas el sangrado a un goteo"); } else { dropStatus(t, "sangrado"); did.push("cortas el sangrado"); } }
+          if (hasStatus(t, "infeccion")) { dropStatus(t, "infeccion"); did.push("frenas la infección"); }
+          else if (dirtyAge(t) !== null) { did.push("limpias la herida abierta"); }
+          t.cleanRound = state.round; t.healRound = state.round;
+        } else if (tech === "torniquete") {
+          if (sg) { dropStatus(t, "sangrado"); did.push("cortas el sangrado con un torniquete"); t.tournRound = state.round; extra.push("Un miembro te queda entumecido hoy y mañana (−1 a cuerpo/ataque y a defensa)."); }
+          if (did.length) { t.cleanRound = state.round; t.healRound = state.round; }
+        } else if (tech === "entablillar") {
+          dropItem("vendas");
+          if (zoneN(t, "miembros") >= 2) {
+            t.zones.miembros = Math.min(t.zones.miembros, 3);
+            if (t.inj && t.inj.miembros) t.inj.miembros.t = "contusion";
+            did.push("entablillas el miembro lesionado");
+            t.healRound = state.round;
+          }
+        } else if (tech === "cauterizar") {
+          if (hasItem(p, "antorcha")) dropItem("antorcha");
+          if (sg || hasStatus(t, "infeccion") || dirtyAge(t) !== null) {
+            if (sg) { dropStatus(t, "sangrado"); did.push("sellas el sangrado a fuego"); }
+            if (hasStatus(t, "infeccion")) { dropStatus(t, "infeccion"); did.push("quemas la infección"); }
+            else if (dirtyAge(t) !== null) did.push("sellas la herida abierta");
+            t.cleanRound = state.round; t.healRound = state.round;
+            if (t.hp >= 3) { damage(t, 1, { noZone: true, noBleed: true }); extra.push("La brasa te quema: −1 de vitalidad."); }
+          }
         }
-        return { text: "Atiendes a " + t.name + " con lo que tienes a mano. Si había algo que cuidar, ya está hecho.", log: null };
+        if (did.length) {
+          t.notes.push("Ronda " + state.round + ": " + p.name + " te atendió (" + (D.TREATS.find(function (x) { return x.id === tech; }) || { name: tech }).name.toLowerCase() + "): " + did.join(" y ").replace(/cortas/g, "cortó").replace(/rebajas/g, "rebajó").replace(/frenas/g, "frenó").replace(/limpias/g, "limpió").replace(/entablillas/g, "entablilló").replace(/sellas/g, "selló").replace(/quemas/g, "quemó") + "." + (extra.length ? " " + extra.join(" ") : ""));
+        }
+        const how = { presionar: "presionando y limpiando", torniquete: "con un torniquete", entablillar: "con unas vendas a modo de férula", cauterizar: "con fuego" }[tech] || "";
+        return { text: "Atiendes a " + t.name + " " + how + ". Si había algo que tratar, ya está hecho.", log: null };
       }
       case "socorrer": {
         if (!t.dying) return { text: t.name + " ya no necesita socorro.", log: null };
@@ -3967,8 +4011,8 @@
     getState: function () { return state; },
     currentPlayer: function () { return state ? state.players[state.turn] : null; },
     act: wrapLog("act", act), pushLuck: wrapLog("pushLuck", pushLuck), useItem: wrapLog("useItem", useItem),
-    maxHp: maxHp, visibleHealth: visibleHealth, publicLook: publicLook, healthInfo: healthInfo,
-    _skill: { rollCheck: rollCheck }, _health: { damage: damage, heal: heal, finish: finish, stabilize: stabilize, pickZone: pickZone, zoneLvl: zoneLvl, zoneMod: zoneMod, initHealth: initHealth },
+    maxHp: maxHp, treatOptions: treatOptions, visibleHealth: visibleHealth, publicLook: publicLook, healthInfo: healthInfo,
+    _skill: { rollCheck: rollCheck }, _health: { damage: damage, heal: heal, finish: finish, stabilize: stabilize, pickZone: pickZone, zoneLvl: zoneLvl, zoneMod: zoneMod, armPen: armPen, legPen: legPen, initHealth: initHealth },
     getSince: getSince, endAtTs: endAtTs, extEnd: extEnd, hhmm: hhmm, assassinGoal: assassinGoal, visibleActions: visibleActions, spellInfo: spellInfo, actionOdds: actionOdds, buildStory: buildStory, exportStory: exportStory, secretInfo: secretInfo, umbralInfo: umbralInfo, indagarInfo: indagarInfo, suspLevel: suspLevel, suspName: suspName, exportLog: exportLog, lastLogs: lastLogs, noteError: noteError,
     finishTurn: finishTurn, nextTurn: nextTurn, replaceWithNpc: replaceWithNpc, restoreFromNpc: restoreFromNpc, npcProfileFor: npcProfileFor,
     beginCouncil: beginCouncil, councilPrompt: councilPrompt,
