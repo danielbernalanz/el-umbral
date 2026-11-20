@@ -5,6 +5,13 @@
 (function (w) {
   "use strict";
   w.UMBRAL_NEWS = [
+    { version: "1.8.1", fecha: "2026-11-20", titulo: "Indagar: seguir los rastros", puntos: [
+      "Nueva acción para todos: Indagar. Gastas el turno en examinar las heridas y muertes de las últimas rondas y obtienes una pista.",
+      "La pista es veraz pero parcial: el tipo de rastro (golpe, marca oscura, síntomas, mecanismo u objeto manipulado), la ronda aproximada y, a veces, un detalle vago.",
+      "Nunca dice quién fue ni da certeza; si no hay nada que examinar, no encuentras nada.",
+      "En mesas de 4 o menos, tras una muerte reciente, una indagación da dos pistas.",
+      "Tus indicios se guardan en tu ficha y solo los ves tú."
+    ] },
     { version: "1.8.0", fecha: "2026-11-20", titulo: "Más formas de dañar, con riesgo claro", puntos: [
       "El veneno ahora es retardado: no se nota la ronda siguiente y después hace daño real durante dos rondas, hasta que se cure con hierbas, antídoto o descansando.",
       "Nueva acción: Poner una trampa. Se esconde una ronda y salta la siguiente sobre quien se mueva por las ruinas; puede caer un inocente, o tú mismo.",

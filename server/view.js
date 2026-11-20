@@ -71,6 +71,7 @@ function queriesFor(game, pid) {
   q.dom = U.domInfo(p);
   q.secret = U.secretInfo(pid);
   q.umbral = U.umbralInfo(pid);
+  q.lead = U.indagarInfo(pid);
   q.pacts = U.activePacts(pid);
   q.risen = (p.risen || []).filter((id) => S.players[id] && S.players[id].risenBy === p.id).map((id) => S.players[id].name);
   q.since = sinceFor(game, p);

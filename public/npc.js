@@ -134,6 +134,7 @@
     for (let k = 0; k < 3; k++) pool.push("investigar");
     for (let k = 0; k < prof.explore; k++) pool.push("explorar");
     pool.push("proteger", "meditar");
+    if (io.indagarInfo && io.indagarInfo(pid).avail > 0) pool.push("indagar"); /* una sola entrada: uso poco frecuente, solo si hay rastros */
     if (p.npc === "curandero") pool.push("proteger", "proteger");
     const sus = al.slice().sort(function (a, b) { return (clueScore(b) - clueScore(a)) || (a.id - b.id); })[0];
     for (const id of shuffle(pool)) {

@@ -6,6 +6,8 @@
   "use strict";
   w.UMBRAL_ICONS = {
  "a_abstener": "ic-sleepy",
+ "a_indagar": "ic-footsteps",
+ "st_indicio": "ic-footsteps",
  "a_acusar": "ic-pointing",
  "a_alzar": "ic-raise-zombie",
  "a_apostar": "ic-dice-twenty-faces-twenty",

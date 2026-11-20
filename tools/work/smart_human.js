@@ -41,7 +41,7 @@ function turn(p,s){
   if(p.corr>=12&&Math.random()<0.15&&can(p,"sombra_espia")&&tgt&&act(p,"sombra_espia",tgt.id)) return;
   if(Math.random()<0.1&&can(p,"sombra_guarda")&&act(p,"sombra_guarda",null)) return;
   const pool=[]; if(p.wounds>0&&can(p,"descansar")) pool.push("descansar","descansar"); if(p.corr>=20) pool.push("meditar"); if(can(p,"entrenar")) pool.push("entrenar"); if(can(p,"tender")&&MODE!=="allgood") pool.push("tender");
-  pool.push("investigar","investigar","investigar","explorar","explorar","proteger","meditar");
+  pool.push("investigar","investigar","investigar","explorar","explorar","proteger","meditar"); if(U.indagarInfo&&U.indagarInfo(p.id).avail>0) pool.push("indagar");
   const sus=al.slice().sort((a,b)=>b.corr-a.corr)[0];
   for(const id of pool.sort(()=>Math.random()-0.5)){ const a=D.ACTIONS.find(x=>x.id===id); if(id==="investigar"&&sus){ if(act(p,id,(Math.random()<0.6?sus:tgt).id)) return; continue; } if(a.target){ if(!tgt) continue; if(id==="tender"){ if(act(p,id,tgt.id,Math.random()<0.7?"sincera":"trampa")) return; continue; } if(act(p,id,tgt.id)) return; } else if(act(p,id,null)) return; }
   act(p,"meditar",null);

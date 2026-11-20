@@ -1,4 +1,4 @@
-/* EL UMBRAL — interfaz (v1.8.0) */
+/* EL UMBRAL — interfaz (v1.8.1) */
 (function () {
   "use strict";
 
@@ -33,7 +33,7 @@
   const FAMS = {
     a_investigar: "lore", a_proteger: "guard", a_explorar: "ember", a_meditar: "lore", a_robar: "dark", a_hechizar: "dark", a_apostar: "ember", a_ceder: "dark", a_resistir: "guard",
     a_cazar: "danger", a_trampa: "danger", a_sabotear: "dark", a_apunalar: "danger", a_envenenar: "dark", a_maldecir: "dark", a_aturdir: "danger", a_devorar: "danger", a_descansar: "heal", a_conjurar: "lore", a_tender: "heal",
-    a_socorrer: "heal", a_bendecir: "heal", a_sombra_espia: "dark", a_sombra_guarda: "dark", a_sombra_hostiga: "dark", a_alzar: "dark", a_entrenar: "ember", a_acusar: "danger", a_enfrentar: "danger",
+    a_indagar: "lore", st_indicio: "lore", a_socorrer: "heal", a_bendecir: "heal", a_sombra_espia: "dark", a_sombra_guarda: "dark", a_sombra_hostiga: "dark", a_alzar: "dark", a_entrenar: "ember", a_acusar: "danger", a_enfrentar: "danger",
     a_romper: "danger", a_pacto: "gold", a_estudiar: "lore", a_aprender: "lore", a_perfeccionar: "lore", a_abstener: "mist",
     sp_rayo: "danger", sp_plaga: "dark", sp_marchitar: "danger", sp_grillete: "dark", sp_maleficio: "dark", sp_drenar: "dark", sp_pesadilla: "dark", sp_egida: "guard", sp_sanar: "heal", sp_velo: "guard", sp_purga: "heal", sp_reflejo: "guard", sp_presagio: "lore",
     as_fuego: "ember", as_hielo: "lore", as_luz: "gold", as_sangre: "danger", as_sombra: "dark", as_vacio: "dark",
@@ -775,6 +775,7 @@
       umbralHTML(p, false) + secretHTML(p) +
       (sts ? h3i("Estados", "s_herido") + sts : '') +
       itemsBlock +
+      ((p.leads || []).length ? h3i("", "st_indicio", 'Indicios <span class="small muted">· rastros veraces, sin autor</span>') + p.leads.map(function (l) { return '<div class="clue">' + ic("a_" + ({ golpe: "apunalar", marca: "maldecir", sintomas: "envenenar", mecanismo: "trampa", objeto: "sabotear" }[l.sig] || "indagar")) + '<span><span class="tag">RONDA ' + l.round + '</span> ' + esc(l.text) + '</span></div>'; }).join("") : '') +
       (clues ? h3i("", "st_pistas", 'Pistas <span class="small muted">· la fuerza pesa al acusar</span>') + clues : '') +
       spellsHTML(p, hasMagic) +
       (hints.length ? h3i("Intuiciones", "ui_pista") + '<div class="notice small">' + hints.map(function (t) { return esc(t); }).join("<br>") + '</div>' : '') +
@@ -786,7 +787,7 @@
     if (mh) mh.onclick = function () { showMagicHelp = !showMagicHelp; const wasOpen = $("playerInteractions").open; renderSheet(p); $("playerInteractions").open = wasOpen; };
   }
 
-  const SHORT = { investigar: "Pistas sobre alguien", proteger: "Cubres a otro", explorar: "Objetos y pistas", meditar: "Calma la oscuridad y repone un conjuro", robar: "Quitas un objeto", hechizar: "Magia sucia, con pista", apostar: "Riesgo por premio", ceder: "Poder a cambio de alma", resistir: "Rechazas el poder", cazar: "Ataque secreto", apunalar: "Golpe con tu daga", envenenar: "Veneno retardado", trampa: "Salta la ronda siguiente", sabotear: "Su objeto fallará", maldecir: "Estorba sus tiradas", aturdir: "Pierde su turno", devorar: "Canibalismo", descansar: "Recuperas vitalidad", entrenar: "+1 a tus tiradas", tender: "Ayuda secreta", conjurar: "Lanzas un conjuro", socorrer: "Salvas a un moribundo", bendecir: "Limpias oscuridad y te curas", sombra_espia: "Una pista, por la vía de las sombras", sombra_guarda: "Defensa con sombras", sombra_hostiga: "Maldices y manchas a alguien", alzar: "Un caído trabaja para ti" };
+  const SHORT = { investigar: "Pistas sobre alguien", proteger: "Cubres a otro", explorar: "Objetos y pistas", meditar: "Calma la oscuridad y repone un conjuro", robar: "Quitas un objeto", hechizar: "Magia sucia, con pista", apostar: "Riesgo por premio", ceder: "Poder a cambio de alma", resistir: "Rechazas el poder", cazar: "Ataque secreto", apunalar: "Golpe con tu daga", envenenar: "Veneno retardado", trampa: "Salta la ronda siguiente", sabotear: "Su objeto fallará", maldecir: "Estorba sus tiradas", aturdir: "Pierde su turno", devorar: "Canibalismo", descansar: "Recuperas vitalidad", entrenar: "+1 a tus tiradas", tender: "Ayuda secreta", conjurar: "Lanzas un conjuro", socorrer: "Salvas a un moribundo", indagar: "Rastros de heridas y muertes recientes", bendecir: "Limpias oscuridad y te curas", sombra_espia: "Una pista, por la vía de las sombras", sombra_guarda: "Defensa con sombras", sombra_hostiga: "Maldices y manchas a alguien", alzar: "Un caído trabaja para ti" };
 
   /* Acciones aún cerradas (misma lista y requisitos para todos los jugadores; solo lo que el motor declara consultable). */
   function lockedRows(p) {
@@ -890,6 +891,7 @@
     else if (a.harm) meta = "Sin tirada: colocarla no falla, pero a quién alcanza depende de quién se mueva. Riesgo para ti: puedes caer tú.";
     else meta = "Sin tirada. El efecto está garantizado.";
     if (a.target) meta += " Después eliges a quién afecta.";
+    if (a.id === "indagar" && U.indagarInfo) { const li = U.indagarInfo(p.id); meta += li.avail ? " Hay " + li.avail + " rastro" + (li.avail > 1 ? "s" : "") + " que examinar" + (li.per > 1 ? " (aquí sacas " + li.per + " pistas de golpe)" : "") + "." : " Ahora mismo no hay rastros que examinar."; }
     $("actionSheetIcon").innerHTML = medal("a_" + a.id, "xl");
     $("actionSheetTag").textContent = a.tag;
     $("actionSheetTitle").textContent = a.name;

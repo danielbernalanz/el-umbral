@@ -15,7 +15,7 @@ const QUERIES = {
   getOffer: (U, S, p) => [p.id], unlockNotices: (U, S, p) => [p], studyOptions: (U, S, p) => [p.id, Math.max(0, p.items.findIndex((i) => i.id === "grimorio"))],
   encounterStart: (U, S, p) => [p.id],
   getHandOffer: (U, S, p) => [p.id], getPactOffers: (U, S, p) => [p.id], declareOptions: (U, S, p) => [p.id], secretInfo: (U, S, p) => [p.id],
-  umbralInfo: (U, S, p) => [p.id], healthInfo: (U, S, p) => [p], xpInfo: (U, S, p) => [p], domInfo: (U, S, p) => [p], activePacts: (U, S, p) => [p.id],
+  umbralInfo: (U, S, p) => [p.id], indagarInfo: (U, S, p) => [p.id], healthInfo: (U, S, p) => [p], xpInfo: (U, S, p) => [p], domInfo: (U, S, p) => [p], activePacts: (U, S, p) => [p.id],
   actionOdds: (U, S, p) => [p.id, "investigar"], spellInfo: (U, S, p) => [p.id, (p.spells[0] || {}).id, null, "normal"],
   spellProgress: (U, S, p) => [p.spells[0] || { wins: 0 }], visibleActions: (U, S, p) => [p], isUnlocked: (U, S, p) => [p, { id: "robar" }],
   getSince: (U, S, p) => [p.id], councilPrompt: () => [], councilSeconds: () => [], turnSeconds: () => [], behindSchedule: () => [], timeWarn: () => [],

@@ -1,4 +1,4 @@
-/* EL UMBRAL — motor de juego (v1.8.0)
+/* EL UMBRAL — motor de juego (v1.8.1)
    Sin DOM. Toda la lógica vive aquí para poder probarla con Node. */
 (function (g) {
   "use strict";
@@ -96,7 +96,7 @@
   /* Muerte definitiva. quiet: sin línea de crónica propia (la pone quien llama). */
   function finish(p, cause, quiet) {
     if (!p || p.dead) return;
-    p.dead = true; p.dying = false; p.hp = 0; p.status = []; p.cause = cause || "heridas";
+    p.dead = true; p.dying = false; p.hp = 0; p.status = []; p.cause = cause || "heridas"; p.deadRound = state ? state.round : 0;
     epi("muere", p.id, null, p.cause);
     if (!quiet) killed(p, p.cause);
   }
@@ -458,6 +458,7 @@
     devorar: function (p) { return isAssassin(p) || p.corr >= 40; },
     cazar: function (p) { return isAssassin(p); },
     conjurar: function (p) { return !!(p.spells && p.spells.length); },
+    indagar: function () { return true; }, /* v1.8.1: para todos, siempre; sin desbloqueo por reloj */
     socorrer: function (p) { return !!state && !p.dying && state.players.some(function (x) { return x.id !== p.id && x.dying && !x.dead; }); },
     sombra_espia: function (p) { return isAssassin(p) || p.corr >= CORR_GATE || didN(p, "ceder") + didN(p, "hechizar") + didN(p, "robar") >= 1; },
     sombra_guarda: function (p) { return domLevel(p) >= 1; },
@@ -557,7 +558,7 @@
     const all = D.ACTIONS.filter(function (a) { return (!a.assassinOnly || isAssassin(p)) && isUnlocked(p, a); });
     const na = p.newAct || {};
     const isMain = function (a) {
-      if (BASE_ACTIONS.indexOf(a.id) !== -1 || a.id === "conjurar" || a.id === "socorrer" || a.id === "descansar" || a.id === "cazar") return true;
+      if (BASE_ACTIONS.indexOf(a.id) !== -1 || a.id === "conjurar" || a.id === "socorrer" || a.id === "descansar" || a.id === "cazar" || a.id === "indagar") return true;
       if (a.id === "devorar" && isAssassin(p)) return true;
       return na[a.id] !== undefined && na[a.id] >= state.round; /* solo la ronda en que se desbloquea; luego pasa a «Más acciones» */
     };
@@ -571,7 +572,7 @@
     const out = (p.fresh || []).slice();
     p.fresh = [];
     D.ACTIONS.forEach(function (a) {
-      if (p.seen[a.id] || BASE_ACTIONS.indexOf(a.id) !== -1) return;
+      if (p.seen[a.id] || BASE_ACTIONS.indexOf(a.id) !== -1 || a.id === "indagar") return;
       if (isUnlocked(p, a)) {
         p.seen[a.id] = true; if (!silent) { p.newAct = p.newAct || {}; p.newAct[a.id] = state.round; }
         if (!silent) { const hint = UNLOCK_HINT[a.id] || "Algo nuevo se abre ante ti."; out.push(hint); p.hints = p.hints || []; p.hints.push(hint); p.notes.push("Ronda " + state.round + ": " + hint); }
@@ -1081,6 +1082,55 @@
     if (h.sigs.length >= 400) return;
     h.sigs.push({ round: state.round, victim: victim.id, author: author ? author.id : null, method: method, sig: sig });
   }
+  /* ---------- v1.8.1: Indagar. Pistas veraces y PARCIALES a partir de las firmas internas (state.harm.sigs). Nunca el autor, nunca el rol.
+     Solo cuentan firmas de rondas ANTERIORES (no de la actual: el orden de juego no debe filtrar nada) y sobre víctimas cuyo daño es
+     público (muerta, moribunda, con heridas visibles) o que eres tú. Una pista por indagación (2 si hubo una muerte reciente en mesas de 4 o menos). ---- */
+  const LEAD_TXT = { golpe: "un golpe directo, de cerca", marca: "una marca oscura, de magia prohibida", sintomas: "síntomas de veneno", mecanismo: "un mecanismo escondido que saltó", objeto: "un objeto manipulado de antemano" };
+  function leadHash(a, b, c) { let h = (a * 73856093) ^ (b * 19349663) ^ (c * 83492791); h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0); }
+  function leadDetail(sg) {
+    if (sg.sig === "golpe") return sg.method === "enfrentar" ? "con prisa" : "a sangre fría";
+    if (sg.sig === "sintomas") return "faltaba un frasco";
+    if (sg.sig === "mecanismo") return "preparado de antemano";
+    if (sg.sig === "objeto") return "alguien rebuscó entre sus cosas";
+    if (sg.sig === "marca" && sg.method === "maldecir") return "faltaba un pergamino";
+    return null;
+  }
+  function leadPool(p) {
+    if (!state || !p) return [];
+    const seen = p.leadSeen || [], sigs = harmSt().sigs, out = [];
+    sigs.forEach(function (sg, i) {
+      if (sg.round >= state.round || sg.round < state.round - 2 || seen.indexOf(i) !== -1) return;
+      const v = state.players[sg.victim];
+      if (!v) return;
+      if (v.id === p.id || v.dead || v.dying || visibleHealth(v) !== "Sin heridas visibles") out.push(i);
+    });
+    return out;
+  }
+  function leadPer() {
+    if (!state || state.players.length > 4) return 1;
+    return state.players.some(function (x) { return x.dead && (x.deadRound || 0) >= state.round - 1; }) ? 2 : 1;
+  }
+  function indagarInfo(pid) {
+    const p = state && state.players[pid];
+    if (!p) return { avail: 0, per: 1 };
+    return { avail: leadPool(p).length, per: leadPer() };
+  }
+  function doIndagar(p) {
+    const pool = leadPool(p).sort(function (x, y) { return leadHash(state.round, p.id, x) - leadHash(state.round, p.id, y); }).slice(0, leadPer());
+    if (!pool.length) return { text: "Rebuscas entre los restos y las huellas de las últimas noches, pero no encuentras nada que valga la pena.", log: null };
+    p.leads = p.leads || []; p.leadSeen = p.leadSeen || [];
+    const sigs = harmSt().sigs, lines = [];
+    pool.forEach(function (i) {
+      const sg = sigs[i], v = state.players[sg.victim], h = leadHash(i, p.id, 7);
+      const lo = Math.max(1, sg.round - (h % 2));
+      const det = h % 3 !== 0 ? leadDetail(sg) : null;
+      const txt = "Sobre " + (v.id === p.id ? "ti" : v.name) + ": " + LEAD_TXT[sg.sig] + ", entre las rondas " + lo + " y " + (lo + 1) + (det ? " (" + det + ")" : "") + ". No dice quién fue.";
+      p.leads.push({ round: state.round, sig: sg.sig, text: txt }); p.leadSeen.push(i); lines.push(txt);
+    });
+    while (p.leads.length > 8) p.leads.shift();
+    return { text: "Examinas los rastros. " + lines.join(" "), log: null };
+  }
+
   /* Quien se mueve por las ruinas puede pisar una trampa; quien medita, descansa o entrena se queda quieto. */
   const STILL = ["meditar", "descansar", "entrenar", "resistir"];
   function carriesFire(p) { return p.items.some(function (i) { return i.id === "linterna" || i.id === "antorcha"; }); }
@@ -2235,6 +2285,7 @@
         if (stake === "trampa") p.corr = clamp(p.corr + 5, 0, 100);
         return { text: "Tiendes la mano a " + t.name + " en secreto. Solo " + t.name + " lo sabrá. " + (stake === "trampa" ? "Tu sonrisa esconde algo." : "Tu gesto es sincero."), log: null };
       }
+      case "indagar": return doIndagar(p);
       case "socorrer": {
         if (!t.dying) return { text: t.name + " ya no necesita socorro.", log: null };
         t.socBy = t.socBy || {}; t.socBy[p.id] = state.round;
@@ -3191,6 +3242,7 @@
     proteger: ["{a} juró proteger a {t}", "{a} no logró proteger a {t}"],
     explorar: ["{a} registró las ruinas y salió con un botín", "{a} volvió de las ruinas con las manos vacías"],
     meditar: ["{a} pasó la noche meditando", "{a} pasó la noche meditando"],
+    indagar: ["{a} rebuscó entre los rastros de las últimas noches", "{a} rebuscó entre los rastros de las últimas noches"],
     bendecir: ["{a} invocó una bendición", "{a} rezó una oración que no obtuvo respuesta"],
     robar: ["{a} le robó algo a {t}", "{a} fue descubierto intentando robar a {t}"],
     hechizar: ["{a} marcó a {t} con magia prohibida", "{a} perdió el control de una magia prohibida"],
@@ -3547,7 +3599,7 @@
     act: wrapLog("act", act), pushLuck: wrapLog("pushLuck", pushLuck), useItem: wrapLog("useItem", useItem),
     maxHp: maxHp, visibleHealth: visibleHealth, healthInfo: healthInfo,
     _health: { damage: damage, heal: heal, finish: finish, stabilize: stabilize, pickZone: pickZone, zoneLvl: zoneLvl, zoneMod: zoneMod, initHealth: initHealth },
-    getSince: getSince, endAtTs: endAtTs, extEnd: extEnd, hhmm: hhmm, assassinGoal: assassinGoal, visibleActions: visibleActions, spellInfo: spellInfo, actionOdds: actionOdds, buildStory: buildStory, exportStory: exportStory, secretInfo: secretInfo, umbralInfo: umbralInfo, exportLog: exportLog, lastLogs: lastLogs, noteError: noteError,
+    getSince: getSince, endAtTs: endAtTs, extEnd: extEnd, hhmm: hhmm, assassinGoal: assassinGoal, visibleActions: visibleActions, spellInfo: spellInfo, actionOdds: actionOdds, buildStory: buildStory, exportStory: exportStory, secretInfo: secretInfo, umbralInfo: umbralInfo, indagarInfo: indagarInfo, exportLog: exportLog, lastLogs: lastLogs, noteError: noteError,
     finishTurn: finishTurn, nextTurn: nextTurn, replaceWithNpc: replaceWithNpc, restoreFromNpc: restoreFromNpc, npcProfileFor: npcProfileFor,
     beginCouncil: beginCouncil, councilPrompt: councilPrompt,
     registerInteraction: registerLogged, endCouncil: endCouncil, resolveCouncil: resolveCouncil,
