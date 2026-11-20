@@ -1,4 +1,4 @@
-/* EL UMBRAL — motor de juego (v1.9.1)
+/* EL UMBRAL — motor de juego (v1.11.0)
    Sin DOM. Toda la lógica vive aquí para poder probarla con Node. */
 (function (g) {
   "use strict";

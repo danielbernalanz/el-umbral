@@ -5,7 +5,7 @@
 (function (w) {
   "use strict";
   w.UMBRAL_NEWS = [
-    { version: "1.9.1", fecha: "2026-11-20", titulo: "Magia de nivel 2", puntos: [
+    { version: "1.11.0", fecha: "2026-11-20", titulo: "Magia de nivel 2", puntos: [
       "Aparecen seis conjuros intermedios, uno o dos por escuela: Custodia y Aurora (Luz), Zarza (Naturaleza), Eco (Umbral), Olvido (Mente) y Mordedura (Sombra).",
       "Se aprenden estudiando un grimorio, y solo si ya eres Practicante en un conjuro de esa misma escuela (o si un ermitaño te enseña). En el estudio, una de las tres opciones pasa a ser de nivel 2: nadie ve menos opciones.",
       "Sus efectos se resuelven al caer la noche, todos a la vez y por capas: primero los contrahechizos, luego los amparos, después los ataques, las curas y la información. Da igual quién actuó antes.",
