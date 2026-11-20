@@ -55,6 +55,24 @@
   /* ---------- sesión y transporte ---------- */
   let session = null;           /* { server, room, pid, token } */
   let es = null, reopenT = null, backoff = 2000, pingT = null, connected = true;
+  /* Versión distinta a la del servidor: un cliente viejo (caché o APK antiguo) pinta mal el panel. Se intenta actualizar una vez; si no se puede, se avisa. */
+  function versionGuard(srv) {
+    let tried = false;
+    try { tried = sessionStorage.getItem("umbral-upd") === srv; } catch (e) {}
+    if (!tried) {
+      try { sessionStorage.setItem("umbral-upd", srv); } catch (e) {}
+      const go = function () { location.reload(); };
+      try { (navigator.serviceWorker && navigator.serviceWorker.getRegistrations ? navigator.serviceWorker.getRegistrations() : Promise.resolve([])).then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }).then(function () { return window.caches ? caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }) : null; }).then(go, go); } catch (e) { go(); }
+      return true;
+    }
+    if (!document.getElementById("verBanner")) {
+      const d = document.createElement("div"); d.id = "verBanner";
+      d.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:99999;background:#7a2b2b;color:#fff;padding:8px 12px;font:600 14px/1.3 sans-serif;text-align:center";
+      d.textContent = "Tu app es de otra versión que la sala (" + (LOCAL.VERSION || "?") + " / " + srv + "). Actualiza o reinstala la app para ver todas las opciones.";
+      document.body.appendChild(d);
+    }
+    return false;
+  }
   let lastVer = -1, lobby = null, cur = null, st = null, offset = 0, busy = false, attached = false, lost = false;
   let warnOff = false, taken = false, noteSeq = 0, restoreState = 0, restoreTries = 0, restoreT = null; /* restoreState: 0 no, 1 restaurando, 2 fallida (reintentable) */
   const seenUnlock = {};
@@ -189,6 +207,7 @@
     if (v.phase === "error") { if (UI().toast) UI().toast(v.msg || "Error del servidor.", true); return; }
     if (v.phase === "lobby") { lobby = v; renderRoom(); return; }
     if (!v.me || !v.players || !v.players[v.youId]) return;
+    if (v.srvVer && LOCAL.VERSION && v.srvVer !== LOCAL.VERSION && versionGuard(v.srvVer)) return;
     cur = v; offset = (v.serverNow || Date.now()) - Date.now(); st = buildState(v); B.sig = signature(v);
     if (!attached) { attached = true; if (UI().attach) UI().attach(B); return; }
     if (!silent && UI().onView) UI().onView();
@@ -221,7 +240,8 @@
     visibleActions: function () {
       const a = qv().actions, byId = function (id) { return B.D.ACTIONS.find(function (x) { return x.id === id; }); };
       if (!a) return { main: [], more: [], total: 0, hidden: 0 };
-      return { main: a.main.map(byId), more: a.more.map(function (g) { return { id: g.id, label: g.label, acts: g.acts.map(byId) }; }), total: a.total, hidden: a.hidden };
+      const ok = function (x) { return !!x; };   /* cliente más antiguo que el servidor: ignora acciones que no conoce en vez de romper el panel */
+      return { main: a.main.map(byId).filter(ok), more: a.more.map(function (g) { return { id: g.id, label: g.label, acts: g.acts.map(byId).filter(ok) }; }).filter(function (g) { return g.acts.length; }), total: a.total, hidden: a.hidden };
     },
     lockedList: function () { return qv().locked || []; },
     targetsFor: function (actionId) { return (qv().targets || {})[actionId] || []; },

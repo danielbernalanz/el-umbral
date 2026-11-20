@@ -823,6 +823,7 @@
     box.className = "actions";
     box.innerHTML = "";
     const va = U.visibleActions(p);
+    va.main = (va.main || []).filter(Boolean); va.more = (va.more || []).map(function (g) { return { id: g.id, label: g.label, acts: (g.acts || []).filter(Boolean) }; }).filter(function (g) { return g.acts.length; });
     const na = p.newAct || {}, round = U.getState().round;
     const mkTile = function (a) {
       const od = a.risk && !a.gamble && a.attr ? U.actionOdds(p.id, a.id) : null;
