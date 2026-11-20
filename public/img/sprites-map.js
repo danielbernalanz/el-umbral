@@ -11,6 +11,8 @@
  "a_apostar": "ic-dice-twenty-faces-twenty",
  "a_aprender": "ic-scroll-unfurled",
  "a_apunalar": "ic-dripping-knife",
+ "a_trampa": "ic-wolf-trap",
+ "a_sabotear": "ic-cog",
  "a_aturdir": "ic-wood-club",
  "a_cazar": "ic-hunting-horn",
  "a_ceder": "ic-devil-mask",

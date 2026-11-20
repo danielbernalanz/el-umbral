@@ -140,3 +140,7 @@ Total ≈ 14 j. Recomendado partir en **v1.7** (F0-F2 + UI + bots, formas 1-13) 
 3. **Temerario con daño propio visible** (heridas públicas delatan): ¿aceptable o prefieres solo exposición privada?
 4. **Selector de riesgo**: ¿siempre visible con 3 botones (recomendado) o plegado tras «Ajustar»? Predeterminado: Arriesgado.
 5. **Reparto**: ¿v1.7 (13 formas + dial + skill) y v1.8 (trampas/fuego/pólvora/eventos), o todo en una sola entrega?
+
+---
+## v1.8.0 (2026-11-20): implementado
+Alcance entregado: veneno retardado (frasco, dosis fija, síntomas 2 rondas después, 2 vit x 2 rondas, curable), Poner una trampa (colocada en R, salta al cierre de R+1 sobre quien se mueva; objetivo x3; puede caer inocente o el dueño; linterna/antorcha la evita), Sabotear (objeto al azar de otro; falla y 50 % se vuelve contra él) y firmas internas `state.harm.sigs` (golpe, marca, sintomas, mecanismo, objeto) sin interfaz. Sin dial ni skill check. Cambia engine/data: invalida snapshots (409); desplegar con la mesa vacía.

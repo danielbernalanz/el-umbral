@@ -35,7 +35,7 @@ function turn(p,s){
   }
   if(p.spells&&p.spells.length&&Math.random()<0.5){ const sp=p.spells[rnd(p.spells.length)]; if(sp.kind==="def"||Math.random()<hostileP){ const t=sp.target?tgt:null; if(!sp.target||t){ if(U.cast(p.id,sp.id,t?t.id:null).ok) return; } } }
   if(Math.random()<hostileP&&tgt){
-    const hs=["apunalar","robar","hechizar","envenenar","maldecir","aturdir","sombra_hostiga"].filter(id=>can(p,id));
+    const hs=["apunalar","robar","hechizar","envenenar","maldecir","aturdir","sombra_hostiga","trampa","sabotear"].filter(id=>can(p,id));
     for(const id of hs.sort(()=>Math.random()-0.5)){ if(act(p,id,tgt.id)) return; }
   }
   if(p.corr>=12&&Math.random()<0.15&&can(p,"sombra_espia")&&tgt&&act(p,"sombra_espia",tgt.id)) return;

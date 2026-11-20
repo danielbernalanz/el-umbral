@@ -1,4 +1,4 @@
-/* EL UMBRAL — interfaz (v1.7.0) */
+/* EL UMBRAL — interfaz (v1.8.0) */
 (function () {
   "use strict";
 
@@ -32,7 +32,7 @@
   function ic(key, cls) { try { return typeof window.icon === "function" && key ? window.icon(key, cls) : ""; } catch (e) { return ""; } }
   const FAMS = {
     a_investigar: "lore", a_proteger: "guard", a_explorar: "ember", a_meditar: "lore", a_robar: "dark", a_hechizar: "dark", a_apostar: "ember", a_ceder: "dark", a_resistir: "guard",
-    a_cazar: "danger", a_apunalar: "danger", a_envenenar: "dark", a_maldecir: "dark", a_aturdir: "danger", a_devorar: "danger", a_descansar: "heal", a_conjurar: "lore", a_tender: "heal",
+    a_cazar: "danger", a_trampa: "danger", a_sabotear: "dark", a_apunalar: "danger", a_envenenar: "dark", a_maldecir: "dark", a_aturdir: "danger", a_devorar: "danger", a_descansar: "heal", a_conjurar: "lore", a_tender: "heal",
     a_socorrer: "heal", a_bendecir: "heal", a_sombra_espia: "dark", a_sombra_guarda: "dark", a_sombra_hostiga: "dark", a_alzar: "dark", a_entrenar: "ember", a_acusar: "danger", a_enfrentar: "danger",
     a_romper: "danger", a_pacto: "gold", a_estudiar: "lore", a_aprender: "lore", a_perfeccionar: "lore", a_abstener: "mist",
     sp_rayo: "danger", sp_plaga: "dark", sp_marchitar: "danger", sp_grillete: "dark", sp_maleficio: "dark", sp_drenar: "dark", sp_pesadilla: "dark", sp_egida: "guard", sp_sanar: "heal", sp_velo: "guard", sp_purga: "heal", sp_reflejo: "guard", sp_presagio: "lore",
@@ -132,7 +132,7 @@
      Lo secreto solo se anima en la pantalla de quien actúa; en el Consejo, solo lo ya público. Se apagan con prefers-reduced-motion. */
   function motionOn() { try { return !window.UmbralFX || window.UmbralFX.motion(); } catch (e) { return true; } }
   const FX_KIND = {
-    apunalar: ["slash", "danger"], cazar: ["claws", "danger"], devorar: ["claws", "danger"], aturdir: ["impact", "danger"], envenenar: ["drip", "dark"], maldecir: ["close", "dark"],
+    apunalar: ["slash", "danger"], trampa: ["impact", "danger"], sabotear: ["snatch", "dark"], cazar: ["claws", "danger"], devorar: ["claws", "danger"], aturdir: ["impact", "danger"], envenenar: ["drip", "dark"], maldecir: ["close", "dark"],
     hechizar: ["flash", "dark"], robar: ["snatch", "dark"], investigar: ["scan", "lore"], explorar: ["scan", "ember"], proteger: ["shield", "guard"], resistir: ["shield", "guard"],
     tender: ["shield", "heal"], meditar: ["glow", "lore"], descansar: ["glow", "heal"], socorrer: ["glow", "heal"], bendecir: ["glow", "gold"], alzar: ["glow", "dark"],
     entrenar: ["impact", "ember"], apostar: ["coin", "ember"], ceder: ["close", "dark"], sombra_espia: ["scan", "dark"], sombra_guarda: ["shield", "dark"], sombra_hostiga: ["close", "dark"]
@@ -786,7 +786,7 @@
     if (mh) mh.onclick = function () { showMagicHelp = !showMagicHelp; const wasOpen = $("playerInteractions").open; renderSheet(p); $("playerInteractions").open = wasOpen; };
   }
 
-  const SHORT = { investigar: "Pistas sobre alguien", proteger: "Cubres a otro", explorar: "Objetos y pistas", meditar: "Calma la oscuridad y repone un conjuro", robar: "Quitas un objeto", hechizar: "Magia sucia, con pista", apostar: "Riesgo por premio", ceder: "Poder a cambio de alma", resistir: "Rechazas el poder", cazar: "Ataque secreto", apunalar: "Golpe con tu daga", envenenar: "Veneno lento", maldecir: "Estorba sus tiradas", aturdir: "Pierde su turno", devorar: "Canibalismo", descansar: "Recuperas vitalidad", entrenar: "+1 a tus tiradas", tender: "Ayuda secreta", conjurar: "Lanzas un conjuro", socorrer: "Salvas a un moribundo", bendecir: "Limpias oscuridad y te curas", sombra_espia: "Una pista, por la vía de las sombras", sombra_guarda: "Defensa con sombras", sombra_hostiga: "Maldices y manchas a alguien", alzar: "Un caído trabaja para ti" };
+  const SHORT = { investigar: "Pistas sobre alguien", proteger: "Cubres a otro", explorar: "Objetos y pistas", meditar: "Calma la oscuridad y repone un conjuro", robar: "Quitas un objeto", hechizar: "Magia sucia, con pista", apostar: "Riesgo por premio", ceder: "Poder a cambio de alma", resistir: "Rechazas el poder", cazar: "Ataque secreto", apunalar: "Golpe con tu daga", envenenar: "Veneno retardado", trampa: "Salta la ronda siguiente", sabotear: "Su objeto fallará", maldecir: "Estorba sus tiradas", aturdir: "Pierde su turno", devorar: "Canibalismo", descansar: "Recuperas vitalidad", entrenar: "+1 a tus tiradas", tender: "Ayuda secreta", conjurar: "Lanzas un conjuro", socorrer: "Salvas a un moribundo", bendecir: "Limpias oscuridad y te curas", sombra_espia: "Una pista, por la vía de las sombras", sombra_guarda: "Defensa con sombras", sombra_hostiga: "Maldices y manchas a alguien", alzar: "Un caído trabaja para ti" };
 
   /* Acciones aún cerradas (misma lista y requisitos para todos los jugadores; solo lo que el motor declara consultable). */
   function lockedRows(p) {
@@ -885,8 +885,9 @@
     const od = a.risk && !a.gamble && a.attr ? U.actionOdds(p.id, a.id) : null;
     let meta;
     if (a.gamble) meta = "Tú eliges el envite: 5, 10 o 20. Cuanto más alto, más riesgo y más premio.";
-    else if (od) meta = "Probabilidad de ÉXITO: " + od.prob + "% (fallas un " + (100 - od.prob) + "%). Tirada: d6 + " + a.attr + " " + od.bonus + " contra dificultad " + od.diff + (a.hostile ? " (+1 si la víctima está protegida)" : "") + ". Un 6 siempre sale bien y un 1 siempre falla." + (od.mods.length ? " Influye: " + od.mods.join(", ") + "." : "");
+    else if (od) meta = "Probabilidad de ÉXITO: " + od.prob + "% (fallas un " + (100 - od.prob) + "%). Tirada: d6 + " + a.attr + " " + od.bonus + " contra dificultad " + od.diff + ((a.hostile || a.harm) ? " (+1 si la víctima está protegida)" : "") + ". Un 6 siempre sale bien y un 1 siempre falla." + (od.mods.length ? " Influye: " + od.mods.join(", ") + "." : "");
     else if (a.risk) meta = "Tirada con riesgo: puede salir mal.";
+    else if (a.harm) meta = "Sin tirada: colocarla no falla, pero a quién alcanza depende de quién se mueva. Riesgo para ti: puedes caer tú.";
     else meta = "Sin tirada. El efecto está garantizado.";
     if (a.target) meta += " Después eliges a quién afecta.";
     $("actionSheetIcon").innerHTML = medal("a_" + a.id, "xl");

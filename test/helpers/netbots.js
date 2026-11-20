@@ -43,7 +43,7 @@ async function step(c, rnd, mode) {
       if (r && r.ok) { if (rnd() < 0.5) await send("pushLuck", []); return true; }
     }
     const ids = q.actions.main.concat(q.actions.more.reduce((a, g) => a.concat(g.acts), []));
-    const pref = me.alignment === "asesino" ? ["cazar", "devorar", "alzar", "sombra_hostiga"] : dark ? ["ceder", "apunalar", "envenenar", "robar", "hechizar", "maldecir", "aturdir"] : [];
+    const pref = me.alignment === "asesino" ? ["cazar", "devorar", "alzar", "sombra_hostiga"] : dark ? ["ceder", "apunalar", "envenenar", "robar", "hechizar", "maldecir", "aturdir", "trampa", "sabotear"] : [];
     const order = pref.filter((x) => ids.indexOf(x) !== -1 && rnd() < 0.7).concat(ids.slice().sort(() => rnd() - 0.5));
     for (const id of order) {
       const a = D.ACTIONS.find((x) => x.id === id);

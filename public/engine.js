@@ -1,4 +1,4 @@
-/* EL UMBRAL — motor de juego (v1.7.0)
+/* EL UMBRAL — motor de juego (v1.8.0)
    Sin DOM. Toda la lógica vive aquí para poder probarla con Node. */
 (function (g) {
   "use strict";
@@ -17,7 +17,7 @@
   /* Con más jugadores que roles/afinidades/secretos, se reparten en ciclo (barajados), sin repetir hasta agotar la lista. */
   function dealCycle(list, n) { let out = []; while (out.length < n) out = out.concat(shuffle(list)); return out.slice(0, n); }
   /* Acciones que cuentan como hostiles para los pactos. */
-  const HOSTILE = ["conjuro_of", "robar", "hechizar", "cazar", "apunalar", "envenenar", "maldecir", "aturdir", "devorar", "sombra_hostiga"];
+  const HOSTILE = ["conjuro_of", "robar", "hechizar", "cazar", "apunalar", "envenenar", "maldecir", "aturdir", "devorar", "sombra_hostiga", "trampa", "sabotear"];
 
   const LS = (function () {
     try { if (typeof localStorage !== "undefined" && localStorage) { localStorage.getItem("umbral_probe"); return localStorage; } } catch (e) { /* almacenamiento bloqueado */ }
@@ -415,6 +415,8 @@
   function didN(p, id) { return (p.did && p.did[id]) || 0; }
   function hasItemId(p, id) { return p.items.some(function (i) { return i.id === id; }); }
   const UNLOCK_HINT = {
+    trampa: "Acción nueva: Poner una trampa. De tanto explorar conoces bien los pasillos: sabes dónde esconder un cepo.",
+    sabotear: "Acción nueva: Sabotear. Tus manos ágiles saben cómo estropear lo que otro lleva encima.",
     descansar: "Tu cuerpo recuerda el dolor y empieza a pedir una tregua.", entrenar: "Tus músculos piden más de lo que les das.",
     apostar: "Notas un cosquilleo: la suerte parece mirarte de reojo.", tender: "Empiezas a entender que una mano abierta puede ser refugio… o cebo.",
     resistir: "Algo en ti aprende a decir que no.", robar: "Tus dedos empiezan a pensar por su cuenta.",
@@ -451,6 +453,8 @@
     envenenar: function (p) { return hasItemId(p, "frasco"); },
     maldecir: function (p) { return hasItemId(p, "pergamino"); },
     aturdir: function (p) { return hasItemId(p, "porra"); },
+    trampa: function (p) { return didN(p, "explorar") >= 2 || hasItemId(p, "cuerda"); },
+    sabotear: function (p) { return hasItemId(p, "ganzua") || (didN(p, "explorar") >= 2 && didN(p, "robar") >= 1); },
     devorar: function (p) { return isAssassin(p) || p.corr >= 40; },
     cazar: function (p) { return isAssassin(p); },
     conjurar: function (p) { return !!(p.spells && p.spells.length); },
@@ -479,6 +483,8 @@
     envenenar: function (p) { return [cnt("Tener un frasco de veneno", hasItemId(p, "frasco") ? 1 : 0, 1)]; },
     maldecir: function (p) { return [cnt("Tener un pergamino maldito", hasItemId(p, "pergamino") ? 1 : 0, 1)]; },
     aturdir: function (p) { return [cnt("Tener una porra de plomo", hasItemId(p, "porra") ? 1 : 0, 1)]; },
+    trampa: function (p) { return [cnt("Explorar", didN(p, "explorar"), 2), cnt("Tener una cuerda", hasItemId(p, "cuerda") ? 1 : 0, 1)]; },
+    sabotear: function (p) { return [cnt("Una ganzúa", hasItemId(p, "ganzua") ? 1 : 0, 1), cnt("Explorar dos veces y robar una", Math.min(2, didN(p, "explorar")) + Math.min(1, didN(p, "robar")), 3)]; },
     sombra_espia: function (p) { return [cnt("Robar, hechizar o ceder", Math.min(1, didN(p, "ceder") + didN(p, "hechizar") + didN(p, "robar")), 1), cnt("Acumular oscuridad", p.corr, CORR_GATE)]; },
     sombra_guarda: function (p) { return [cnt("Un éxito con las sombras espías", domLevel(p) >= 1 ? 1 : 0, 1)]; },
     sombra_hostiga: function (p) { return [cnt("Un éxito con las sombras", domLevel(p) >= 1 ? 1 : 0, 1), cnt("Acumular oscuridad", p.corr, 25)]; },
@@ -524,7 +530,7 @@
   }
   function domInfo(p) { const l = domLevel(p); return { level: l, name: DOM_NAMES[l], next: DOM_NEXT[l], wins: (p.dom && p.dom.wins) || 0 }; }
   /* ---------- Agresividad: lo que hace un jugador alimenta la tentación del Umbral ---------- */
-  const AGGR_ACT = { apunalar: [2, "stab"], robar: [2, "steal"], envenenar: [2, "dirty"], maldecir: [2, "dirty"], aturdir: [2, "dirty"], hechizar: [2, "dirty"], sombra_hostiga: [1, "dirty"], devorar: [3, "bite"] };
+  const AGGR_ACT = { apunalar: [2, "stab"], robar: [2, "steal"], envenenar: [2, "dirty"], maldecir: [2, "dirty"], aturdir: [2, "dirty"], trampa: [2, "dirty"], sabotear: [1, "dirty"], hechizar: [2, "dirty"], sombra_hostiga: [1, "dirty"], devorar: [3, "bite"] };
   function noteAggr(p, kind, w) {
     if (!p || !state || isAssassin(p)) return;
     p.aggr = (p.aggr || 0) + w; p.aggrRound = state.round; p.agg = p.agg || {}; p.agg[kind] = (p.agg[kind] || 0) + 1;
@@ -544,7 +550,7 @@
     { id: "recuperacion", label: "Recuperarte", ids: ["descansar", "resistir", "entrenar", "socorrer", "bendecir"] },
     { id: "pactos", label: "Pactos", ids: ["tender"] },
     { id: "sucias", label: "Oscuras y de azar", ids: ["robar", "hechizar", "apostar", "ceder", "devorar"] },
-    { id: "armas", label: "Con arma", ids: ["apunalar", "envenenar", "maldecir", "aturdir"] },
+    { id: "armas", label: "Con arma", ids: ["apunalar", "envenenar", "maldecir", "aturdir", "trampa", "sabotear"] },
     { id: "sombras", label: "Sombras", ids: ["sombra_espia", "sombra_guarda", "sombra_hostiga", "alzar"] }
   ];
   function visibleActions(p) {
@@ -943,7 +949,7 @@
   }
   /* ---------- hambre del Umbral (corrupción que presiona) ---------- */
   const UMBRAL_MID = 28, UMBRAL_HIGH = 45;
-  const DARK_ACTS = ["robar", "hechizar", "apostar", "ceder", "cazar", "apunalar", "envenenar", "maldecir", "aturdir", "devorar", "sombra_espia", "sombra_guarda", "sombra_hostiga", "alzar"];
+  const DARK_ACTS = ["robar", "hechizar", "apostar", "ceder", "cazar", "apunalar", "envenenar", "maldecir", "aturdir", "trampa", "sabotear", "devorar", "sombra_espia", "sombra_guarda", "sombra_hostiga", "alzar"];
   const ANTI_ACTS = ["resistir", "meditar", "bendecir"];
   function umbralLevel(p) { return !p || isAssassin(p) ? 0 : p.corr >= UMBRAL_HIGH ? 2 : p.corr >= UMBRAL_MID ? 1 : 0; }
   function umbralDmg(p) { const l = umbralLevel(p); return l === 0 ? 0 : l === 1 ? 1 : p.corr >= 70 ? 3 : 2; }
@@ -1046,12 +1052,99 @@
         p.corr = clamp(p.corr + 2, 0, 100);
         p.notes.push("Ronda " + state.round + ": la infección te consume (−" + res.dealt + " de vitalidad, +corrupción)" + (res.dying ? " y caes moribundo." : "."));
       }
-      if (s.id === "veneno") { p.corr = clamp(p.corr + 3, 0, 100); p.notes.push("Ronda " + state.round + ": el veneno te debilita y te oscurece."); }
+      if (s.id === "veneno" && s.dmg) {
+        /* Veneno retardado (frasco): daño real y fijo por ronda; se corta con hierbas, antídoto o descansar. */
+        const res = damage(p, s.dmg, { noZone: true, noBleed: true, src: "veneno" });
+        p.corr = clamp(p.corr + 2, 0, 100);
+        p.notes.push("Ronda " + state.round + ": " + (s.first ? "un sabor amargo y un ardor en el estómago: te han envenenado" : "el veneno sigue quemándote por dentro") + " (−" + res.dealt + " de vitalidad)" + (res.dying ? " y caes moribundo" : "") + ". Hierbas, antídoto o descansar lo frenan.");
+        s.first = false;
+      } else if (s.id === "veneno") { p.corr = clamp(p.corr + 3, 0, 100); p.notes.push("Ronda " + state.round + ": el veneno te debilita y te oscurece."); }
       s.left -= 1;
     });
     p.status = p.status.filter(function (s) { return s.left > 0 && !p.dead; });
     if (p.dead) p.status = [];
   }
+
+  /* ---------- v1.8.0: daño con riesgo (veneno retardado, trampas, sabotaje) y firmas internas ----------
+     state.harm = { sigs, traps, sabs, poisons }. NADA de esto sale en la vista pública ni en las notas ajenas; las firmas son datos
+     internos para una futura indagación (v1.8.1): pistas, nunca certeza de autor. */
+  function harmSt() {
+    if (!state) return { sigs: [], traps: [], sabs: [], poisons: [] };
+    const h = state.harm || (state.harm = {});
+    h.sigs = h.sigs || []; h.traps = h.traps || []; h.sabs = h.sabs || []; h.poisons = h.poisons || [];
+    return h;
+  }
+  /* Firma de un daño: method = acción que lo causó; sig = golpe | marca | sintomas | mecanismo | objeto. */
+  function harmSig(victim, author, method, sig) {
+    if (!state || !victim) return;
+    const h = harmSt();
+    if (h.sigs.length >= 400) return;
+    h.sigs.push({ round: state.round, victim: victim.id, author: author ? author.id : null, method: method, sig: sig });
+  }
+  /* Quien se mueve por las ruinas puede pisar una trampa; quien medita, descansa o entrena se queda quieto. */
+  const STILL = ["meditar", "descansar", "entrenar", "resistir"];
+  function carriesFire(p) { return p.items.some(function (i) { return i.id === "linterna" || i.id === "antorcha"; }); }
+  /* Al inicio de ronda: el veneno retardado muestra por fin sus síntomas (dos rondas después del frasco). */
+  function tickHarm() {
+    const h = harmSt();
+    h.poisons = h.poisons.filter(function (x) {
+      if (state.round < x.round + 2) return true;
+      const v = state.players[x.victim];
+      if (v && !v.dead && !v.dying) {
+        giveStatus(v, "veneno", 2);
+        const st = (v.status || []).find(function (q) { return q.id === "veneno"; });
+        if (st && !st.dmg) { st.dmg = 2; st.first = true; harmSig(v, state.players[x.author], "envenenar", "sintomas"); }
+      }
+      return false;
+    });
+  }
+  /* Antes de abrir el Consejo (tras la magia, antes de la sombra): las trampas colocadas la ronda anterior saltan. */
+  function resolveHarm() {
+    const h = harmSt();
+    const keep = [];
+    const hit = {};
+    h.traps.forEach(function (tr) {
+      if (state.round < tr.round + 1) { keep.push(tr); return; }
+      if (state.round > tr.round + 1) return; /* caducada */
+      const owner = state.players[tr.owner];
+      const cands = state.players.filter(function (x) {
+        return !x.dead && !x.dying && x.action && STILL.indexOf(x.action) === -1 && !carriesFire(x) && !hit[x.id];
+      });
+      if (!cands.length) {
+        if (owner && !owner.dead) owner.notes.push("Ronda " + state.round + ": tu trampa no atrapó a nadie y se desmontó sola.");
+        return;
+      }
+      let tot = 0; const wts = cands.map(function (x) { const w = x.id === tr.target ? 3 : 1; tot += w; return w; });
+      let k = Math.random() * tot, v = cands[cands.length - 1];
+      for (let i = 0; i < cands.length; i++) { k -= wts[i]; if (k < 0) { v = cands[i]; break; } }
+      hit[v.id] = true;
+      const res = damage(v, rr(2, 3), { zone: "piernas", noBleed: true, src: "trampa" });
+      v.notes.push("Ronda " + state.round + ": una trampa oculta salta bajo tus pies" + hitNote(res) + ". Alguien la dejó ahí; no sabes quién.");
+      harmSig(v, owner, "trampa", "mecanismo");
+      state.chronicle.push({ round: state.round, text: "✦ Un chasquido metálico resonó en los pasillos del castillo." });
+      if (owner && !owner.dead) owner.notes.push("Ronda " + state.round + ": tu trampa saltó sobre " + (v.id === owner.id ? "ti mismo: caíste en tu propia trampa" : v.name + (v.id === tr.target ? ", a quien esperabas" : ", que no era a quien esperabas")) + ".");
+      glog("trampa", { a: tr.owner, x: "saltó sobre " + v.name });
+    });
+    h.traps = keep;
+  }
+  /* Sabotaje: ¿está estropeado este objeto de p? Devuelve la anotación (y la consume) o null. */
+  function takeSab(p, itemId) {
+    const h = harmSt();
+    const i = h.sabs.findIndex(function (x) { return x.victim === p.id && x.item === itemId; });
+    if (i < 0) return null;
+    return h.sabs.splice(i, 1)[0];
+  }
+  /* El objeto estropeado falla y, la mitad de las veces, se vuelve contra quien lo usa. Devuelve el texto privado. */
+  function sabBackfire(p, itemName) {
+    if (Math.random() < 0.5) {
+      const res = damage(p, rr(1, 2), { noZone: true, noBleed: true, src: "interno" });
+      p.notes.push("Ronda " + state.round + ": " + itemName + " estaba manipulado: falló y se te volvió en contra (−" + res.dealt + " de vitalidad)" + (res.dying ? " y caes moribundo" : "") + ".");
+      return "estaba manipulado: falla y se te vuelve en contra (−" + res.dealt + " de vitalidad)" + (res.dying ? ". Caes moribundo" : "");
+    }
+    p.notes.push("Ronda " + state.round + ": " + itemName + " estaba manipulado y no funcionó.");
+    return "estaba manipulado y no funciona";
+  }
+
   /* ---------- tratos del Umbral: ofertas individuales y privadas ---------- */
   const OFFERS = {
     cura: { base: 12, text: "El Umbral te arranca del borde de la muerte: +6 de vitalidad y se van el sangrado y el veneno." },
@@ -1289,7 +1382,8 @@
       players: players, chronicle: [], publicClues: [],
       pacts: [], pactOffers: [], council: null, lastResolution: [],
       event: null, umbralAbierto: false, assassinId: null, assassinExposed: false, ending: null,
-      createdAt: Date.now(), durationMin: minutes, playedMs: 0, hands: []
+      createdAt: Date.now(), durationMin: minutes, playedMs: 0, hands: [],
+      harm: { sigs: [], traps: [], sabs: [], poisons: [] }
     };
     if (opts && Number(opts.endAt) > Date.now()) state.endAt = Math.round(Number(opts.endAt));
     planRounds(true);
@@ -1357,6 +1451,8 @@
       case "ceder": return { text: pre + "la voz de " + n + " cambió tras la última campanada, como si algo respondiera por ella.", bonus: 1 };
       case "apunalar": return { text: pre + (d.ok ? other + " apareció con una herida reciente y " + n + " tenía sangre en la manga." : n + " rondaba a " + other + " con un arma en la mano."), bonus: 1 };
       case "envenenar": return { text: pre + (d.ok ? other + " enfermó de golpe, justo después de cruzarse con " + n + "." : "un frasco de veneno desapareció cerca de " + n + "."), bonus: 1 };
+      case "trampa": return { text: pre + "había cuerda y clavos nuevos en el pasillo de " + other + "; las manos manchadas de grasa eran las de " + n + ".", bonus: 1 };
+      case "sabotear": return { text: pre + (d.ok ? "las pertenencias de " + other + " aparecieron revueltas y " + n + " tenía las yemas manchadas de aceite." : n + " se demoró junto al equipaje de " + other + " sin que nadie supiera por qué."), bonus: 1 };
       case "maldecir": return { text: pre + "se oyó un rezo torcido cerca de " + other + "; la voz era la de " + n + ".", bonus: 1 };
       case "aturdir": return { text: pre + (d.ok ? other + " apareció tambaleándose y " + n + " estaba a su lado." : n + " se acercó a " + other + " con mala intención."), bonus: 1 };
       case "conjurar": return { text: pre + "el aire olía a magia cerca de " + other + "; el eco del conjuro se parecía a la voz de " + n + ".", bonus: 1 };
@@ -1665,6 +1761,7 @@
     state.players.filter(function (p) { return !p.dead && p.acted && !p.dying; }).forEach(function (p) {
       state.chronicle.push({ round: state.round, text: "✖ " + p.name + " pierde su turno (aturdido)." });
     });
+    tickHarm();
     state.players.forEach(function (p) { if (!p.dead) tickStatus(p); });
     tickRisen();
     tickHands();
@@ -1744,6 +1841,10 @@
       if (!t || t.id === p.id || (a.id === "alzar" ? false : t.dead)) return err(a.id === "alzar" ? "Elige a un jugador caído (o, si eres Asesino, moribundo)." : "Debes elegir a otro jugador que siga en la partida.");
       if (a.canTarget && !a.canTarget(t, p)) return err(a.id === "devorar" ? "Ese jugador no puede ser devorado todavía." : a.id === "alzar" ? "Ese jugador no puede ser alzado." : "Ese jugador no puede ser objetivo de esa acción.");
     }
+    if (a.id === "trampa") {
+      if (state.round >= maxRounds()) return err("Ya no queda otra ronda: una trampa colocada ahora nunca llegaría a saltar.");
+      if (harmSt().traps.some(function (x) { return x.owner === p.id; })) return err("Ya tienes una trampa escondida: espera a que salte.");
+    }
     if (a.id === "alzar") {
       if (p.hp <= 3) return err("No te queda sangre que ofrecer.");
       if (riseCount(p) >= riseMax(p)) return err("Tus sombras sirvientes ya no dan abasto: ya tienes " + riseCount(p) + " alzada" + (riseCount(p) > 1 ? "s" : "") + ".");
@@ -1787,7 +1888,7 @@
       save();
       return { ok: true, die: 0, stat: 0, focus: 0, status: 0, total: 0, diff: 0, crit: false, fumble: false, success: false, outcome: "Tu agresión choca contra un reflejo plateado y rebota sobre ti. Te alcanza una maldición.", pushable: false, action: a.name };
     }
-    if (a.hostile && a.id !== "cazar" && t && t.protection !== null) diff += 1;
+    if ((a.hostile || a.harm) && a.id !== "cazar" && t && t.protection !== null) diff += 1;
     if (a.id === "cazar" && t && !t.dying) {
       /* La víctima se defiende con una tirada propia (como al enfrentarse). */
       const dFocus = t.focus > 0 ? t.focus : 0;
@@ -1814,7 +1915,7 @@
       else if (cmod < 0) why.push("algo turbio entorpece tus " + (a.attr === "mente" ? "pensamientos" : "movimientos") + " (" + cmod + ")");
       statusWhy(p).forEach(function (x) { why.push(x); });
       zoneWhy(p, a.attr).forEach(function (x) { why.push(x); });
-      if (a.hostile && t && t.protection !== null) why.push("la víctima está protegida (+1 dificultad)");
+      if ((a.hostile || a.harm) && t && t.protection !== null) why.push("la víctima está protegida (+1 dificultad)");
       if (prepMod) why.push("tu equipo ayuda (−" + prepMod + " dificultad)");
       if (umbralLevel(p) >= 2 && (a.id === "proteger" || a.id === "socorrer")) why.push("la oscuridad te pesa al hacer el bien (+1 dificultad)");
       if (["investigar", "proteger", "explorar"].indexOf(a.id) !== -1) {
@@ -1824,7 +1925,11 @@
     const r = a.risk ? rollCheck(p, a.attr, diff) : { die: 0, stat: 0, focus: 0, total: 0, diff: 0, crit: false, fumble: false, success: true };
     if (a.id === "cazar" && t && t.dying && !p.huntBlocked) { r.success = true; r.fumble = false; r.rematar = true; }
     const wasDyingT = !!(t && t.dying);
+    /* Sabotaje: el frasco/pergamino/porra estropeado por otro falla siempre. */
+    let sabX = null;
+    if (a.needs && a.risk) { sabX = takeSab(p, a.needs); if (sabX) { r.success = false; r.crit = false; r.sabotaged = true; } }
     const out = applyAction(p, a, t, r, a.mode ? mode : stake);
+    if (sabX) out.text += " Además, " + (D.ITEMS[a.needs] ? D.ITEMS[a.needs].name.toLowerCase() : "el objeto") + " " + sabBackfire(p, D.ITEMS[a.needs] ? D.ITEMS[a.needs].name : "El objeto") + ".";
     if (DARK_ACTS.indexOf(a.id) !== -1) darkAct(p);
     else if (ANTI_ACTS.indexOf(a.id) !== -1 || ((a.id === "socorrer" || a.id === "proteger") && r.success)) antiAct(p);
     if (prepMod) usePrep(p, a.id);
@@ -1833,7 +1938,7 @@
     p.did = p.did || {}; p.did[a.id] = (p.did[a.id] || 0) + 1;
     if (a.needs && a.consume !== false) { const ix = p.items.findIndex(function (i) { return i.id === a.needs; }); if (ix >= 0) p.items.splice(ix, 1); }
     if (a.attr && r.success) addXp(p, a.attr, r.crit ? 2 : 1);
-    if (!r.blocked && ["robar", "hechizar", "cazar", "proteger", "ceder", "apunalar", "envenenar", "maldecir", "aturdir", "devorar", "tender", "conjurar", "sombra_hostiga", "sombra_espia", "alzar"].indexOf(a.id) !== -1) {
+    if (!r.blocked && ["robar", "hechizar", "cazar", "proteger", "ceder", "apunalar", "envenenar", "maldecir", "aturdir", "trampa", "sabotear", "devorar", "tender", "conjurar", "sombra_hostiga", "sombra_espia", "alzar"].indexOf(a.id) !== -1) {
       p.deeds = p.deeds || [];
       p.deeds.push({ round: state.round, kind: a.id, target: t ? t.id : null, ok: a.id === "tender" ? mode === "trampa" : !!r.success });
     }
@@ -1953,6 +2058,7 @@
           p.corr = clamp(p.corr + gain, 0, 100);
           p.virtue = clamp(p.virtue - 3, 0, 100);
           t.notes.push("Ronda " + state.round + ": una magia prohibida te ha marcado.");
+          harmSig(t, p, "hechizar", "marca");
           return { text: "Marcas a " + t.name + " con magia prohibida. Obtienes una pista fuerte. La oscuridad te marca.", log: "Una magia prohibida ha dejado marca en " + t.name + "." };
         }
         p.corr = clamp(p.corr + 8, 0, 100);
@@ -2009,6 +2115,7 @@
         }
         if (r.success) {
           const hres = damage(t, huntDamage(r.crit), { src: "cazar", fast: true });
+          harmSig(t, p, "cazar", "golpe");
           t.notes.push("Ronda " + state.round + ": una sombra te atacó durante la noche" + (hres.died ? hitNote(hres) : " y te hirió" + hitNote(hres)) + ".");
           const fed = heal(p, 2);
           return { text: "La caza alcanza a " + t.name + (hres.died ? (r.rematar ? ", que yacía moribundo: lo rematas sin tirada y queda eliminada o eliminado." : ", que ya estaba moribundo: queda eliminada o eliminado.") : hres.dying ? ": cae moribundo, y solo tendrá lo que reste de esta ronda para que alguien lo socorra." : (hres.zone ? " " + ZONE_IN[hres.zone] + ": queda " + visibleHealth(t).split(" · ")[0].toLowerCase() + "." : ".")) + (fed > 0 ? " Te alimentas de su miedo (+" + fed + " de vitalidad)." : ""), log: null };
@@ -2022,6 +2129,7 @@
         if (r.success) {
           const ares = damage(t, r.crit ? rr(4, 5) : rr(2, 4), { src: "apunalar" });
           if (r.crit) bleed(t, 2);
+          harmSig(t, p, "apunalar", "golpe");
           t.notes.push("Ronda " + state.round + ": alguien te hirió con un arma blanca" + hitNote(ares) + ".");
           return { text: "Hieres a " + t.name + (ares.zone ? " " + ZONE_IN[ares.zone] : "") + " (−" + ares.dealt + " de vitalidad)." + (hasStatus(t, "sangrado") ? " La herida sangra." : "") + (t.dead ? " Cae, eliminado." : t.dying ? " Cae moribundo." : ""), log: null };
         }
@@ -2031,15 +2139,34 @@
       }
       case "envenenar": {
         if (r.success) {
-          giveStatus(t, "veneno", 2);
-          t.notes.push("Ronda " + state.round + ": un sabor amargo y una debilidad creciente.");
-          return { text: "Envenenas a " + t.name + ". El veneno le durará dos rondas.", log: null };
+          const hh = harmSt();
+          if (t.ward) { t.ward = false; t.notes.push("Ronda " + state.round + ": una ceniza invisible absorbió un mal dirigido a ti."); }
+          else if (!hh.poisons.some(function (x) { return x.victim === t.id; })) hh.poisons.push({ victim: t.id, author: p.id, round: state.round });
+          return { text: "Viertes el veneno donde " + t.name + " lo tomará. No notará nada de inmediato: los síntomas llegan dentro de dos rondas (después de la próxima) y son 2 de daño por ronda durante dos rondas, salvo que se cure con hierbas, antídoto o descansando.", log: null };
         }
-        return { text: "El veneno se derrama antes de llegar a " + t.name + ".", log: null };
+        return { text: "El veneno se derrama antes de llegar a " + t.name + ". El frasco se pierde igualmente: la dosis no se puede repetir.", log: null };
+      }
+      case "trampa": {
+        harmSt().traps.push({ owner: p.id, target: t.id, round: state.round });
+        glog("trampa_puesta", { a: p.id, x: "pensando en " + t.name });
+        return { text: "Escondes una trampa en los pasillos pensando en " + t.name + ". Saltará al cierre de la próxima ronda sobre quien se mueva por las ruinas (explorar, investigar, robar...): " + t.name + " tiene el triple de probabilidades, pero si se queda quieto o lleva fuego puede caer otro, inocente, o incluso tú si te mueves. Si nadie la pisa, se pierde.", log: null };
+      }
+      case "sabotear": {
+        if (!r.success) {
+          t.notes.push("Ronda " + state.round + ": notas que alguien rebuscó en tus cosas, pero no logró estropear nada.");
+          return { text: "Te tiemblan las manos: no consigues estropear nada del equipaje de " + t.name + ".", log: null };
+        }
+        const cand = t.items.filter(function (i) { const k = D.ITEMS[i.id] && D.ITEMS[i.id].kind; return k && ["passive", "tome", "corruption"].indexOf(k) === -1; });
+        if (!cand.length) return { text: t.name + " no lleva nada que merezca ser estropeado. Pierdes la noche.", log: null };
+        const sit = pick(cand), hs = harmSt();
+        if (!hs.sabs.some(function (x) { return x.victim === t.id && x.item === sit.id; })) hs.sabs.push({ victim: t.id, item: sit.id, author: p.id, round: state.round });
+        harmSig(t, p, "sabotear", "objeto");
+        return { text: "Estropeas algo del equipaje de " + t.name + " sin que se entere. No sabes qué: la próxima vez que use ese objeto, fallará y quizá se le vuelva en contra.", log: null };
       }
       case "maldecir": {
         if (r.success) {
           giveStatus(t, "maldito", 2);
+          harmSig(t, p, "maldecir", "marca");
           t.notes.push("Ronda " + state.round + ": una maldición pesa sobre tus manos y tu mente.");
           return { text: "Maldices a " + t.name + ". Sufrirá -1 en sus tiradas durante dos rondas.", log: null };
         }
@@ -2150,6 +2277,7 @@
         if (r.success) {
           giveStatus(t, "maldito", lv >= 2 ? 2 : 1);
           t.corr = clamp(t.corr + 3, 0, 100);
+          harmSig(t, p, "sombra_hostiga", "marca");
           t.notes.push("Ronda " + state.round + ": sombras inquietas te rodearon toda la noche, susurrando. Amaneces maldito (−1 a tus tiradas) y algo más manchado.");
           state.chronicle.push({ round: state.round, text: "✦ Las sombras se agitaron alrededor de " + t.name + " durante la noche." });
           return { text: "Tus sombras acosan a " + t.name + " con un repertorio de susurros que no le dejan dormir. Queda maldito y se mancha (+3). Tú pagas +3 de oscuridad y −2 de virtud." + domWin(p, 1), log: null };
@@ -2270,6 +2398,16 @@
     const def = D.ITEMS[it.id];
     if (!def) return err("Objeto desconocido.");
     let msg = "";
+    if (["passive", "tome", "corruption", "weapon"].indexOf(def.kind) === -1) {
+      const sabU = takeSab(p, it.id);
+      if (sabU) {
+        const bf = sabBackfire(p, def.name);
+        p.items.splice(index, 1); p.usedItem = true;
+        glog("objeto", { a: p.id, x: def.name + " → estropeado" });
+        save();
+        return { ok: true, msg: def.name + " " + bf + "." };
+      }
+    }
     if (["heal", "purify", "cleanse", "elixir", "virtue"].indexOf(def.kind) !== -1) antiAct(p);
     else if (def.kind === "corruption") darkAct(p);
     switch (def.kind) {
@@ -2402,6 +2540,7 @@
 
   function beginCouncil() {
     if (!state || state.phase !== "private" || state.players.some(function (p) { return !p.dead && !p.acted; })) return err("No puede abrirse el Consejo hasta que todos los supervivientes hayan actuado.");
+    resolveHarm();
     shadowStrike();
     if (checkTerminal()) return state;
     state.phase = "council";
@@ -2679,6 +2818,7 @@
       const room = wasDying && !droppedNow ? 99 : Math.max(0, Math.ceil(0.6 * maxHp(target)) - target.ambAcc.dmg);
       const want = (isAssassin(actor) || isAssassin(target)) ? rr(5, 6) : rr(3, 4);
       const ares = (droppedNow || room <= 0) ? { dealt: 0, zone: null, dying: false, died: false, capped: true } : damage(target, Math.min(want, room), {});
+      if (!ares.capped) harmSig(target, actor, "enfrentar", "golpe");
       if (!ares.capped && !wasDying) { target.ambAcc.dmg += ares.dealt; if (ares.dying) target.ambDy = state.round; }
       if (target.dead) {
         target.notes.push("Ronda " + state.round + ": has caído y quedas fuera de la partida.");
@@ -3062,6 +3202,8 @@
     envenenar: ["{a} envenenó a {t}", "{a} falló al envenenar a {t}"],
     maldecir: ["{a} maldijo a {t}", "{a} falló al maldecir a {t}"],
     aturdir: ["{a} aturdió a {t}", "{a} falló al aturdir a {t}"],
+    trampa: ["{a} escondió una trampa pensando en {t}", "{a} escondió una trampa pensando en {t}"],
+    sabotear: ["{a} estropeó el equipo de {t}", "{a} intentó estropear el equipo de {t} y no lo logró"],
     devorar: ["{a} devoró a {t}", "{a} no pudo con la carne de {t}"],
     descansar: ["{a} descansó y se vendó las heridas", "{a} descansó"],
     entrenar: ["{a} se entrenó", "{a} se entrenó"],
@@ -3278,7 +3420,7 @@
     const list = function (a) { return a.length > 1 ? a.slice(0, -1).join(", ") + " y " + a[a.length - 1] : a[0] || ""; };
     const byTarget = function (ids) { const m = {}, o = []; ids.forEach(function (id) { if (!m[id]) { m[id] = 0; o.push(id); } m[id]++; }); return o.map(function (id) { return nm(id) + (m[id] > 1 ? " (" + m[id] + " veces)" : ""); }); };
     const byTarget0 = function (ls) { const m = {}, o = []; ls.forEach(function (t) { if (!m[t]) { m[t] = 0; o.push(t); } m[t]++; }); return o.map(function (t) { return t + (m[t] > 1 ? " ×" + m[t] : ""); }); };
-    const ATK = ["apunalar", "envenenar", "maldecir", "aturdir", "devorar", "cazar", "hechizar", "sombra_hostiga"];
+    const ATK = ["apunalar", "envenenar", "maldecir", "aturdir", "trampa", "sabotear", "devorar", "cazar", "hechizar", "sombra_hostiga"];
     const actsOf = function (pid, ids) { return G.filter(function (e) { if (e.k !== "act" || !e.ok) return false; const a = String(e.a).split(","); return Number(a[0]) === pid && ids.indexOf(a[1]) !== -1 && a[2] && a[2] !== "-"; }).map(function (e) { return String(e.a).split(",")[2]; }); };
     const intsOf = function (pid, ty) { return G.filter(function (e) { if (e.k !== "registerInteraction" || !e.ok) return false; const a = String(e.a).split(","); return Number(a[0]) === pid && a[1] === ty; }).map(function (e) { return String(e.a).split(",")[2]; }); };
     const used = {}, cache = {};

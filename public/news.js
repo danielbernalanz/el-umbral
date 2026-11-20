@@ -5,6 +5,13 @@
 (function (w) {
   "use strict";
   w.UMBRAL_NEWS = [
+    { version: "1.8.0", fecha: "2026-11-20", titulo: "Más formas de dañar, con riesgo claro", puntos: [
+      "El veneno ahora es retardado: no se nota la ronda siguiente y después hace daño real durante dos rondas, hasta que se cure con hierbas, antídoto o descansando.",
+      "Nueva acción: Poner una trampa. Se esconde una ronda y salta la siguiente sobre quien se mueva por las ruinas; puede caer un inocente, o tú mismo.",
+      "Nueva acción: Sabotear. Estropeas en secreto un objeto de otro: la próxima vez que lo use, fallará y puede volverse contra él.",
+      "Cada acción nueva dice, antes de elegirla, qué ganas y qué arriesgas. Se desbloquean por lo que haces (explorar, robar o tener una cuerda o una ganzúa).",
+      "Los golpes, las marcas mágicas, los síntomas del veneno y los mecanismos de las trampas quedan registrados en secreto para poder investigarlos en una próxima versión."
+    ] },
     { version: "1.7.0", fecha: "2026-11-13", titulo: "Mesas de 2 y jugadores de la casa (NPC)", puntos: [
       "Ya se puede jugar con 2 jugadores.",
       "Puedes añadir NPC a la mesa (hasta 10 jugadores en total) y sustituir por un NPC a quien se ausente, en local y en línea. Cada NPC tiene su perfil (prudente, agresivo, curandero u oscuro), se ve claramente que es un NPC, y quien se fue puede recuperar su lugar.",

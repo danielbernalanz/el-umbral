@@ -118,7 +118,7 @@
 
     /* 6) acción hostil */
     if (R() < prof.hostile && tgt) {
-      const hs = ["apunalar", "robar", "hechizar", "envenenar", "maldecir", "aturdir", "sombra_hostiga"].filter(can);
+      const hs = ["apunalar", "robar", "hechizar", "envenenar", "maldecir", "aturdir", "sombra_hostiga", "trampa", "sabotear"].filter(can);
       for (const id of shuffle(hs)) { if (act(id, tgt.id)) return finishWith(io, s, p, R, prof, pickOf, id); }
     }
     if (p.corr >= 12 && R() < 0.12 && can("sombra_espia") && tgt && act("sombra_espia", tgt.id)) return finishWith(io, s, p, R, prof, pickOf, "sombra_espia");
