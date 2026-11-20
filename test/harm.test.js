@@ -75,7 +75,7 @@ test("trampa: salta la ronda siguiente sobre quien se mueve; firma 'mecanismo'; 
   next(U);
   playRound(U, { 1: ["explorar", null] });
   assert.ok(S.players[1].hp < hp1, "la víctima esperada cae");
-  assert.ok(S.players[1].zones.piernas > 0);
+  assert.ok(S.players[1].zones.miembros > 0 && S.players[1].inj.miembros.part === "piernas");
   assert.ok(S.harm.sigs.some((g) => g.sig === "mecanismo" && g.victim === 1 && g.author === 0));
   assert.strictEqual(S.harm.traps.length, 0);
   assert.ok(S.players[1].notes.some((n) => /trampa oculta/.test(n)) && !S.players[1].notes.some((n) => /Ana/.test(n.replace(/Ronda \d+:/, "")) && /trampa/.test(n)), "la víctima no sabe quién");

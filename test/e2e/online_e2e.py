@@ -232,7 +232,7 @@ def bot_step(c, rnd):
         return "wait"
     return "wait"
 
-PUBLIC_KEYS = {"npc", "id", "name", "dead", "dying", "exposed", "visibleHealth", "ready", "online", "absent", "host", "alignment", "risenBy", "susp"}
+PUBLIC_KEYS = {"npc", "id", "name", "dead", "dying", "exposed", "visibleHealth", "look", "ready", "online", "absent", "host", "alignment", "risenBy", "susp"}
 
 TOKENS_JS = """()=>{const B=UmbralNet.backend,s=B.getState();if(!s)return null;const me=s.players[s.youId];
   const sec=B.secretInfo()||{};const pub=(s.chronicle||[]).map(x=>x.text).concat((s.publicClues||[]).map(x=>x.text));

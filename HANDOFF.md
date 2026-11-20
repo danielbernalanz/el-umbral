@@ -3,6 +3,7 @@
 Juego social de deducción para 2-10 jugadores (pasar el móvil en local, o en línea con salas por código). Empaquetado como APK firmado (WebView) + servidor Node en Render. Idioma de todo: español.
 
 ## Estado
+- **v1.10.0 (rama feat-v1100, sin fusionar ni desplegar)**: salud recortada a 3 zonas, tick determinista, señales públicas, Atender (ver `docs/designs/salud-v110.md`). Cambia el motor: desplegar con mesa vacía.
 - **v1.7.0 cerrada Y DESPLEGADA** (2026-11-14, commit e75d11e, por API de Render con mesa vacía; verificada en vivo: `VERSION 1.7.0`, CACHE `umbral-v17-0`, create/join/start/leave OK). `npm test` 59/59; E2E online 18/18 escenarios (130 comprobaciones, Playwright ya instalado). APK firmado v1.7.0 entregado. Pendiente: Android real, humanos 6-10, Render bajo carga.
 - v1.8.2 (rama feat-v182, sin fusionar): sospecha acumulada + contradecir (ver NOTAS_PROYECTO).
 - **Estable y desplegada: v1.6.2** (77b9db7), referencia de rollback. Servicio https://el-umbral-h1ki.onrender.com.

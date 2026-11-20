@@ -230,6 +230,9 @@ hr{border:0;border-top:1px solid var(--line);margin:13px 0}
 .zones{display:flex;flex-wrap:wrap;gap:5px;margin:5px 0 6px}
 .zone{display:inline-flex;align-items:center;gap:4px;padding:3px 9px 3px 6px;border-radius:99px;border:1px solid var(--line);background:#16121b;font-size:11px;color:var(--muted)}
 .zone .ic{width:15px;height:15px}
+.hurt{margin:4px 0 6px;padding:6px 9px;border-left:3px solid #8b4651;background:#2a1a22;border-radius:6px}
+.hurt b{display:flex;align-items:center;gap:5px;font-size:12px;margin-bottom:2px}
+.hurt .ic{width:14px;height:14px}
 .zone.l1{color:#eed4a0;border-color:#7a6a3c;background:#2b2418}
 .zone.l2{color:#f3a7af;border-color:#8b4651;background:#34202a;animation:pulse 1.6s ease-in-out 6}
 .chips{display:flex;flex-wrap:wrap;gap:5px;margin:0 0 6px}

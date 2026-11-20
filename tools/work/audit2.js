@@ -89,7 +89,7 @@ for (let g = 0; g < N; g++) {
       if (q.wounds < 0 || q.wounds > 3) check(false, "wounds range " + q.wounds);
       if (q.dead && q.wounds < 3) check(false, "dead with wounds<3");
       if (q.hp < 0 || q.hp > U.maxHp(q) || !Number.isInteger(q.hp)) check(false, "hp range " + q.hp);
-      if (["cabeza","torso","brazos","piernas"].some((z) => !(q.zones[z] >= 0))) check(false, "zones " + JSON.stringify(q.zones));
+      if (["cabeza","torso","miembros"].some((z) => !(q.zones[z] >= 0))) check(false, "zones " + JSON.stringify(q.zones));
       if (q.dying && (q.dead || q.hp !== 0)) check(false, "dying incoherente");
       if (q.dying && U.getState().round >= q.dyingRound + 2 && U.getState().phase !== "ending") check(false, "dying sin resolver r" + q.dyingRound + " now " + U.getState().round);
       if (Object.keys(q).includes("wounds")) check(false, "wounds enumerable");

@@ -7,7 +7,7 @@
    La vista NO muta el estado: las consultas impuras del motor (getOffer, unlockNotices, studyOptions,
    encounterStart) las materializa el servidor en game.js (refresh) y aquí solo se lee su resultado. */
 
-const PUBLIC_PLAYER_KEYS = ["id", "name", "dead", "dying", "exposed", "visibleHealth", "ready", "online", "host", "absent", "dyingUntil", "npc", "susp"];
+const PUBLIC_PLAYER_KEYS = ["id", "name", "dead", "dying", "exposed", "visibleHealth", "look", "ready", "online", "host", "absent", "dyingUntil", "npc", "susp"];
 const TOP_KEYS = ["ver", "youId", "serverNow", "phase", "round", "maxRounds", "endAt", "durationMin", "event", "timeAsk", "publicClues", "chronicle", "skipped", "players", "me", "q", "wait", "waitN", "votes", "clock", "timeAdd", "councilResults", "lastResolution", "umbralAbierto", "ending", "reveal", "log", "story", "storyList", "host", "hostNote", "npcInfo"];
 /* Campos del jugador propio que guardan IDENTIDADES AJENAS (quién me socorrió, quién me alzó, quién me protege). */
 const ME_EXCLUDE = ["socBy", "risenBy", "protection", "lastSeen", "suspBy"];
@@ -156,7 +156,7 @@ function buildView(game, pid) {
     lastResolution: S.phase === "resolution" || ending ? clone(S.lastResolution) : [],
     councilResults: S.phase === "council" || S.phase === "resolution" ? clone(game.councilResults || []) : [],
     players: S.players.map((x) => ({
-      id: x.id, name: x.name, dead: !!x.dead, dying: !!x.dying && !x.dead, dyingUntil: x.dying && !x.dead ? (x.dyingRound || S.round) + (x.dyingFast ? 0 : 1) : undefined, exposed: !!x.exposed, susp: U.suspLevel(x), visibleHealth: U.visibleHealth(x),
+      id: x.id, name: x.name, dead: !!x.dead, dying: !!x.dying && !x.dead, dyingUntil: x.dying && !x.dead ? (x.dyingRound || S.round) + (x.dyingFast ? 0 : 1) : undefined, exposed: !!x.exposed, susp: U.suspLevel(x), visibleHealth: U.visibleHealth(x), look: U.publicLook(x),
       /* F6: en la fase privada solo se ve el propio «listo» (de los demás, solo muertos/ausentes, que ya son públicos): nadie espera a ser el último */
       ready: setReady ? !!(S.phase === "private" && x.id !== pid ? (x.dead || x.npc || game.absent.has(x.id)) : (x.dead || x.npc || setReady.has(x.id) || game.absent.has(x.id))) : false,
       npc: !!x.npc,

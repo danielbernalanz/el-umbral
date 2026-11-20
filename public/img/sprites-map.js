@@ -19,6 +19,7 @@
  "a_cazar": "ic-hunting-horn",
  "a_ceder": "ic-devil-mask",
  "a_conjurar": "ic-magic-palm",
+ "a_atender": "ic-arm-bandage",
  "a_descansar": "ic-campfire",
  "a_devorar": "ic-tooth",
  "a_emboscada": "ic-hidden",

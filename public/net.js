@@ -166,15 +166,15 @@
   /* ---------- vistas ---------- */
   function signature(v) {
     const q = v.q || {};
-    return JSON.stringify([v.me, q.offer, q.pactOffers, q.handOffer, v.players.map(function (p) { return [p.dead, p.dying, p.visibleHealth]; }), v.event, (v.chronicle || []).length, v.skipped]);
+    return JSON.stringify([v.me, q.offer, q.pactOffers, q.handOffer, v.players.map(function (p) { return [p.dead, p.dying, p.visibleHealth, p.look]; }), v.event, (v.chronicle || []).length, v.skipped]);
   }
   /* Estado que ve ui.js: SOLO datos públicos de los demás + el jugador propio completo. */
   function buildState(v) {
     const players = v.players.map(function (p) {
-      return { id: p.id, name: p.name, dead: p.dead, dying: p.dying, exposed: p.exposed, susp: p.susp || 0, visibleHealth: p.visibleHealth, ready: p.ready, online: p.online, absent: p.absent, host: p.host, npc: !!p.npc, alignment: p.exposed ? "asesino" : undefined };
+      return { id: p.id, name: p.name, dead: p.dead, dying: p.dying, exposed: p.exposed, susp: p.susp || 0, visibleHealth: p.visibleHealth, look: p.look, ready: p.ready, online: p.online, absent: p.absent, host: p.host, npc: !!p.npc, alignment: p.exposed ? "asesino" : undefined };
     });
     const pub = players[v.youId], me = v.me || {};
-    players[v.youId] = Object.assign({}, me, { dead: pub.dead, dying: pub.dying, exposed: pub.exposed, susp: pub.susp || 0, visibleHealth: pub.visibleHealth, ready: pub.ready, online: pub.online, absent: pub.absent, host: pub.host, npc: !!pub.npc, protection: me.protected ? -1 : null });
+    players[v.youId] = Object.assign({}, me, { dead: pub.dead, dying: pub.dying, exposed: pub.exposed, susp: pub.susp || 0, visibleHealth: pub.visibleHealth, look: pub.look, ready: pub.ready, online: pub.online, absent: pub.absent, host: pub.host, npc: !!pub.npc, protection: me.protected ? -1 : null });
     (me.risen || []).forEach(function (id) { if (players[id] && ((v.q || {}).risen || []).indexOf(players[id].name) !== -1) players[id].risenBy = v.youId; });
     const ex = players.find(function (p) { return p.exposed; });
     return { round: v.round, phase: v.phase, players: players, turn: v.youId, youId: v.youId, handoff: false, event: v.event, chronicle: v.chronicle || [], publicClues: v.publicClues || [],

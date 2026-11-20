@@ -97,6 +97,12 @@
     const dy = al.find(function (x) { return x.dying; });
     if (!asesino() && dy && can("socorrer") && R() < prof.soc && act("socorrer", dy.id)) return finishWith(io, s, p, R, prof, pickOf, "socorrer");
 
+    /* 3b) v1.10.0: atender a quien se ve sangrando (señal pública «sangra»); los prudentes y curanderos lo hacen más. */
+    if (!asesino() && can("atender")) {
+      const bl = al.find(function (x) { return !x.dying && /sangra/.test(String(io.visibleHealth ? io.visibleHealth(x) : "")); });
+      if (bl && R() < prof.soc * 0.6 && act("atender", bl.id)) return finishWith(io, s, p, R, prof, pickOf, "atender");
+    }
+
     /* 4) el Asesino cuando lo es (con menos puntería que un humano decidido) */
     if (asesino()) {
       if (can("alzar") && R() < 0.35) {

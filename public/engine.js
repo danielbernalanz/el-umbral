@@ -1,4 +1,4 @@
-/* EL UMBRAL — motor de juego (v1.9.0)
+/* EL UMBRAL — motor de juego (v1.10.0)
    Sin DOM. Toda la lógica vive aquí para poder probarla con Node. */
 (function (g) {
   "use strict";
@@ -43,13 +43,21 @@
   }
   function err(msg) { return { ok: false, msg: msg }; }
   /* ---------- salud: vitalidad (hp), zonas del cuerpo, moribundo ---------- */
-  const ZONES = ["cabeza", "torso", "brazos", "piernas"];
-  const ZONE_LABEL = { cabeza: "Cabeza", torso: "Torso", brazos: "Brazos", piernas: "Piernas" };
-  const ZONE_IN = { cabeza: "en la cabeza", torso: "en el torso", brazos: "en los brazos", piernas: "en las piernas" };
+  const ZONES = ["cabeza", "torso", "miembros"];
+  const ZONE_LABEL = { cabeza: "Cabeza", torso: "Torso", miembros: "Brazos y piernas" };
+  const ZONE_IN = { cabeza: "en la cabeza", torso: "en el torso", miembros: "en un brazo o una pierna", brazos: "en los brazos", piernas: "en las piernas" };
   const ZONE_W = {
-    gen: [0.15, 0.40, 0.25, 0.20], cazar: [0.25, 0.50, 0.10, 0.15], magia: [0.30, 0.50, 0.10, 0.10],
-    apunalar: [0.10, 0.40, 0.35, 0.15], interno: [0, 1, 0, 0]
+    gen: [0.15, 0.40, 0.45], cazar: [0.25, 0.50, 0.25], magia: [0.30, 0.50, 0.20],
+    apunalar: [0.10, 0.40, 0.50], interno: [0, 1, 0]
   };
+  /* Parte de los miembros que recibe el golpe (una lesión por zona; la parte es la del último golpe). */
+  const ARM_SHARE = { gen: 0.55, cazar: 0.40, magia: 0.50, apunalar: 0.70 };
+  /* v1.10.0: tipo de lesión por origen. Cortes y perforaciones (≥3 de daño) sangran; las contusiones, quemaduras y fracturas no. */
+  const SRC_TIPO = { cazar: "perforacion", apunalar: "corte", magia: "quemadura", trampa: "fractura" };
+  const TIPO_RANK = ["contusion", "fractura", "quemadura", "corte", "perforacion"];
+  const TIPO_LABEL = { contusion: "contusión", fractura: "fractura", quemadura: "quemadura", corte: "corte", perforacion: "perforación" };
+  const OPEN_TIPO = ["corte", "perforacion", "quemadura"];
+  const N_LABEL = ["", "leve", "seria", "grave"];
   function rr(a, b) { return a + rnd(b - a + 1); }
   function maxHp(p) { return 7 + ((p && p.stats && p.stats.cuerpo) || 0); }
   function pickZone(src) {
@@ -58,12 +66,20 @@
     for (let i = 0; i < ZONES.length; i++) { x -= w[i]; if (x < 0) return ZONES[i]; }
     return "torso";
   }
+  /* Acepta también los nombres antiguos «brazos»/«piernas» (zona = miembros, con parte). */
+  function normZone(z) {
+    if (z === "brazos" || z === "piernas") return { zone: "miembros", part: z };
+    return { zone: ZONES.indexOf(z) !== -1 ? z : "torso", part: null };
+  }
   function zoneLvl(p, z) {
     const n = (p && p.zones && p.zones[z]) || 0;
     return n >= 4 ? 2 : n >= 2 ? 1 : 0;
   }
-  function legPen(p) { return zoneLvl(p, "piernas") >= 2 ? 1 : 0; }
-  function armPen(p) { return zoneLvl(p, "brazos") >= 2 ? 1 : 0; }
+  /* Nivel de la lesión: 0 ninguna, 1 leve (1-3), 2 seria (4-5), 3 grave (6+). Penalizadores desde el nivel 2. */
+  function zoneN(p, z) { const n = (p && p.zones && p.zones[z]) || 0; return n >= 6 ? 3 : n >= 4 ? 2 : n >= 1 ? 1 : 0; }
+  function partOf(p) { return (p && p.inj && p.inj.miembros && p.inj.miembros.part) || null; }
+  function legPen(p) { return zoneN(p, "miembros") >= 2 && partOf(p) === "piernas" ? 1 : 0; }
+  function armPen(p) { return zoneN(p, "miembros") >= 2 && partOf(p) === "brazos" ? 1 : 0; }
   function zoneMod(p, attr) {
     if (attr === "cuerpo") return -armPen(p);
     if (attr === "mente") return zoneLvl(p, "cabeza") >= 2 ? -1 : 0;
@@ -85,7 +101,20 @@
     p.hp = clamp(Math.round(p.hp), 0, max);
     if (p.dead) { p.hp = 0; p.dying = false; }
     if (!p.zones || typeof p.zones !== "object") p.zones = {};
-    ZONES.forEach(function (z) { const n = Number(p.zones[z]); p.zones[z] = isNaN(n) || n < 0 ? 0 : Math.round(n); });
+    /* Migración de partidas con 4 zonas (brazos/piernas): se funden en «miembros» y se recuerda la parte más dañada. */
+    if (!p.inj || typeof p.inj !== "object") p.inj = {};
+    if (p.zones.brazos !== undefined || p.zones.piernas !== undefined) {
+      const ar = Number(p.zones.brazos) || 0, lg = Number(p.zones.piernas) || 0;
+      p.zones.miembros = (Number(p.zones.miembros) || 0) + ar + lg;
+      if (!p.inj.miembros && p.zones.miembros > 0) p.inj.miembros = { t: p.zones.miembros >= 4 ? "fractura" : "contusion", part: lg > ar ? "piernas" : "brazos", last: p.hurtRound || 0, since: p.hurtRound || 0 };
+      delete p.zones.brazos; delete p.zones.piernas;
+    }
+    ZONES.forEach(function (z) {
+      const n = Number(p.zones[z]); p.zones[z] = isNaN(n) || n < 0 ? 0 : Math.round(n);
+      if (p.zones[z] > 0 && !p.inj[z]) p.inj[z] = { t: "contusion", last: p.hurtRound || 0, since: p.hurtRound || 0 };
+      if (p.inj[z] && z === "miembros" && !p.inj[z].part) p.inj[z].part = "brazos";
+      if (!(p.zones[z] > 0)) delete p.inj[z];
+    });
     p.dying = !!p.dying;
     if (p.dying && p.hp !== 0) p.hp = 0;
     Object.defineProperty(p, "wounds", { get: function () { return woundsOf(this); }, set: function () {}, configurable: true, enumerable: false });
@@ -108,46 +137,71 @@
     p.hurtRound = state ? state.round : 0;
     return true;
   }
-  /* Nuevo sangrado con nota privada (solo si de verdad se aplica). */
-  function bleed(p, dur) {
+  /* Nuevo sangrado con nota privada (solo si de verdad se aplica). sev = pérdida por ronda (1 goteo, 2 sangrado). */
+  function bleed(p, dur, sev) {
     if (!p || p.dead || p.dying) return false;
     const had = hasStatus(p, "sangrado");
     giveStatus(p, "sangrado", dur);
+    if (hasStatus(p, "sangrado")) { const st = p.status.find(function (x) { return x.id === "sangrado"; }); if (sev) st.sev = Math.max(st.sev || 0, sev); }
     if (!had && hasStatus(p, "sangrado")) { p.notes.push("Ronda " + (state ? state.round : "?") + ": la herida sangra y seguirá sangrando unas rondas."); return true; }
     return false;
   }
-  /* Daño en puntos de vitalidad. Devuelve {dealt, zone, dying, died}. opts: src, zone, noZone, noBleed. */
+  function mergeTipo(old, nw, zone, dmg) {
+    let t = TIPO_RANK.indexOf(nw) > TIPO_RANK.indexOf(old) ? nw : old;
+    if (zone === "miembros" && t === "contusion" && dmg >= 4) t = "fractura";
+    return t;
+  }
+  /* Anota la lesión de la zona (una por zona): tipo dominante, parte de los miembros y ronda del último golpe. */
+  function noteInjury(p, zone, part, tipo, r) {
+    p.inj = p.inj || {};
+    const old = p.inj[zone];
+    const t = old ? mergeTipo(old.t, tipo, zone, p.zones[zone]) : mergeTipo("contusion", tipo, zone, p.zones[zone]);
+    p.inj[zone] = { t: t, last: r, since: old ? old.since : r };
+    if (zone === "miembros") p.inj[zone].part = part || (old && old.part) || "brazos";
+  }
+  /* Daño en puntos de vitalidad. Devuelve {dealt, zone, part, dying, died}. opts: src, zone, tipo, noZone, noBleed.
+     v1.10.0: sin azar de sangrado: un corte o una perforación de 3 o más de daño sangra siempre (1 por ronda; 2 en un torso grave). */
   function damage(p, amount, opts) {
-    const out = { dealt: 0, zone: null, dying: false, died: false };
+    const out = { dealt: 0, zone: null, part: null, dying: false, died: false };
     opts = opts || {};
     amount = Math.round(amount);
     if (!p || p.dead || !(amount > 0)) return out;
     const r = state ? state.round : 0;
     p.wasHurt = true; p.hurtRound = r;
     if (p.dying) { finish(p, "heridas"); out.died = true; out.dealt = amount; return out; }
-    const zone = opts.noZone ? null : (opts.zone || pickZone(opts.src));
+    let zone = null, part = null;
+    if (!opts.noZone) {
+      const nz = normZone(opts.zone || pickZone(opts.src));
+      zone = nz.zone; part = nz.part;
+      if (zone === "miembros" && !part) part = Math.random() < (ARM_SHARE[opts.src] !== undefined ? ARM_SHARE[opts.src] : ARM_SHARE.gen) ? "brazos" : "piernas";
+    }
     const dealt = Math.min(amount, p.hp);
-    p.hp -= dealt; out.dealt = dealt; out.zone = zone;
-    if (zone) p.zones[zone] = (p.zones[zone] || 0) + dealt;
+    p.hp -= dealt; out.dealt = dealt; out.zone = zone; out.part = part;
+    /* Un golpe genérico en el torso es una laceración (corte: sangra si hace 3+); en cabeza y miembros, una contusión. */
+    const tipo = opts.tipo || SRC_TIPO[opts.src] || (zone === "torso" && opts.src !== "interno" ? "corte" : "contusion");
+    if (zone) { p.zones[zone] = (p.zones[zone] || 0) + dealt; noteInjury(p, zone, part, tipo, r); }
     if (p.hp <= 0) {
       p.hp = 0; p.dying = true; p.dyingRound = r; p.status = []; p.acted = true; out.dying = true;
       p.dyingFast = !!opts.fast && maxRounds() < 10; p.socBy = {};
       epi("moribundo", p.id);
       if (state) state.chronicle.push({ round: r, text: "✖ " + p.name + " se desploma, moribundo." + (p.dyingFast ? " Quien lo dejó así no le ha dado tiempo: si nadie lo socorre antes de que acabe esta ronda, morirá." : " Si nadie lo socorre antes de que acabe la próxima ronda, morirá.") });
       p.notes.push("Ronda " + r + ": te desplomas, moribundo. " + (p.dyingFast ? "El golpe fue de los que no perdonan: si nadie te socorre antes de que acabe ESTA ronda, morirás; cualquier golpe más te mataría." : "Si nadie te socorre antes de que acabe la próxima ronda, morirás; cualquier golpe más te mataría."));
-    } else if (!opts.noBleed && amount >= 3 && zone) {
-      if (Math.random() < (zone === "torso" ? 0.45 : 0.25)) bleed(p, 2);
+    } else if (!opts.noBleed && amount >= 3 && zone && (tipo === "corte" || tipo === "perforacion")) {
+      bleed(p, 2, zone === "torso" && zoneN(p, "torso") >= 2 ? 2 : 1);
     }
     return out;
   }
   function addWounds(p, n) { return damage(p, 3 * n, { src: "gen" }); }
+  /* Dónde ha caído el golpe, en lenguaje natural (con la parte de los miembros). */
+  function zoneInTxt(res) { return res && res.zone ? (res.zone === "miembros" && res.part ? ZONE_IN[res.part] : ZONE_IN[res.zone]) : ""; }
   /* Texto privado del golpe recibido: «en el torso (−5 de vitalidad)». */
   function hitNote(res) {
     if (!res) return "";
     if (res.died) return ": ya estabas moribundo y no lo resististe";
-    return (res.zone ? " " + ZONE_IN[res.zone] : "") + " (−" + res.dealt + " de vitalidad)" + (res.dying ? " y caes moribundo" : "");
+    return (res.zone ? " " + zoneInTxt(res) : "") + " (−" + res.dealt + " de vitalidad)" + (res.dying ? " y caes moribundo" : "");
   }
-  function heal(p, amount) {
+  /* band: el tratamiento es un vendaje (queda visible como «vendado» un par de rondas). */
+  function heal(p, amount, band) {
     if (!p || p.dead || p.dying || !(amount > 0)) return 0;
     const max = maxHp(p), before = p.hp;
     p.hp = Math.min(max, p.hp + Math.round(amount));
@@ -155,42 +209,108 @@
     let left = Math.round(amount);
     ZONES.slice().sort(function (a, b) { return (p.zones[b] || 0) - (p.zones[a] || 0); }).forEach(function (z) {
       const t = Math.min(left, p.zones[z] || 0); p.zones[z] -= t; left -= t;
+      if (!(p.zones[z] > 0) && p.inj) delete p.inj[z];
     });
     if (healed > 0) p.healRound = state ? state.round : 0;
+    if (band && state) p.bandRound = state.round;
     return healed;
   }
-  const ZONE_DESC = {
-    cabeza: ["Sin daño.", "Un golpe en la cabeza: te zumban los oídos.", "Conmoción grave: −1 a tus tiradas de mente."],
-    torso: ["Sin daño.", "Costillas doloridas.", "Daño grave en el torso: si sangras, pierdes +1 por ronda."],
-    brazos: ["Sin daño.", "Brazos magullados.", "Un brazo casi inútil: −1 a tus tiradas de cuerpo y a tu ataque."],
-    piernas: ["Sin daño.", "Cojeas un poco.", "Piernas muy dañadas: −1 a tu defensa."]
-  };
+  /* Descripción de cada zona para el propio jugador (nivel 0-2 de zoneLvl). */
+  function zoneDesc(p, z) {
+    const l = zoneLvl(p, z), part = z === "miembros" ? partOf(p) : null;
+    if (!(p.zones && p.zones[z] > 0)) return "Sin daño.";
+    if (z === "cabeza") return ["Un golpe en la cabeza: te zumban los oídos.", "Un golpe en la cabeza: te zumban los oídos.", "Conmoción grave: −1 a tus tiradas de mente."][l];
+    if (z === "torso") return ["Costillas doloridas.", "Costillas doloridas.", "Daño grave en el torso: un sangrado te cuesta +1 por ronda."][l];
+    if (part === "piernas") return ["Cojeas un poco.", "Cojeas un poco.", "Pierna muy dañada: −1 a tu defensa."][l];
+    return ["Brazo magullado.", "Brazo magullado.", "Un brazo casi inútil: −1 a tus tiradas de cuerpo y a tu ataque."][l];
+  }
+  /* Lesión abierta (corte, perforación, quemadura) seria o grave: la que se infecta si nadie la limpia. */
+  function dirtyLesion(p) {
+    let best = null;
+    ZONES.forEach(function (z) { const L = p.inj && p.inj[z]; if (L && OPEN_TIPO.indexOf(L.t) !== -1 && zoneN(p, z) >= 2 && (!best || (L.last || 0) > (best.last || 0))) best = L; });
+    return best;
+  }
+  /* Rondas desde que la herida abierta no recibe cuidados (golpe, vendaje, descanso, atención). */
+  function dirtyAge(p) {
+    const L = dirtyLesion(p);
+    if (!L || !state) return null;
+    return state.round - Math.max(L.last || 0, p.healRound || 0, p.cleanRound || 0);
+  }
+  /* Señales visibles desde fuera, en orden fijo y máximo 3: función SOLO del cuerpo, nunca de la corrupción, el rol ni la causa.
+     Varias causas dan la misma señal (pálido: shock, infección o veneno). */
+  const LOOK_TXT = { cojea: "cojea", protege_brazo: "protege un brazo", tambalea: "se tambalea", sangra: "sangra", palido: "pálido", vendado: "vendado" };
+  function publicLook(p) {
+    if (!p) return { aspecto: "", signos: [] };
+    if (p.dead) return { aspecto: "Eliminado", signos: [] };
+    if (p.dying) return { aspecto: "Moribundo", signos: [] };
+    const max = maxHp(p), pct = p.hp / max, s = [];
+    if (zoneN(p, "miembros") >= 2 && partOf(p) === "piernas") s.push("cojea");
+    if (zoneN(p, "miembros") >= 2 && partOf(p) === "brazos") s.push("protege_brazo");
+    if (zoneN(p, "cabeza") >= 2) s.push("tambalea");
+    if (hasStatus(p, "sangrado")) s.push("sangra");
+    if (hasStatus(p, "infeccion") || shockOf(p) || (p.status || []).some(function (x) { return x.id === "veneno" && x.dmg && x.first === false; })) s.push("palido");
+    if (p.hp < max && p.bandRound !== undefined && p.bandRound !== null && state && state.round - p.bandRound <= 1) s.push("vendado");
+    const signos = s.slice(0, 3);
+    if (p.hp >= max && !signos.length) return { aspecto: "Sin heridas visibles", signos: [] };
+    const aspecto = pct >= 0.8 ? "Magullado" : pct >= 0.55 ? "Herido" : pct >= 0.3 ? "Malherido" : "Al borde de caer";
+    return { aspecto: aspecto, signos: signos };
+  }
   function visibleHealth(p) {
     if (!p) return "";
-    if (p.dead) return "Eliminado";
-    if (p.dying) return "Moribundo";
-    const max = maxHp(p), pct = p.hp / max;
-    const marks = [];
-    if ((p.zones.piernas || 0) >= 2) marks.push("cojea");
-    if ((p.zones.brazos || 0) >= 2) marks.push("protege un brazo");
-    if ((p.zones.cabeza || 0) >= 2) marks.push("se tambalea");
-    if (hasStatus(p, "sangrado")) marks.push("sangra");
-    if (hasStatus(p, "infeccion")) marks.push("febril");
-    if (p.hp >= max && !marks.length) return "Sin heridas visibles";
-    const base = pct >= 0.8 ? "Magullado" : pct >= 0.55 ? "Herido" : pct >= 0.3 ? "Malherido" : "Al borde de caer";
-    return [base].concat(marks).join(" · ");
+    const l = publicLook(p);
+    return [l.aspecto].concat(l.signos.map(function (x) { return LOOK_TXT[x]; })).join(" · ");
   }
   function shockOf(p) { return !!(p && !p.dead && !p.dying && p.hp <= 0.35 * maxHp(p)); }
+  /* Previsión determinista (sin azar): rondas hasta caer moribundo al ritmo de sangrado, infección y veneno actuales. */
+  function bleedPerTick(s) { return s.sev || 2; }
+  function forecast(p) {
+    if (!p || p.dead || p.dying) return null;
+    const effs = [];
+    (p.status || []).forEach(function (s) {
+      if (s.id === "sangrado") effs.push({ d: bleedPerTick(s), left: s.left });
+      else if (s.id === "infeccion") effs.push({ d: 1, left: s.left });
+      else if (s.id === "veneno" && s.dmg) effs.push({ d: s.dmg, left: s.left });
+    });
+    if (!effs.length) return null;
+    let hp = p.hp;
+    for (let k = 1; k <= 6; k++) {
+      let tot = 0; effs.forEach(function (e) { if (e.left >= k) tot += e.d; });
+      hp -= tot;
+      if (hp <= 0) return { caer: k };
+      if (!tot) break;
+    }
+    return null;
+  }
+  /* Lo que hay que atender ahora, ordenado por urgencia (máx. 3 líneas, solo para el propio jugador). */
+  function healthUrgent(p) {
+    const out = [];
+    if (!p || p.dead || p.dying) return out;
+    const fc = forecast(p);
+    const sg = (p.status || []).find(function (x) { return x.id === "sangrado"; });
+    if (sg) out.push({ key: "sangrado", text: "Sangras: pierdes " + bleedPerTick(sg) + " de vitalidad por ronda durante " + sg.left + " ronda" + (sg.left > 1 ? "s" : "") + " más." + (fc ? " Al ritmo actual, caes moribundo en " + fc.caer + " ronda" + (fc.caer > 1 ? "s" : "") + "." : ""), todo: "Que alguien te atienda, usa vendas o descansa." });
+    const age = dirtyAge(p);
+    if (age !== null && age >= 0 && !hasStatus(p, "infeccion")) out.push({ key: "sucia", text: "Tienes una herida abierta sin cuidar" + (age >= 1 ? ": si no la limpias o la vendas esta ronda, se infecta." : "."), todo: "Que alguien te atienda, usa vendas o descansa." });
+    if (hasStatus(p, "infeccion")) out.push({ key: "infeccion", text: "Infección: −1 de vitalidad por ronda.", todo: "Hierbas, botiquín, antídoto, descansar o que te atiendan." });
+    const vn = (p.status || []).find(function (x) { return x.id === "veneno"; });
+    if (vn) out.push({ key: "veneno", text: vn.dmg ? "Veneno: −" + vn.dmg + " de vitalidad por ronda." : "Veneno: te debilita.", todo: "Hierbas, antídoto o descansar lo frenan." });
+    if (!sg && fc) out.push({ key: "caer", text: "Al ritmo actual, caes moribundo en " + fc.caer + " ronda" + (fc.caer > 1 ? "s" : "") + ".", todo: "" });
+    return out.slice(0, 3);
+  }
   function healthInfo(p) {
     const max = maxHp(p), pct = Math.round(100 * p.hp / max);
     let level = pct >= 100 ? "ileso" : pct >= 80 ? "magullado" : pct >= 55 ? "herido" : pct >= 30 ? "malherido" : "critico";
     if (p.dying) level = "moribundo";
     if (p.dead) level = "muerto";
+    const fc = forecast(p);
     return {
       hp: p.hp, max: max, pct: pct, level: level,
-      zones: ZONES.map(function (z) { const l = zoneLvl(p, z); return { id: z, name: ZONE_LABEL[z], dmg: p.zones[z] || 0, lvl: l, desc: ZONE_DESC[z][l] }; }),
+      zones: ZONES.map(function (z) {
+        const l = zoneLvl(p, z), n = zoneN(p, z), L = p.inj && p.inj[z], part = z === "miembros" ? partOf(p) : null;
+        return { id: z, name: z === "miembros" ? (part === "piernas" ? "Piernas" : part === "brazos" ? "Brazos" : ZONE_LABEL[z]) : ZONE_LABEL[z], dmg: p.zones[z] || 0, lvl: l, n: n, nivel: N_LABEL[n], tipo: L ? TIPO_LABEL[L.t] : "", part: part, desc: zoneDesc(p, z) };
+      }),
       status: (p.status || []).map(function (s) { return s.id; }),
-      shock: shockOf(p), dying: !!p.dying
+      shock: shockOf(p), dying: !!p.dying,
+      prevision: fc, urgentes: healthUrgent(p)
     };
   }
   function checkTerminal() {
@@ -458,6 +578,7 @@
     devorar: function (p) { return isAssassin(p) || p.corr >= 40; },
     cazar: function (p) { return isAssassin(p); },
     conjurar: function (p) { return !!(p.spells && p.spells.length); },
+    atender: function () { return true; }, /* v1.10.0: cuidados para todos, siempre */
     indagar: function () { return true; }, /* v1.8.1: para todos, siempre; sin desbloqueo por reloj */
     socorrer: function (p) { return !!state && !p.dying && state.players.some(function (x) { return x.id !== p.id && x.dying && !x.dead; }); },
     sombra_espia: function (p) { return isAssassin(p) || p.corr >= CORR_GATE || didN(p, "ceder") + didN(p, "hechizar") + didN(p, "robar") >= 1; },
@@ -548,7 +669,7 @@
   }
   /* Agrupación de acciones para la UI: lo esencial a la vista y lo demás plegado por familias. */
   const ACTION_GROUPS = [
-    { id: "recuperacion", label: "Recuperarte", ids: ["descansar", "resistir", "entrenar", "socorrer", "bendecir"] },
+    { id: "recuperacion", label: "Recuperarte", ids: ["descansar", "resistir", "entrenar", "socorrer", "atender", "bendecir"] },
     { id: "pactos", label: "Pactos", ids: ["tender"] },
     { id: "sucias", label: "Oscuras y de azar", ids: ["robar", "hechizar", "apostar", "ceder", "devorar"] },
     { id: "armas", label: "Con arma", ids: ["apunalar", "envenenar", "maldecir", "aturdir", "trampa", "sabotear"] },
@@ -558,7 +679,7 @@
     const all = D.ACTIONS.filter(function (a) { return (!a.assassinOnly || isAssassin(p)) && isUnlocked(p, a); });
     const na = p.newAct || {};
     const isMain = function (a) {
-      if (BASE_ACTIONS.indexOf(a.id) !== -1 || a.id === "conjurar" || a.id === "socorrer" || a.id === "descansar" || a.id === "cazar" || a.id === "indagar") return true;
+      if (BASE_ACTIONS.indexOf(a.id) !== -1 || a.id === "conjurar" || a.id === "socorrer" || a.id === "atender" || a.id === "descansar" || a.id === "cazar" || a.id === "indagar") return true;
       if (a.id === "devorar" && isAssassin(p)) return true;
       return na[a.id] !== undefined && na[a.id] >= state.round; /* solo la ronda en que se desbloquea; luego pasa a «Más acciones» */
     };
@@ -572,7 +693,7 @@
     const out = (p.fresh || []).slice();
     p.fresh = [];
     D.ACTIONS.forEach(function (a) {
-      if (p.seen[a.id] || BASE_ACTIONS.indexOf(a.id) !== -1 || a.id === "indagar") return;
+      if (p.seen[a.id] || BASE_ACTIONS.indexOf(a.id) !== -1 || a.id === "indagar" || a.id === "atender") return;
       if (isUnlocked(p, a)) {
         p.seen[a.id] = true; if (!silent) { p.newAct = p.newAct || {}; p.newAct[a.id] = state.round; }
         if (!silent) { const hint = UNLOCK_HINT[a.id] || "Algo nuevo se abre ante ti."; out.push(hint); p.hints = p.hints || []; p.hints.push(hint); p.notes.push("Ronda " + state.round + ": " + hint); }
@@ -1054,7 +1175,7 @@
     return out;
   }
   function zoneWhy(p, attr) {
-    if (attr === "cuerpo" && armPen(p)) return ["tus brazos gravemente heridos te estorban (−1)"];
+    if (attr === "cuerpo" && armPen(p)) return ["tu brazo gravemente herido te estorba (−1)"];
     if (attr === "mente" && zoneLvl(p, "cabeza") >= 2) return ["la conmoción de tu cabeza te nubla (−1)"];
     return [];
   }
@@ -1064,7 +1185,7 @@
     p.status.forEach(function (s) {
       if (p.dead || p.dying) return;
       if (s.id === "sangrado") {
-        const n = zoneLvl(p, "torso") >= 2 ? 3 : 2;
+        const n = bleedPerTick(s);
         state.chronicle.push({ round: state.round, text: "✖ " + p.name + " sigue sangrando." });
         const res = damage(p, n, { noZone: true, noBleed: true });
         p.notes.push("Ronda " + state.round + ": la herida sigue sangrando (−" + res.dealt + " de vitalidad)" + (res.dying ? " y caes moribundo." : "."));
@@ -1425,7 +1546,7 @@
       spells: [], stolen: [], betrayals: 0, keptPacts: 0, successfulAccusations: 0, status: [], susp: 0, suspPts: 0, suspBy: [],
       aggr: 0, agg: {}, dom: { wins: 0 }, risen: []
     };
-    p.hp = maxHp(p); p.zones = { cabeza: 0, torso: 0, brazos: 0, piernas: 0 }; p.dying = false;
+    p.hp = maxHp(p); p.zones = { cabeza: 0, torso: 0, miembros: 0 }; p.inj = {}; p.dying = false;
     initHealth(p);
     if (hasPassive(p, "startItem")) p.items.push(mkItem("daga"));
     if (hasPassive(p, "startVendas")) { p.items.push(mkItem("vendas")); p.items.push(mkItem("vendas")); }
@@ -1837,12 +1958,14 @@
     tickRisen();
     tickHands();
     state.players.forEach(tierCheck);
-    /* Infección: una zona grave sin curar durante 3 rondas puede infectarse. */
+    /* Infección (v1.10.0, sin azar): una herida abierta (corte, perforación, quemadura) seria o grave que lleva 2 rondas sin cuidados se infecta;
+       la ronda anterior se avisa en privado. Se evita con vendas, descanso, hierbas o que otro te atienda. */
     state.players.forEach(function (p) {
       if (p.dead || p.dying || hasStatus(p, "infeccion")) return;
-      if (!ZONES.some(function (z) { return zoneLvl(p, z) >= 2; })) return;
-      if (p.healRound !== undefined && p.healRound !== null && state.round - p.healRound < 3) return;
-      if (Math.random() < 0.4) { giveStatus(p, "infeccion", 3); if (hasStatus(p, "infeccion")) p.notes.push("Ronda " + state.round + ": una herida grave sin curar se infecta; tienes fiebre."); }
+      const age = dirtyAge(p);
+      if (age === null) return;
+      if (age >= 2) { giveStatus(p, "infeccion", 3); if (hasStatus(p, "infeccion")) p.notes.push("Ronda " + state.round + ": una herida abierta sin cuidar se infecta; tienes fiebre."); }
+      else if (age === 1) p.notes.push("Ronda " + state.round + ": tu herida abierta sigue sin cuidar: si no la limpias o la vendas esta ronda, se infectará.");
     });
     /* Recuperación natural lenta: +1 en rondas pares si llevas un tiempo sin sufrir daño ni sangrar. */
     if (state.round % 2 === 0) state.players.forEach(function (p) {
@@ -2219,7 +2342,7 @@
           if (r.crit) bleed(t, 2);
           harmSig(t, p, "apunalar", "golpe");
           t.notes.push("Ronda " + state.round + ": alguien te hirió con un arma blanca" + hitNote(ares) + ".");
-          return { text: "Hieres a " + t.name + (ares.zone ? " " + ZONE_IN[ares.zone] : "") + " (−" + ares.dealt + " de vitalidad)." + (hasStatus(t, "sangrado") ? " La herida sangra." : "") + (t.dead ? " Cae, eliminado." : t.dying ? " Cae moribundo." : ""), log: null };
+          return { text: "Hieres a " + t.name + (ares.zone ? " " + zoneInTxt(ares) : "") + " (−" + ares.dealt + " de vitalidad)." + (hasStatus(t, "sangrado") ? " La herida sangra." : "") + (t.dead ? " Cae, eliminado." : t.dying ? " Cae moribundo." : ""), log: null };
         }
         p.corr = clamp(p.corr + 2, 0, 100);
         t.notes.push("Ronda " + state.round + ": pasos apresurados en la oscuridad, pero nadie te alcanzó.");
@@ -2310,7 +2433,7 @@
         p.restedRound = state.round;
         const gone = ["sangrado", "veneno", "infeccion"].filter(function (id) { return hasStatus(p, id); });
         const nothing = p.hp >= maxHp(p) && !gone.length;
-        const dh = heal(p, 3);
+        const dh = heal(p, 3, true);
         p.corr = clamp(p.corr + 3, 0, 100);
         gone.forEach(function (id) { dropStatus(p, id); });
         easeHands(p, 2);
@@ -2324,6 +2447,20 @@
         return { text: "Tiendes la mano a " + t.name + " en secreto. Solo " + t.name + " lo sabrá. " + (stake === "trampa" ? "Tu sonrisa esconde algo." : "Tu gesto es sincero."), log: null };
       }
       case "indagar": return doIndagar(p);
+      case "atender": {
+        /* v1.10.0: cuidados sin objetos ni tirada. Corta un sangrado y frena una infección o una herida abierta sin limpiar; no cura vitalidad.
+           Al actor no se le cuenta qué había (solo lo que ya vería a simple vista); el atendido lo sabe en privado. */
+        if (t.dying) return { text: t.name + " está moribundo: eso es un Socorro, no unos cuidados.", log: null };
+        const did = [];
+        if (hasStatus(t, "sangrado")) { dropStatus(t, "sangrado"); did.push("cortas el sangrado"); }
+        if (hasStatus(t, "infeccion")) { dropStatus(t, "infeccion"); did.push("frenas la infección"); }
+        else if (dirtyAge(t) !== null) { did.push("limpias la herida abierta"); }
+        t.cleanRound = state.round; t.healRound = state.round;
+        if (did.length) {
+          t.notes.push("Ronda " + state.round + ": " + p.name + " te atendió las heridas: " + did.join(" y ").replace("cortas", "cortó").replace("frenas", "frenó").replace("limpias", "limpió") + ".");
+        }
+        return { text: "Atiendes a " + t.name + " con lo que tienes a mano. Si había algo que cuidar, ya está hecho.", log: null };
+      }
       case "socorrer": {
         if (!t.dying) return { text: t.name + " ya no necesita socorro.", log: null };
         t.socBy = t.socBy || {}; t.socBy[p.id] = state.round;
@@ -2507,7 +2644,7 @@
         const cures = (def.cures || []).filter(function (c) { return hasStatus(p, c); });
         if (p.dying) return err("Estás moribundo.");
         if (p.hp >= maxHp(p) && !cures.length) return err(def.id === "racion" ? "No tienes hambre ni heridas: guárdala para cuando la necesites." : "No tienes heridas que curar.");
-        const h = heal(p, def.value || 4);
+        const h = heal(p, def.value || 4, def.id === "vendas" || def.id === "botiquin");
         cures.forEach(function (c) { dropStatus(p, c); });
         if (def.virtue) p.virtue = clamp(p.virtue + def.virtue, 0, 100);
         const cn = cures.map(function (c) { return D.STATUS[c] ? D.STATUS[c].name.toLowerCase() : c; });
@@ -3312,6 +3449,7 @@
     proteger: ["{a} juró proteger a {t}", "{a} no logró proteger a {t}"],
     explorar: ["{a} registró las ruinas y salió con un botín", "{a} volvió de las ruinas con las manos vacías"],
     meditar: ["{a} pasó la noche meditando", "{a} pasó la noche meditando"],
+    atender: ["{a} atendió las heridas de {t}", "{a} atendió a {t}"],
     indagar: ["{a} rebuscó entre los rastros de las últimas noches", "{a} rebuscó entre los rastros de las últimas noches"],
     bendecir: ["{a} invocó una bendición", "{a} rezó una oración que no obtuvo respuesta"],
     robar: ["{a} le robó algo a {t}", "{a} fue descubierto intentando robar a {t}"],
@@ -3592,7 +3730,7 @@
       const mor = E.filter(function (e) { return e.k === "moribundo" && e.a === p.id; });
       const saved = E.filter(function (e) { return e.k === "socorre" && e.b === p.id && e.x === 1; });
       if (mor.length) S.push("Cayó moribundo en la ronda " + mor[0].r + (saved.length ? " y " + nm(saved[0].a) + " lo sacó del borde" : ""));
-      const bad = ZONES.filter(function (z) { return zoneLvl(p, z) >= 2; });
+      const bad = ZONES.filter(function (z) { return zoneLvl(p, z) >= 2; }).map(function (z) { return z === "miembros" ? (partOf(p) === "piernas" ? "las piernas" : "los brazos") : z === "cabeza" ? "la cabeza" : "el torso"; });
       if (bad.length) S.push("Terminó con heridas graves en " + list(bad));
       if (p.dead) S.push(p.cause === "devorado" ? "Acabó devorado" : "No llegó vivo al amanecer");
       if (p.risenBy !== undefined && p.risenBy !== null && state.players[p.risenBy]) S.push("Su sombra acabó sirviendo a " + nm(p.risenBy));
@@ -3668,7 +3806,7 @@
     getState: function () { return state; },
     currentPlayer: function () { return state ? state.players[state.turn] : null; },
     act: wrapLog("act", act), pushLuck: wrapLog("pushLuck", pushLuck), useItem: wrapLog("useItem", useItem),
-    maxHp: maxHp, visibleHealth: visibleHealth, healthInfo: healthInfo,
+    maxHp: maxHp, visibleHealth: visibleHealth, publicLook: publicLook, healthInfo: healthInfo,
     _skill: { rollCheck: rollCheck }, _health: { damage: damage, heal: heal, finish: finish, stabilize: stabilize, pickZone: pickZone, zoneLvl: zoneLvl, zoneMod: zoneMod, initHealth: initHealth },
     getSince: getSince, endAtTs: endAtTs, extEnd: extEnd, hhmm: hhmm, assassinGoal: assassinGoal, visibleActions: visibleActions, spellInfo: spellInfo, actionOdds: actionOdds, buildStory: buildStory, exportStory: exportStory, secretInfo: secretInfo, umbralInfo: umbralInfo, indagarInfo: indagarInfo, suspLevel: suspLevel, suspName: suspName, exportLog: exportLog, lastLogs: lastLogs, noteError: noteError,
     finishTurn: finishTurn, nextTurn: nextTurn, replaceWithNpc: replaceWithNpc, restoreFromNpc: restoreFromNpc, npcProfileFor: npcProfileFor,

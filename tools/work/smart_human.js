@@ -25,6 +25,7 @@ function turn(p,s){
     const ti=p.items.findIndex(it=>D.ITEMS[it.id].kind==="tome"); if(ti>=0){const so=U.studyOptions(p.id,ti); if(so.ok) U.learnSpell(p.id,rnd(3),"estable");} }
   const dy=al.find(x=>x.dying);
   if(p.alignment!=="asesino"&&dy&&can(p,"socorrer")&&Math.random()<0.7&&act(p,"socorrer",dy.id)) return;
+  if(process.env.NOATE!=="1"&&p.alignment!=="asesino"&&can(p,"atender")&&style[p.id]!=="agresivo"){ const bl=al.find(x=>!x.dying&&/sangra/.test(U.visibleHealth(x))); if(bl&&Math.random()<0.5&&act(p,"atender",bl.id)){res.atender=(res.atender||0)+1;return;} }
   if(p.alignment==="asesino"){
     if(can(p,"alzar")&&Math.random()<0.5){ const c=s.players.filter(x=>x.id!==p.id&&((x.dead&&(x.risenBy === undefined || x.risenBy === null)&&x.cause!=="devorado")||x.dying)); if(c.length&&act(p,"alzar",c[0].id)){res.alzar++;return;} }
     if(can(p,"sombra_guarda")&&Math.random()<0.1&&act(p,"sombra_guarda",null)) return;

@@ -5,6 +5,13 @@
 (function (w) {
   "use strict";
   w.UMBRAL_NEWS = [
+    { version: "1.10.0", fecha: "2026-11-20", titulo: "Salud más realista: tres zonas", puntos: [
+      "El cuerpo ahora tiene tres zonas: cabeza, torso y brazos y piernas. Cada zona guarda una sola lesión, con su gravedad (leve, seria o grave) y su tipo (corte, perforación, contusión, fractura o quemadura).",
+      "Sin sorpresas: un corte o una perforación de 3 o más de daño sangra siempre; las contusiones y quemaduras no. Y una herida abierta seria que lleva dos rondas sin cuidados se infecta; la ronda anterior se te avisa.",
+      "Tu ficha tiene un panel «Qué te pasa y qué hacer», con cuánto pierdes por ronda y en cuántas rondas caerías moribundo si nada cambia.",
+      "Nueva acción para todos: Atender. Cuidas a otro jugador sin objetos ni tirada: cortas su sangrado y frenas la infección. No cura vitalidad. Quien atiende no sabe qué había; el atendido sí lo sabe.",
+      "Los demás solo ven señales ambiguas (cojea, protege un brazo, se tambalea, sangra, pálido, vendado), iguales sin importar el motivo."
+    ] },
     { version: "1.9.0", fecha: "2026-11-20", titulo: "Reto de pulso y escuelas de magia", puntos: [
       "Nuevo reto opcional al actuar o conjurar: dos toques cuando la aguja pase por la zona clara. Acertar suma hasta +15 puntos a tu probabilidad de éxito; fallarlo del todo resta 6; omitirlo deja la probabilidad normal.",
       "Es el mismo reto, con la misma duración, para todas las acciones y todos los jugadores. Nadie pierde opciones por no jugarlo. En línea lo valida el servidor: no se puede falsear.",

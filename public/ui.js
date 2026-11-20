@@ -1,4 +1,4 @@
-/* EL UMBRAL — interfaz (v1.9.0) */
+/* EL UMBRAL — interfaz (v1.10.0) */
 (function () {
   "use strict";
 
@@ -33,7 +33,7 @@
   const FAMS = {
     a_investigar: "lore", a_proteger: "guard", a_explorar: "ember", a_meditar: "lore", a_robar: "dark", a_hechizar: "dark", a_apostar: "ember", a_ceder: "dark", a_resistir: "guard",
     a_cazar: "danger", a_trampa: "danger", a_sabotear: "dark", a_apunalar: "danger", a_envenenar: "dark", a_maldecir: "dark", a_aturdir: "danger", a_devorar: "danger", a_descansar: "heal", a_conjurar: "lore", a_tender: "heal",
-    a_indagar: "lore", st_indicio: "lore", a_socorrer: "heal", a_bendecir: "heal", a_sombra_espia: "dark", a_sombra_guarda: "dark", a_sombra_hostiga: "dark", a_alzar: "dark", a_entrenar: "ember", a_acusar: "danger", a_enfrentar: "danger",
+    a_indagar: "lore", st_indicio: "lore", a_socorrer: "heal", a_atender: "heal", a_bendecir: "heal", a_sombra_espia: "dark", a_sombra_guarda: "dark", a_sombra_hostiga: "dark", a_alzar: "dark", a_entrenar: "ember", a_acusar: "danger", a_enfrentar: "danger",
     a_romper: "danger", a_pacto: "gold", a_estudiar: "lore", a_aprender: "lore", a_perfeccionar: "lore", a_abstener: "mist",
     sp_rayo: "danger", sp_plaga: "dark", sp_marchitar: "danger", sp_grillete: "dark", sp_maleficio: "dark", sp_drenar: "dark", sp_pesadilla: "dark", sp_egida: "guard", sp_sanar: "heal", sp_velo: "guard", sp_purga: "heal", sp_reflejo: "guard", sp_presagio: "lore",
     as_fuego: "ember", as_hielo: "lore", as_luz: "gold", as_sangre: "danger", as_sombra: "dark", as_vacio: "dark",
@@ -134,7 +134,7 @@
   const FX_KIND = {
     apunalar: ["slash", "danger"], trampa: ["impact", "danger"], sabotear: ["snatch", "dark"], cazar: ["claws", "danger"], devorar: ["claws", "danger"], aturdir: ["impact", "danger"], envenenar: ["drip", "dark"], maldecir: ["close", "dark"],
     hechizar: ["flash", "dark"], robar: ["snatch", "dark"], investigar: ["scan", "lore"], explorar: ["scan", "ember"], proteger: ["shield", "guard"], resistir: ["shield", "guard"],
-    tender: ["shield", "heal"], meditar: ["glow", "lore"], descansar: ["glow", "heal"], socorrer: ["glow", "heal"], bendecir: ["glow", "gold"], alzar: ["glow", "dark"],
+    tender: ["shield", "heal"], atender: ["glow", "heal"], meditar: ["glow", "lore"], descansar: ["glow", "heal"], socorrer: ["glow", "heal"], bendecir: ["glow", "gold"], alzar: ["glow", "dark"],
     entrenar: ["impact", "ember"], apostar: ["coin", "ember"], ceder: ["close", "dark"], sombra_espia: ["scan", "dark"], sombra_guarda: ["shield", "dark"], sombra_hostiga: ["close", "dark"]
   };
   const ASP_FAM = { fuego: "ember", hielo: "lore", luz: "gold", sangre: "danger", sombra: "dark", vacio: "dark" };
@@ -605,8 +605,8 @@
     let hearts = "";
     for (let i = 0; i < hi.max; i++) hearts += ic("st_vitalidad", i < hi.hp ? "" : "off");
     const zones = (hi.zones || []).map(function (z) {
-      const lab = z.lvl >= 2 ? " grave" : z.lvl >= 1 ? " " + (z.dmg ? "−" + z.dmg : "dañado") : "";
-      return '<span class="zone l' + Math.min(2, z.lvl) + '">' + ic("z_" + z.id) + esc(z.name + lab) + "</span>";
+      const lab = z.n ? " · " + z.nivel + (z.tipo ? " (" + z.tipo + ")" : "") : "";
+      return '<span class="zone l' + Math.min(2, z.lvl) + '">' + ic("z_" + (z.id === "miembros" ? (z.part || "brazos") : z.id)) + esc(z.name + lab) + "</span>";
     }).join("");
     const attr = function (k, label, val) { return '<div class="attr f-' + famOf(k) + '"><span style="color:var(--ic)">' + ic(k) + "</span><b>" + val + "</b><span>" + label + "</span></div>"; };
     return '<div class="player">' +
@@ -615,6 +615,7 @@
       '<div class="srow"><span class="lab f-danger"><span style="color:var(--ic)">' + ic("st_vitalidad") + '</span>Vitalidad <b>' + hi.hp + '/' + hi.max + '</b></span></div>' +
       '<div class="hearts' + (hi.pct <= 30 || hi.dying ? " crit" : "") + '" aria-hidden="true">' + hearts + '</div>' +
       '<div class="zones">' + zones + '</div>' +
+      (hi.urgentes && hi.urgentes.length && !hi.dying ? '<div class="hurt"><b>' + ic("s_herido") + 'Qué te pasa y qué hacer</b>' + (function () { let last = ""; return hi.urgentes.map(function (u) { const t = u.todo && u.todo !== last ? u.todo : ""; if (u.todo) last = u.todo; return '<div class="small">' + esc(u.text) + (t ? ' <i>→ ' + esc(t) + '</i>' : '') + '</div>'; }).join(""); })() + '</div>' : '') +
       (chips.length ? '<div class="chips">' + chips.map(function (c) { return '<span class="schip ' + (c.k === "s_fortalecido" ? "good" : "bad") + '">' + ic(c.k) + esc(c.t) + '</span>'; }).join("") + '</div>' : '') +
       '<div class="attrs">' + attr("st_cuerpo", "Cuerpo", p.stats.cuerpo) + attr("st_mente", "Mente", p.stats.mente) + attr("st_sombra", "Sombra", p.stats.sombra) + attr("st_objetos", "Objetos", p.items.length) + attr("st_pistas", "Pistas", p.clues.length) + '</div>' +
       practiceLine(p) +
@@ -788,7 +789,7 @@
     if (mh) mh.onclick = function () { showMagicHelp = !showMagicHelp; const wasOpen = $("playerInteractions").open; renderSheet(p); $("playerInteractions").open = wasOpen; };
   }
 
-  const SHORT = { investigar: "Pistas sobre alguien", proteger: "Cubres a otro", explorar: "Objetos y pistas", meditar: "Calma la oscuridad y repone un conjuro", robar: "Quitas un objeto", hechizar: "Magia sucia, con pista", apostar: "Riesgo por premio", ceder: "Poder a cambio de alma", resistir: "Rechazas el poder", cazar: "Ataque secreto", apunalar: "Golpe con tu daga", envenenar: "Veneno retardado", trampa: "Salta la ronda siguiente", sabotear: "Su objeto fallará", maldecir: "Estorba sus tiradas", aturdir: "Pierde su turno", devorar: "Canibalismo", descansar: "Recuperas vitalidad", entrenar: "+1 a tus tiradas", tender: "Ayuda secreta", conjurar: "Lanzas un conjuro", socorrer: "Salvas a un moribundo", indagar: "Rastros de heridas y muertes recientes", bendecir: "Limpias oscuridad y te curas", sombra_espia: "Una pista, por la vía de las sombras", sombra_guarda: "Defensa con sombras", sombra_hostiga: "Maldices y manchas a alguien", alzar: "Un caído trabaja para ti" };
+  const SHORT = { atender: "Cortas su sangrado o infección", investigar: "Pistas sobre alguien", proteger: "Cubres a otro", explorar: "Objetos y pistas", meditar: "Calma la oscuridad y repone un conjuro", robar: "Quitas un objeto", hechizar: "Magia sucia, con pista", apostar: "Riesgo por premio", ceder: "Poder a cambio de alma", resistir: "Rechazas el poder", cazar: "Ataque secreto", apunalar: "Golpe con tu daga", envenenar: "Veneno retardado", trampa: "Salta la ronda siguiente", sabotear: "Su objeto fallará", maldecir: "Estorba sus tiradas", aturdir: "Pierde su turno", devorar: "Canibalismo", descansar: "Recuperas vitalidad", entrenar: "+1 a tus tiradas", tender: "Ayuda secreta", conjurar: "Lanzas un conjuro", socorrer: "Salvas a un moribundo", indagar: "Rastros de heridas y muertes recientes", bendecir: "Limpias oscuridad y te curas", sombra_espia: "Una pista, por la vía de las sombras", sombra_guarda: "Defensa con sombras", sombra_hostiga: "Maldices y manchas a alguien", alzar: "Un caído trabaja para ti" };
 
   /* Acciones aún cerradas (misma lista y requisitos para todos los jugadores; solo lo que el motor declara consultable). */
   function lockedRows(p) {
