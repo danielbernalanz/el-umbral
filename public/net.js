@@ -68,7 +68,7 @@
     if (!document.getElementById("verBanner")) {
       const d = document.createElement("div"); d.id = "verBanner";
       d.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:99999;background:#7a2b2b;color:#fff;padding:8px 12px;font:600 14px/1.3 sans-serif;text-align:center";
-      d.textContent = "Tu app es de otra versión que la sala (" + (LOCAL.VERSION || "?") + " / " + srv + "). Actualiza o reinstala la app para ver todas las opciones.";
+      d.textContent = "Tu app es de otra versión que la sala (" + (LOCAL.D.VERSION || "?") + " / " + srv + "). Actualiza o reinstala la app para ver todas las opciones.";
       document.body.appendChild(d);
     }
     return false;
@@ -207,7 +207,7 @@
     if (v.phase === "error") { if (UI().toast) UI().toast(v.msg || "Error del servidor.", true); return; }
     if (v.phase === "lobby") { lobby = v; renderRoom(); return; }
     if (!v.me || !v.players || !v.players[v.youId]) return;
-    if (v.srvVer && LOCAL.VERSION && v.srvVer !== LOCAL.VERSION && versionGuard(v.srvVer)) return;
+    if (v.srvVer && LOCAL.D && LOCAL.D.VERSION && v.srvVer !== LOCAL.D.VERSION && versionGuard(v.srvVer)) return;
     cur = v; offset = (v.serverNow || Date.now()) - Date.now(); st = buildState(v); B.sig = signature(v);
     if (!attached) { attached = true; if (UI().attach) UI().attach(B); return; }
     if (!silent && UI().onView) UI().onView();
