@@ -1,4 +1,4 @@
-/* EL UMBRAL — interfaz (v1.8.2) */
+/* EL UMBRAL — interfaz (v1.9.0) */
 (function () {
   "use strict";
 
@@ -383,6 +383,7 @@
     if ($("verTag") && D.VERSION) $("verTag").textContent = "v" + D.VERSION;
     if ($("btnCredits")) $("btnCredits").onclick = function () { try { if (typeof window.umbralShowCredits === "function") window.umbralShowCredits(); } catch (e) { toast("No se pudieron abrir los créditos.", true); } };
     newsWire();
+    skillWire();
     $("btnCloseHelp").onclick = function () { $("helpOverlay").classList.add("hidden"); };
     $("btnAdviceToggle").onclick = function () {
       const off = adviceOff();
@@ -926,12 +927,69 @@
     const grim = (p.items || []).some(function (i) { return i.id === "grimorio"; });
     const list = (p.spells || []).map(function (sp) {
       const pr = U.spellProgress(sp);
-      return '<div class="spellrow">' + spellMedals(sp) + '<div class="small"><b>' + esc(sp.name) + '</b> <span class="chip mid">' + ic("m_" + pr.level, "ic-sm") + " " + esc(pr.label) + '</span><br>' + (sp.kind === "off" ? "Ofensivo" : "Defensivo") + ' · ' + sp.uses + ' uso' + (sp.uses > 1 ? "s" : "") + '</div></div>';
+      return '<div class="spellrow">' + spellMedals(sp) + '<div class="small"><b>' + esc(sp.name) + '</b> <span class="chip mid">' + ic("m_" + pr.level, "ic-sm") + " " + esc(pr.label) + '</span> <span class="chip mid">' + esc(schoolOf(sp)) + '</span><br>' + (sp.kind === "off" ? "Ofensivo" : "Defensivo") + ' · ' + sp.uses + ' uso' + (sp.uses > 1 ? "s" : "") + '</div></div>';
     }).join("");
     return h3i("Conjuros", "a_conjurar") + (list || '<p class="small">Aún no conoces ninguno.</p>') +
       (grim ? '<p class="small">Tienes un grimorio: púlsalo en Objetos para estudiarlo.</p>' : '') +
       '<button class="ghost smallbtn" data-magichelp="1">' + ic("ui_ayuda") + (showMagicHelp ? "Ocultar ayuda" : "¿Cómo funciona la magia?") + '</button>' +
       (showMagicHelp ? '<div class="notice small">' + esc(MAGIA_VIAS) + (p.spells && p.spells.length ? '<br>' + p.spells.map(function (sp) { return '<b>' + esc(sp.name) + '</b>: ' + esc(sp.desc) + ' ' + esc(U.spellProgress(sp).next); }).join('<br>') : '') + '</div>' : '');
+  }
+
+  /* ---------- reto de pulso (opcional) ----------
+     Mismo reto, misma ventana y misma forma para TODAS las acciones. Local: el bonus se calcula en el móvil (partida entre amigos con
+     un solo dispositivo). En línea: el servidor emite la semilla y recalcula la puntuación con la traza de toques; aquí solo se juega. */
+  const SK = window.UmbralSkill;
+  function skillOff() {
+    try { const v = localStorage.getItem("umbral_noskill"); if (v === "1") return true; if (v === "0") return false; } catch (e) { /* sin almacenamiento */ }
+    try { const s = !NET && U.getState(); return !!(s && s.players && s.players.length >= 6); } catch (e) { return false; }   /* mesas locales grandes: desactivado por defecto */
+  }
+  function skillSet(off) { try { localStorage.setItem("umbral_noskill", off ? "1" : "0"); } catch (e) { /* nada */ } }
+  let skillBusy = false;
+  function withSkill(cb) {
+    if (!SK || skillOff() || skillBusy) { cb(undefined); return; }
+    if (NET) {
+      if (typeof U.challenge !== "function") { cb(undefined); return; }
+      skillBusy = true;
+      run(U.challenge(), function (r) { skillBusy = false; if (!r || !r.ok || !r.seed) { cb(undefined); return; } playSkill(r.seed, cb); });
+    } else playSkill(1 + Math.floor(Math.random() * 2147483646), cb);
+  }
+  function playSkill(seed, cb) {
+    const pl = SK.plan(seed), ov = $("skillOverlay"), W = SK.CFG.windowMs, taps = [];
+    let t0 = performance.now(), raf = 0, done = false;
+    const zone = $("skillZone"), needle = $("skillNeedle"), st = $("skillStatus");
+    $("skillInfo").textContent = "Toca cuando la aguja esté sobre la zona clara (2 toques). Acertar suma hasta +15 puntos a tu probabilidad; fallar del todo resta 6. Si omites, queda la probabilidad normal.";
+    function setZone() { const c = pl.centers[Math.min(taps.length, pl.centers.length - 1)]; zone.style.left = ((c - SK.CFG.width / 2) * 100) + "%"; zone.style.width = (SK.CFG.width * 100) + "%"; st.textContent = "Toque " + (taps.length + 1) + " de " + SK.CFG.taps; }
+    function finish(skillArg, msg) {
+      if (done) return; done = true; cancelAnimationFrame(raf);
+      if (msg) { st.textContent = msg; setTimeout(function () { ov.classList.add("hidden"); cb(skillArg); }, 900); } else { ov.classList.add("hidden"); cb(skillArg); }
+    }
+    function frame() {
+      if (done) return;
+      const t = performance.now() - t0;
+      needle.style.left = (SK.pos(pl, t) * 100) + "%";
+      $("skillTime").style.width = Math.max(0, 100 - (t / W) * 100) + "%";
+      if (t >= W) { finish(undefined, "Se acabó el tiempo: probabilidad normal."); return; }
+      raf = requestAnimationFrame(frame);
+    }
+    $("btnSkillTap").onclick = null;
+    $("btnSkillTap").onpointerdown = function (e) {
+      if (done) return; e.preventDefault();
+      taps.push(Math.round(performance.now() - t0));
+      if (taps.length < SK.CFG.taps) { setZone(); return; }
+      const s = SK.score(seed, taps);
+      if (s == null) { finish(undefined, "Toques demasiado rápidos: probabilidad normal."); return; }
+      const d = SK.delta(s);
+      finish(NET ? taps : d, "Pulso " + (s >= 0.8 ? "muy firme" : s >= 0.5 ? "firme" : s >= 0.25 ? "dudoso" : "torpe") + " (" + (d > 0 ? "+" : "") + d + " puntos).");
+    };
+    $("btnSkillTap").onkeydown = function (e) { if (e.key === " " || e.key === "Enter") { e.preventDefault(); $("btnSkillTap").onpointerdown(e); } };
+    $("btnSkillSkip").onclick = function () { finish(undefined); };
+    setZone(); ov.classList.remove("hidden"); t0 = performance.now(); raf = requestAnimationFrame(frame);
+  }
+  function skillWire() {
+    const b = $("btnSkillToggle"); if (!b) return;
+    const lbl = function () { setLbl(b, skillOff() ? "Retos de pulso: desactivados" : "Retos de pulso: activados"); };
+    b.onclick = function () { skillSet(!skillOff()); lbl(); toast(skillOff() ? "Retos de pulso desactivados: siempre probabilidad normal." : "Retos de pulso activados."); };
+    $("btnHelp").addEventListener("click", lbl);
   }
 
   const MODES = [
@@ -940,8 +998,11 @@
     ["desatado", "Desatado", "Más potente (+1) y deja un estallido visible, pero más difícil (+1), te mancha (+3 oscuridad) y si falla te estalla en las manos (2 de daño)."]
   ];
   function doCast(spellId, targetId, mode) {
+    withSkill(function (sk) { doCastGo(spellId, targetId, mode, sk); });
+  }
+  function doCastGo(spellId, targetId, mode, sk) {
     const p = U.currentPlayer(), hp0 = p.hp;
-    run(U.cast(p.id, spellId, targetId, mode), function (res) {
+    run(U.cast(p.id, spellId, targetId, mode, sk), function (res) {
       if (!res.ok) { if (NET && U.currentPlayer().acted) { endTurn(); return; } $("actionHint").textContent = onl(res.msg); return; }
       pendingSpell = null;
       const p2 = U.currentPlayer(), sp = (p2.spells || []).find(function (x) { return x.id === spellId; }) || (p.spells || []).find(function (x) { return x.id === spellId; });
@@ -954,9 +1015,10 @@
       showRoll({ title: "CONJURO", icon: "a_conjurar", result: res, text: res.outcome, fx: o.fx, hit: o.hit, heal: o.heal, dying: o.dying, buttons: [{ label: "Continuar", cls: "primary", onClick: endTurn }] });
     });
   }
+  function schoolOf(sp) { const S = D.SPELL_SCHOOLS; return S ? (S.names[S.of[sp.form]] || "Umbral") : "Umbral"; }
   function spellLine(sp, info) {
     return '<span class="small">' + (sp.kind === "off" ? "Ofensivo" : "Defensivo") + ' · ' + esc(sp.desc) + '</span>' +
-      '<span class="small">Usa tu ' + esc(info.attr) + ' · ' + sp.uses + ' uso' + (sp.uses > 1 ? "s" : "") + ' · ' + esc(U.spellProgress(sp).label) + '</span>';
+      '<span class="small">Escuela de ' + esc(schoolOf(sp)) + ' · nivel 1 (básico)</span><span class="small">Usa tu ' + esc(info.attr) + ' · ' + sp.uses + ' uso' + (sp.uses > 1 ? "s" : "") + ' · ' + esc(U.spellProgress(sp).label) + '</span>';
   }
   function probChip(prob) {
     return ' <span class="chip ' + (prob >= 70 ? "good" : prob >= 45 ? "mid" : "low") + '">' + prob + '% éxito</span>';
@@ -1162,10 +1224,14 @@
 
   function doAction(a, targetId, stakeId) {
     if (!a) { toast("No hay acción pendiente.", true); return; }
+    if (!U.currentPlayer()) { toast("La partida no está en un turno válido.", true); return; }
+    withSkill(function (sk) { doActionGo(a, targetId, stakeId, sk); });
+  }
+  function doActionGo(a, targetId, stakeId, sk) {
     const p = U.currentPlayer();
     if (!p) { toast("La partida no está en un turno válido.", true); return; }
     const hp0 = p.hp;
-    run(U.act(p.id, a.id, targetId, stakeId), function (res) {
+    run(U.act(p.id, a.id, targetId, stakeId, sk), function (res) {
       if (!res.ok) { if (NET && U.currentPlayer().acted) { endTurn(); return; } $("actionHint").textContent = onl(res.msg); return; }
       fxSelf(U.currentPlayer(), hp0);
       pendingAction = null; pendingStake = null; pendingItem = null; pendingMode = null; pendingSpell = null; pendingStudy = null;

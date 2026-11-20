@@ -20,6 +20,7 @@ with sync_playwright() as pw:
     vis=lambda s: page.locator(s).count() and page.locator(s).first.is_visible()
     shots=set(); proposed=0; accused=0; accepted=0
     for _ in range(400):
+        if vis("#skillOverlay"): page.click("#btnSkillSkip"); continue
         if vis("#overlay"):
             bt=page.locator("#rollActions button")
             if bt.count(): 

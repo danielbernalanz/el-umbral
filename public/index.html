@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0d0a11">
-<title>EL UMBRAL — v1.8.2</title>
+<title>EL UMBRAL — v1.9.0</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="manifest" href="manifest.webmanifest">
@@ -278,6 +278,9 @@
     <h3 class="h3i" data-ic="ui_ajustes">Consejos</h3>
     <p class="small">Durante tus turnos puede aparecer un recuadro «Consejo» con una sugerencia. Si te molesta, desactívalos aquí.</p>
     <button class="ghost smallbtn" id="btnAdviceToggle" data-ic="ui_ajustes"><span class="lbl">Desactivar los consejos de la partida</span></button>
+    <h3 class="h3i" data-ic="ui_ajustes">Reto de pulso</h3>
+    <p class="small">Al actuar puedes jugar un reto opcional de dos toques: acertar la zona clara suma hasta +15 puntos a tu probabilidad de éxito, fallarla del todo resta 6, y omitirlo deja la probabilidad normal. Es el mismo reto para todas las acciones y jugadores, y nadie pierde opciones por no hacerlo.</p>
+    <button class="ghost smallbtn" id="btnSkillToggle" data-ic="ui_ajustes"><span class="lbl">Retos de pulso: activados</span></button>
     <h3 class="h3i" data-ic="ui_sonido">Sonido y vibración</h3>
     <p class="small">El ambiente sonoro (viento, campana del Consejo, latido, tono final) está apagado por defecto y se genera en el propio móvil. La vibración solo se dispara cuando el móvil ya está en manos de quien afecta, nunca al pasarlo. «Solo turno» da el mismo toque a todos al empezar su turno, sin distinguir nada; úsalo si os preocupa que alguien oiga el zumbido.</p>
     <div class="row"><button class="ghost smallbtn" id="btnSoundHelp" data-ic="ui_silencio"><span class="lbl">Sonido: apagado</span></button><button class="ghost smallbtn" id="btnVibHelp" data-ic="ui_vibrar"><span class="lbl">Vibración: completa</span></button></div>
@@ -396,6 +399,18 @@
   </div>
 </div>
 
+<!-- Reto de pulso (opcional, igual para todas las acciones) -->
+<div id="skillOverlay" class="overlay hidden" style="z-index:60">
+  <div class="rollcard skillcard">
+    <div class="tag">RETO DE PULSO · OPCIONAL</div>
+    <p class="small" id="skillInfo"></p>
+    <div class="skillbar" id="skillBar" aria-hidden="true"><div class="skillzone" id="skillZone"></div><div class="skillneedle" id="skillNeedle"></div></div>
+    <div class="small" id="skillStatus" aria-live="polite"></div>
+    <div class="skilltime" aria-hidden="true"><i id="skillTime"></i></div>
+    <div class="stack"><button class="primary" id="btnSkillTap">Tocar</button><button class="ghost" id="btnSkillSkip">Omitir (probabilidad normal)</button></div>
+  </div>
+</div>
+
 <!-- Capa de tiradas -->
 <div id="overlay" class="overlay hidden">
   <div class="rollcard">
@@ -414,6 +429,7 @@
 <script src="img/creditos.js"></script>
 <script src="news.js"></script>
 <script src="data.js"></script>
+<script src="challenge.js"></script>
 <script src="engine.js"></script>
 <script src="npc.js"></script>
 <script src="fx.js"></script>

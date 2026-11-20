@@ -5,6 +5,8 @@ const { loadEngine } = require("./engine_vm");
 const view = require("./view");
 const { shielded } = require("./order");
 const vm = require("node:vm");
+const crypto = require("node:crypto");
+const SK = require("../public/challenge.js");
 
 /* Tiempos de la fase simultánea (ms). timeScale solo se usa en pruebas rápidas. */
 const T = { warn: 15000, grace: 25000, offline: 10000, cont: 30000, vote: 30000, read: 10000, restore: 60000, restoreTurn: 90000, restoreOffline: 60000 };
@@ -53,6 +55,26 @@ class Game {
     const rd = Number(opts.readMs != null ? opts.readMs : process.env.UMBRAL_READ_MS);
     this.readMs = isFinite(rd) && rd >= 0 && (opts.readMs != null || process.env.UMBRAL_READ_MS != null) ? rd : T.read;
   }
+
+  /* ---------- reto de habilidad (opcional) ----------
+     El servidor emite la semilla y recalcula la puntuación con la traza de toques; el cliente nunca manda el bonus.
+     Un reto vale una sola acción; si falta, caduca o no es plausible, el bonus es 0 (probabilidad base): nunca penaliza. */
+  issueChallenge(pid) {
+    this.chal = this.chal || {};
+    const seed = crypto.randomInt(1, 2147483647);
+    this.chal[pid] = { seed, at: this.now() };
+    return { ok: true, seed, windowMs: SK.CFG.windowMs };
+  }
+  skillFor(pid, taps) {
+    const c = this.chal && this.chal[pid];
+    if (!c || taps == null) return { delta: 0, c: null };
+    const el = this.now() - c.at;
+    if (el > SK.CFG.windowMs + SK.CFG.graceMs) return { delta: 0, c };
+    const s = SK.score(c.seed, taps);
+    if (s == null || el < taps[taps.length - 1] - 150) return { delta: 0, c };  /* no se puede terminar antes de lo que dura la traza */
+    return { delta: SK.delta(s), c };
+  }
+  endChallenge(pid, c) { if (this.chal && this.chal[pid] === c) delete this.chal[pid]; }
 
   S() { return this.U.getState(); }
   get phase() { return this.S().phase; }
@@ -451,10 +473,12 @@ class Game {
 }
 
 /* ---------- tabla de comandos: fase, validación de argumentos, ejecución ---------- */
+/* traza del reto: null o exactamente 2 tiempos (ms) */
+const isTaps = (v) => v == null || (Array.isArray(v) && v.length === SK.CFG.taps && v.every((x) => typeof x === "number" && Number.isFinite(x)));
 const priv = (check, run) => ({ phase: "private", check, run });
 const COMMANDS = {
   act: priv(
-    (g, pid, a) => isStr(a[0]) && isIdOrNull(a[1]) && (a[2] == null || isIdStr(a[2])),
+    (g, pid, a) => isStr(a[0]) && isIdOrNull(a[1]) && (a[2] == null || isIdStr(a[2])) && isTaps(a[3]),
     (g, pid, a) => {
       const D = g.D, act = D.ACTIONS.find((x) => x.id === a[0]);
       if (act && act.target) {
@@ -462,17 +486,26 @@ const COMMANDS = {
         if (!ok) return bad(GENERIC_BAD_TARGET);
         if (g.readLocked()) return bad(READ_MSG);
       }
-      return g._runAs(pid, () => g.U.act(pid, a[0], act && act.target ? a[1] : null, a[2] == null ? null : a[2]));
+      const sk = g.skillFor(pid, a[3]);
+      const r = g._runAs(pid, () => g.U.act(pid, a[0], act && act.target ? a[1] : null, a[2] == null ? null : a[2], sk.delta));
+      if (r && r.ok) g.endChallenge(pid, sk.c);
+      return r;
     }),
   pushLuck: priv((g, pid, a) => a.length === 0, (g, pid) => g._runAs(pid, () => g.U.pushLuck(pid))),
   cast: priv(
-    (g, pid, a) => isIdStr(a[0]) && isIdOrNull(a[1]) && (a[2] == null || isStr(a[2], 12)),
+    (g, pid, a) => isIdStr(a[0]) && isIdOrNull(a[1]) && (a[2] == null || isStr(a[2], 12)) && isTaps(a[3]),
     (g, pid, a) => {
       const sp = (g.S().players[pid].spells || []).find((s) => s.id === a[0]);
       if (sp && sp.target && view.aliveOthers(g, pid).indexOf(a[1]) === -1) return bad(GENERIC_BAD_TARGET);
       if (sp && sp.target && g.readLocked()) return bad(READ_MSG);
-      return g._runAs(pid, () => g.U.cast(pid, a[0], sp && sp.target ? a[1] : null, a[2] || "normal"));
+      const sk = g.skillFor(pid, a[3]);
+      const r = g._runAs(pid, () => g.U.cast(pid, a[0], sp && sp.target ? a[1] : null, a[2] || "normal", sk.delta));
+      if (r && r.ok) g.endChallenge(pid, sk.c);
+      return r;
     }),
+  challenge: priv(
+    (g, pid, a) => a.length === 0,
+    (g, pid) => (g.S().players[pid].acted || g.S().players[pid].dying ? bad(NOT_NOW) : g.issueChallenge(pid))),
   useItem: priv(
     (g, pid, a) => isInt(a[0], 0, 30) && isIdOrNull(a[1]),
     (g, pid, a) => {

@@ -635,3 +635,12 @@ button.primary.big:disabled{opacity:.45}
 }
 
 .susp{letter-spacing:.5px;color:var(--gold)}.susp.s3{color:#e0a64a}.susp.s4{color:#e06a5a}
+
+/* Reto de pulso (v1.9.0) */
+.skillcard{max-width:420px;width:100%;text-align:center}
+.skillbar{position:relative;height:46px;margin:14px 4px 6px;border-radius:12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);overflow:hidden;touch-action:none}
+.skillzone{position:absolute;top:0;bottom:0;background:linear-gradient(180deg,rgba(120,210,150,.55),rgba(120,210,150,.25));border-left:2px solid rgba(160,240,190,.9);border-right:2px solid rgba(160,240,190,.9);transition:left .15s,width .15s}
+.skillneedle{position:absolute;top:-2px;bottom:-2px;width:4px;margin-left:-2px;border-radius:3px;background:#f3d9a0;box-shadow:0 0 10px rgba(243,217,160,.9)}
+.skilltime{height:4px;border-radius:3px;background:rgba(255,255,255,.1);margin:8px 4px 12px;overflow:hidden}
+.skilltime i{display:block;height:100%;width:100%;background:rgba(243,217,160,.7)}
+.skillcard button{touch-action:manipulation}

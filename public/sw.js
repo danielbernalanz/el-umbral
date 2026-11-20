@@ -1,10 +1,11 @@
-const CACHE = "umbral-v18-2";
+const CACHE = "umbral-v19-0";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./data.js",
   "./news.js",
+  "./challenge.js",
   "./engine.js",
   "./npc.js",
   "./fx.js",

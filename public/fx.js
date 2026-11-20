@@ -1,4 +1,4 @@
-/* EL UMBRAL — vibración y ambiente sonoro (v1.8.2)
+/* EL UMBRAL — vibración y ambiente sonoro (v1.9.0)
    Todo es opcional y a prueba de fallos: sin vibración o sin WebAudio no pasa nada.
    Vibración: 0 = apagada, 1 = solo el toque (idéntico) al empezar el turno, 2 = completa (por defecto).
    Sonido: sintetizado con WebAudio (sin archivos). Apagado por defecto; el AudioContext solo se crea tras un gesto del usuario

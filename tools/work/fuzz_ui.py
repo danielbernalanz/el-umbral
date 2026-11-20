@@ -19,6 +19,7 @@ with sync_playwright() as pw:
         try:
             if vis("#ending"): break
             if vis("#logOverlay"): page.click("#btnLogClose"); continue
+            if vis("#skillOverlay"): page.click("#btnSkillSkip"); continue
             if vis("#overlay"):
                 bt=page.locator("#rollActions button")
                 if bt.count():

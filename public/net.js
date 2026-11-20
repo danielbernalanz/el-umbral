@@ -256,9 +256,10 @@
     tick: function () {}, noteError: function () {}, save: function () {}, hasSave: function () { return null; },
     clearSave: function () { closeStream(); clearSession(); },
     /* --- mutaciones: Promise<{ok,msg,...}> --- */
-    act: function (pid, aid, t, stake) { return cmd("act", [aid, nn(t), nn(stake)]); },
+    act: function (pid, aid, t, stake, sk) { return cmd("act", [aid, nn(t), nn(stake), Array.isArray(sk) ? sk : null]); },
+    challenge: function () { return cmd("challenge", []); },
     pushLuck: function () { return cmd("pushLuck", []); },
-    cast: function (pid, sid, t, mode) { return cmd("cast", [sid, nn(t), mode]); },
+    cast: function (pid, sid, t, mode, sk) { return cmd("cast", [sid, nn(t), mode, Array.isArray(sk) ? sk : null]); },
     useItem: function (pid, idx, t) { return cmd("useItem", [idx, nn(t)]); },
     studyOptions: function (pid, idx) { return cmd("study", [idx]); },
     learnSpell: function (pid, idx, form) { return cmd("learnSpell", [idx, form]); },

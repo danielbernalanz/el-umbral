@@ -190,6 +190,12 @@ def bot_step(c, rnd):
         if c.vis("#btnTwKeep"): c.pg.click("#btnTwKeep")
         elif btn.count(): btn.nth(rnd.randrange(btn.count())).click(timeout=3000)
         return "act"
+    if c.vis("#skillOverlay"):
+        # reto de pulso: unas veces dos toques (valida el camino del servidor), otras se omite
+        if rnd.random() < .6:
+            c.pg.locator("#btnSkillTap").dispatch_event("pointerdown"); c.pg.wait_for_timeout(160); c.pg.locator("#btnSkillTap").dispatch_event("pointerdown"); c.pg.wait_for_timeout(1100)
+        else: c.pg.click("#btnSkillSkip")
+        return "act"
     if c.vis("#overlay"):
         bt = c.pg.locator("#rollActions button")
         if bt.count(): bt.nth(rnd.randrange(bt.count()) if rnd.random() < .4 else 0).click(timeout=3000); return "act"
@@ -269,7 +275,7 @@ def privacy_scan(cs, leaks, structural, ctl):
                 if t[k] and t[k] != mine.get(k): probe.append((k, t[k]))
             mine_notes = [x for x in (mine.get("allNotes") or [])]
             for n in t["notes"]:
-                if n.split(": ", 1)[-1] in mine_notes or any(n.split(": ", 1)[-1] in m for m in mine_notes) or any(n in x for x in (mine.get("pubClues") or [])): continue  # nota genérica que también recibió este jugador
+                if n.split(": ", 1)[-1] in mine_notes or any(n.split(": ", 1)[-1] in m for m in mine_notes) or any(n[:60] in m for m in mine_notes) or any(n in x for x in (mine.get("pubClues") or [])): continue  # nota genérica que también recibió este jugador
                 probe.append(("nota", n[:60]))
             for n in t["clues"]:
                 if n in (mine.get("clues") or []) or any(n in x for x in (mine.get("pubClues") or [])): continue  # rumor/testimonio público o pista idéntica que también tiene este jugador

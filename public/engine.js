@@ -1,4 +1,4 @@
-/* EL UMBRAL — motor de juego (v1.8.2)
+/* EL UMBRAL — motor de juego (v1.9.0)
    Sin DOM. Toda la lógica vive aquí para poder probarla con Node. */
 (function (g) {
   "use strict";
@@ -756,7 +756,7 @@
     else if (sp.kind === "off" && !sp.stealth) cost.push("deja rastro público (se oyen palabras)");
     return { prob: c.prob, diff: c.diff, bonus: c.bonus, attr: c.attr, mods: c.why, power: c.power, effect: spellFormText(sp.form, c.power, asp.dur || 0), cost: cost.filter(Boolean), uses: sp.uses, kind: sp.kind, target: sp.target, mode: mode };
   }
-  function cast(actorId, spellId, targetId, modeArg) {
+  function cast(actorId, spellId, targetId, modeArg, skill) {
     if (!state || state.phase !== "private") return err("Ahora no puedes actuar.");
     if (state.handoff) return err("Primero entrega el móvil.");
     if (state.turn !== actorId) return err("No es tu turno.");
@@ -790,8 +790,9 @@
       text = "Tu conjuro choca contra un reflejo plateado y rebota. Te alcanza una maldición.";
     } else {
       const sc = spellCheck(p, sp, t, mode);
-      const r = rollCheck(p, sc.attr, sc.diff);
+      const r = rollCheck(p, sc.attr, sc.diff, skill);
       res.why = ["tu " + sc.attr + " (" + p.stats[sc.attr] + ")"].concat(sc.why);
+      if (r.skillFlip) res.why.push(r.skillFlip > 0 ? "tu pulso firme inclinó la tirada a tu favor" : "tu pulso torpe empeoró la tirada");
       res.die = r.die; res.stat = r.stat; res.focus = r.focus; res.status = r.status || 0; res.total = r.total; res.diff = r.diff; res.crit = r.crit; res.fumble = r.fumble; res.success = r.success;
       if ((asp.selfCorr || 0) > 0 || sp.tune === "potente" || f.kind === "off") darkAct(p);
       if ((asp.selfCorr || 0) < 0) antiAct(p);
@@ -1878,7 +1879,21 @@
     return { die: die, stat: bonus, focus: 0, total: total, diff: diff, crit: crit, fumble: fumble, success: success };
   }
 
-  function rollCheck(p, attr, diff) {
+  /* Reto de habilidad (opcional): corrige la tirada YA hecha para desplazar la probabilidad de éxito exactamente `delta` puntos
+     (−6..+15). El dado manda: crítico y pifia no cambian. Sin reto (delta 0) la tirada es idéntica a la de siempre. */
+  const SKILL_MIN = -6, SKILL_MAX = 15;
+  function skillClamp(d) { d = Math.round(Number(d)); return isFinite(d) ? clamp(d, SKILL_MIN, SKILL_MAX) : 0; }
+  function skillAdjust(r, bonus, diff, delta) {
+    delta = skillClamp(delta);
+    if (!delta || r.crit || r.fumble) return r;
+    let okN = 0, flip = 0; /* caras 2-5 que aciertan / que fallan (1 y 6 no se tocan) */
+    for (let d = 2; d <= 5; d++) { if (d + bonus >= diff) okN++; }
+    const failMass = (4 - okN) / 6;
+    if (delta > 0 && !r.success) { flip = failMass > 0 ? Math.min(1, (delta / 100) / failMass) : 0; if (Math.random() < flip) { r.success = true; r.skillFlip = 1; } }
+    else if (delta < 0 && r.success) { const okMass = okN / 6; flip = okMass > 0 ? Math.min(1, (-delta / 100) / okMass) : 0; if (Math.random() < flip) { r.success = false; r.skillFlip = -1; } }
+    return r;
+  }
+  function rollCheck(p, attr, diff, skill) {
     const die = d6();
     const stat = (attr ? p.stats[attr] + corrMod(p, attr) + zoneMod(p, attr) : 0) + statusMod(p);
     const focus = p.focus > 0 ? p.focus : 0;
@@ -1887,11 +1902,12 @@
     const crit = die === 6;
     const fumble = die === 1;
     const success = crit ? true : fumble ? false : total >= diff;
-    return { die: die, stat: stat, focus: focus, status: statusMod(p), total: total, diff: diff, crit: crit, fumble: fumble, success: success };
+    const r = { die: die, stat: stat, focus: focus, status: statusMod(p), total: total, diff: diff, crit: crit, fumble: fumble, success: success };
+    return skill ? skillAdjust(r, stat + focus, diff, skill) : r;
   }
 
   /* ---------- acciones privadas ---------- */
-  function act(actorId, actionId, targetId, stakeId) {
+  function act(actorId, actionId, targetId, stakeId, skill) {
     if (!state || state.phase !== "private") return err("Ahora no puedes actuar.");
     if (state.handoff) return err("Primero entrega el móvil.");
     if (state.turn !== actorId) return err("No es tu turno.");
@@ -1992,7 +2008,8 @@
         if (p.virtue >= 70) why.push("tu virtud lo facilita (−1 dificultad)"); else if (p.virtue <= 30) why.push("tu virtud baja lo complica (+1 dificultad)");
       }
     }
-    const r = a.risk ? rollCheck(p, a.attr, diff) : { die: 0, stat: 0, focus: 0, total: 0, diff: 0, crit: false, fumble: false, success: true };
+    const r = a.risk ? rollCheck(p, a.attr, diff, skill) : { die: 0, stat: 0, focus: 0, total: 0, diff: 0, crit: false, fumble: false, success: true };
+    if (r.skillFlip) why.push(r.skillFlip > 0 ? "tu pulso firme inclinó la tirada a tu favor" : "tu pulso torpe empeoró la tirada");
     if (a.id === "cazar" && t && t.dying && !p.huntBlocked) { r.success = true; r.fumble = false; r.rematar = true; }
     const wasDyingT = !!(t && t.dying);
     /* Sabotaje: el frasco/pergamino/porra estropeado por otro falla siempre. */
@@ -3652,7 +3669,7 @@
     currentPlayer: function () { return state ? state.players[state.turn] : null; },
     act: wrapLog("act", act), pushLuck: wrapLog("pushLuck", pushLuck), useItem: wrapLog("useItem", useItem),
     maxHp: maxHp, visibleHealth: visibleHealth, healthInfo: healthInfo,
-    _health: { damage: damage, heal: heal, finish: finish, stabilize: stabilize, pickZone: pickZone, zoneLvl: zoneLvl, zoneMod: zoneMod, initHealth: initHealth },
+    _skill: { rollCheck: rollCheck }, _health: { damage: damage, heal: heal, finish: finish, stabilize: stabilize, pickZone: pickZone, zoneLvl: zoneLvl, zoneMod: zoneMod, initHealth: initHealth },
     getSince: getSince, endAtTs: endAtTs, extEnd: extEnd, hhmm: hhmm, assassinGoal: assassinGoal, visibleActions: visibleActions, spellInfo: spellInfo, actionOdds: actionOdds, buildStory: buildStory, exportStory: exportStory, secretInfo: secretInfo, umbralInfo: umbralInfo, indagarInfo: indagarInfo, suspLevel: suspLevel, suspName: suspName, exportLog: exportLog, lastLogs: lastLogs, noteError: noteError,
     finishTurn: finishTurn, nextTurn: nextTurn, replaceWithNpc: replaceWithNpc, restoreFromNpc: restoreFromNpc, npcProfileFor: npcProfileFor,
     beginCouncil: beginCouncil, councilPrompt: councilPrompt,

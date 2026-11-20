@@ -1,4 +1,4 @@
-/* EL UMBRAL — datos del juego (v1.8.2)
+/* EL UMBRAL — datos del juego (v1.9.0)
    Roles, afinidades, objetos, acciones, eventos, secretos y pistas. */
 (function (g) {
   "use strict";
@@ -233,7 +233,13 @@
   const NPC_PROFILES = { prudente: "Prudente", agresivo: "Agresivo", curandero: "Curandero", oscuro: "Oscuro" };
   const NPC_NAMES = ["Brisa", "Cuervo", "Dara", "Elan", "Fenn", "Gaia", "Hael", "Ibis", "Jora", "Kael", "Lumi", "Mirt", "Nox", "Orla", "Pyra", "Quill", "Rhea", "Sable", "Tilo", "Vesta"];
 
-  const D = { VERSION: "1.8.2", NPC_PROFILES, NPC_NAMES, STATUS, ROLES, AFFINITIES, ITEMS, LOOT_ITEMS, DARK_ITEMS, UTIL_ITEMS, MEDIC_ITEMS, ACTIONS, STAKES, EVENTS, CLUES, ASSASSIN_CLUES, SECRETS };
+  /* Escuelas de magia (v1.9.0, metadatos): cada forma de conjuro pertenece a una escuela; agrupa y da sabor, NO cambia tiradas.
+     Todo lo actual es Tier 1 (básico). Tiers 2+, afinidad y resolución por capas: v1.9.1. */
+  const SPELL_SCHOOLS = {
+    names: { luz: "Luz", sombra: "Sombra", naturaleza: "Naturaleza", mente: "Mente", umbral: "Umbral" },
+    of: { egida: "luz", sanar: "luz", purga: "luz", presagio: "mente", maleficio: "mente", drenar: "mente", velo: "umbral", reflejo: "umbral", grillete: "umbral", rayo: "sombra", pesadilla: "sombra", plaga: "naturaleza", marchitar: "naturaleza" }
+  };
+  const D = { VERSION: "1.9.0", SPELL_SCHOOLS, NPC_PROFILES, NPC_NAMES, STATUS, ROLES, AFFINITIES, ITEMS, LOOT_ITEMS, DARK_ITEMS, UTIL_ITEMS, MEDIC_ITEMS, ACTIONS, STAKES, EVENTS, CLUES, ASSASSIN_CLUES, SECRETS };
   g.UMBRAL_DATA = D;
   if (typeof module !== "undefined") module.exports = D;
 })(typeof globalThis !== "undefined" ? globalThis : this);

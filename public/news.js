@@ -5,6 +5,12 @@
 (function (w) {
   "use strict";
   w.UMBRAL_NEWS = [
+    { version: "1.9.0", fecha: "2026-11-20", titulo: "Reto de pulso y escuelas de magia", puntos: [
+      "Nuevo reto opcional al actuar o conjurar: dos toques cuando la aguja pase por la zona clara. Acertar suma hasta +15 puntos a tu probabilidad de éxito; fallarlo del todo resta 6; omitirlo deja la probabilidad normal.",
+      "Es el mismo reto, con la misma duración, para todas las acciones y todos los jugadores. Nadie pierde opciones por no jugarlo. En línea lo valida el servidor: no se puede falsear.",
+      "Se puede desactivar desde la ayuda («Retos de pulso»). En mesas locales de 6 o más jugadores viene desactivado de serie.",
+      "Los conjuros muestran su escuela (Luz, Sombra, Naturaleza, Mente o Umbral). De momento solo agrupa y da sabor: no cambia las tiradas."
+    ] },
     { version: "1.8.2", fecha: "2026-11-20", titulo: "Sospecha y contradicciones", puntos: [
       "Acusar ya no revela quién es el Asesino con certeza: nadie ve si tus pruebas eran buenas. Solo sube la sospecha pública sobre esa persona.",
       "Cada jugador tiene un marcador público de sospecha (0 a 4). Sube cuando varios jugadores distintos le acusan, cuando le contradicen con éxito y con actos hostiles a la vista; baja con rondas tranquilas y con actos de bien.",
