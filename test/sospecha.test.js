@@ -1,5 +1,5 @@
 "use strict";
-/* v1.8.2: sospecha acumulada + contradecir. Acusar ya no revela el rol; marcador público 0-4; contradicción veraz o gastada; no-fuga. */
+/* v1.8.2/v1.12.0: sospecha acumulada + presentar pista. Acusar ya no revela el rol; marcador público 0-4; contradicción veraz o gastada; no-fuga. */
 const test = require("node:test");
 const assert = require("node:assert");
 const { loadEngine } = require("../server/engine_vm");
@@ -102,42 +102,49 @@ function withLead(S, author, victim, who) {
   S.players[who].leadSeq = 1;
 }
 
-test("contradecir: pista veraz que apunta al autor sube su sospecha; si no encaja, se gasta sin efecto", () => {
+test("presentar pista: pública sin autor ni oráculo; no mueve la sospecha; se gasta; el autor del rastro se entera en privado", () => {
   const { U, S } = mk(4);
   withLead(S, 1, 2, 0);
-  const o = (toCouncil(U, S), null);
+  toCouncil(U, S);
   S.phase = "private"; S.turn = 0; S.handoff = false; S.players[0].acted = true;
   const opts = U.declareOptions(0);
   assert.ok(opts && opts.leads.length === 1 && opts.leads[0].i === 1);
-  assert.ok(!U.declare(0, "contradiccion", 1, 99).ok, "pista inexistente");
-  assert.ok(U.declare(0, "contradiccion", 3, 1).ok);
+  assert.ok(!U.declare(0, "pista", null, 99).ok, "pista inexistente");
+  assert.ok(U.declare(0, "pista", null, 1).ok);
   S.phase = "council";
   const r = U.resolveCouncil();
   assert.strictEqual(r.length, 1);
-  assert.strictEqual(S.players[3].suspPts, 0, "Pablo no era el autor: nada");
+  assert.strictEqual(r[0].actor, null, "sin autor");
+  assert.strictEqual(r[0].target, null);
+  assert.ok(/Sobre X: un golpe directo/.test(r[0].res.text), "texto tal como lo viste");
+  S.players.forEach((p) => assert.strictEqual(p.suspPts || 0, 0, "ninguna sospecha se mueve (sin oráculo)"));
   assert.ok(S.players[0].leads[0].used, "la pista se gasta");
-  assert.ok(!/Sobre X|golpe/.test(r[0].res.text + r[0].res.log), "no revela la pista");
+  assert.ok(S.players[0].notes.some((n) => /presentaste una pista/.test(n)));
+  assert.ok(S.players[1].notes.some((n) => /rastro tuyo/.test(n)), "el autor se entera en privado");
+  assert.ok(!S.players[2].notes.some((n) => /rastro tuyo/.test(n)));
   /* la misma pista ya no se puede reutilizar */
   S.phase = "private"; S.turn = 0; S.handoff = false; S.players[0].acted = true;
   assert.strictEqual(U.declareOptions(0).leads.length, 0);
-  assert.ok(!U.declare(0, "contradiccion", 3, 1).ok);
-  /* acierto */
-  const g = mk(4); withLead(g.S, 1, 2, 0);
-  toCouncil(g.U, g.S);
-  g.S.phase = "private"; g.S.turn = 0; g.S.handoff = false; g.S.players[0].acted = true;
-  assert.ok(g.U.declare(0, "contradiccion", 1, 1).ok);
-  g.S.phase = "council";
-  const r2 = g.U.resolveCouncil();
-  assert.strictEqual(g.S.players[1].suspPts, 2);
-  assert.strictEqual(g.U.suspLevel(g.S.players[1]), 1);
-  assert.strictEqual(r2[0].res.text.replace(/Pablo|Luis/g, "N"), r[0].res.text.replace(/Pablo|Luis/g, "N"), "texto público idéntico acierte o falle");
+  assert.ok(!U.declare(0, "pista", null, 1).ok);
 });
 
-test("contradecir sin pistas no se ofrece; no se puede declarar", () => {
+test("presentar pista: máximo una por consejo y la víctima no se delata («Sobre ti» se nombra)", () => {
+  const { U, S } = mk(4);
+  withLead(S, 1, 0, 0);
+  S.players[0].leads[0].text = "Sobre ti: un golpe directo, entre las rondas 1 y 2. No dice quién fue.";
+  S.players[0].leads.push({ round: 1, sig: "golpe", text: "Sobre Pablo: algo. No dice quién fue.", i: 0, k: 2 }); S.players[0].leadSeq = 2;
+  toCouncil(U, S);
+  S.phase = "council";
+  const r1 = U.registerInteraction(0, "pista", null, 1);
+  assert.ok(r1.ok && !/Sobre ti/.test(r1.text) && new RegExp("Sobre " + S.players[0].name).test(r1.text), r1.text);
+  assert.ok(!U.registerInteraction(0, "pista", null, 2).ok, "una por consejo");
+});
+
+test("presentar pista sin pistas no se ofrece; no se puede declarar", () => {
   const { U, S } = mk(3);
   toCouncil(U, S); S.phase = "private"; S.turn = 0; S.handoff = false; S.players[0].acted = true;
   assert.strictEqual(U.declareOptions(0).leads.length, 0);
-  assert.ok(!U.declare(0, "contradiccion", 1, 1).ok);
+  assert.ok(!U.declare(0, "pista", null, 1).ok);
 });
 
 test("vista filtrada: susp público de todos, suspBy/suspPts ajenos nunca; local y online coinciden", () => {
@@ -155,15 +162,28 @@ test("vista filtrada: susp público de todos, suspBy/suspPts ajenos nunca; local
   assert.ok(v1.players[1].susp === 2);
 });
 
-test("online: contradecir por comando valida pista y objetivo", () => {
+test("online: presentar pista por comando valida la pista, sin objetivo", () => {
   const game = new Game(["Ana", "Luis", "Marta"], { readMs: 0, engineDir: ENGINE_DIR, endAt: Date.now() + 30 * 60000 });
   const S = game.S();
   S.harm.sigs.push({ round: 1, victim: 2, author: 1, method: "apunalar", sig: "golpe" });
   S.players[0].leads = [{ round: 1, sig: "golpe", text: "t", i: 0, k: 1 }]; S.players[0].leadSeq = 1;
   game.exec(0, "act", ["meditar", null, null]);
-  const bad = game.exec(0, "declare", ["contradiccion", 1, 77]);
+  const bad = game.exec(0, "declare", ["pista", null, 77]);
   assert.ok(!bad || bad.ok === false);
-  const ok = game.exec(0, "declare", ["contradiccion", 1, 1]);
+  const ok = game.exec(0, "declare", ["pista", null, 1]);
   assert.ok(ok && ok.ok !== false, JSON.stringify(ok));
   assert.strictEqual(S.players[0].intent.lead, 1);
+});
+
+test("mesa grande (>4 jugadores): tentación garantizada de mitad de partida al más oscuro", () => {
+  const { loadEngine } = require("../server/engine_vm");
+  for (const n of [8, 6]) {
+    const { U } = loadEngine({ dir: ENGINE_DIR, rng: () => 0.5, now: () => 1.8e12 });
+    U.createGame(["Ana", "Luis", "Marta", "Pablo", "Eva", "Iker", "Noa", "Leo", "Mia", "Rut"].slice(0, n), { minutes: 20 });
+    const S = U.getState();
+    S.players.forEach((p) => { p.items = []; p.offer = null; });
+    S.round = Math.max(1, Math.ceil(S.maxRounds / 2)); S.players[2].aggr = 1; S.players[2].corr = 12;
+    const o = U.getOffer(2);
+    assert.ok(o && o.id === "asesino", n + " jugadores: oferta final de mitad de partida");
+  }
 });

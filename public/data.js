@@ -1,4 +1,4 @@
-/* EL UMBRAL — datos del juego (v1.11.0)
+/* EL UMBRAL — datos del juego (v1.12.0)
    Roles, afinidades, objetos, acciones, eventos, secretos y pistas. */
 (function (g) {
   "use strict";
@@ -231,7 +231,7 @@
   };
 
   /* NPC (jugadores controlados por la app): perfiles y nombres. */
-  const NPC_PROFILES = { prudente: "Prudente", agresivo: "Agresivo", curandero: "Curandero", oscuro: "Oscuro" };
+  const NPC_PROFILES = { prudente: "Prudente", agresivo: "Agresivo", curandero: "Curandero", oscuro: "Oscuro", mixto: "Mixto" };
   const NPC_NAMES = ["Brisa", "Cuervo", "Dara", "Elan", "Fenn", "Gaia", "Hael", "Ibis", "Jora", "Kael", "Lumi", "Mirt", "Nox", "Orla", "Pyra", "Quill", "Rhea", "Sable", "Tilo", "Vesta"];
 
   /* Escuelas de magia. v1.9.0: metadatos (agrupan y dan sabor). v1.9.1: tiers. Todo lo antiguo es Tier 1 (básico, efecto inmediato);
@@ -246,7 +246,7 @@
     tierNames: { 1: "Básico", 2: "Intermedio" },
     weight: { 1: 1, 2: 2 }, cap: 5
   };
-  const D = { VERSION: "1.11.0", SPELL_SCHOOLS, NPC_PROFILES, NPC_NAMES, STATUS, ROLES, AFFINITIES, ITEMS, LOOT_ITEMS, DARK_ITEMS, UTIL_ITEMS, MEDIC_ITEMS, ACTIONS, STAKES, EVENTS, CLUES, ASSASSIN_CLUES, SECRETS };
+  const D = { VERSION: "1.12.0", SPELL_SCHOOLS, NPC_PROFILES, NPC_NAMES, STATUS, ROLES, AFFINITIES, ITEMS, LOOT_ITEMS, DARK_ITEMS, UTIL_ITEMS, MEDIC_ITEMS, ACTIONS, STAKES, EVENTS, CLUES, ASSASSIN_CLUES, SECRETS };
   g.UMBRAL_DATA = D;
   if (typeof module !== "undefined") module.exports = D;
 })(typeof globalThis !== "undefined" ? globalThis : this);

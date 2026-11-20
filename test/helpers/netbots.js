@@ -63,9 +63,9 @@ async function step(c, rnd, mode) {
     if (t.length) {
       const types = ["acusacion", "emboscada", "pacto_no_agresion", "pacto_silencio", "pacto_proteccion", "ninguna"];
       if (q.declare.romper.length) types.push("romper");
-      if (q.declare.leads && q.declare.leads.length) types.push("contradiccion", "contradiccion");
+      if (q.declare.leads && q.declare.leads.length) types.push("pista", "pista");
       const ty = pick(types);
-      await send("declare", ty === "contradiccion" ? [ty, pick(t).id, pick(q.declare.leads).i] : [ty, ty === "romper" ? pick(q.declare.romper) : pick(t).id]);
+      await send("declare", ty === "pista" ? [ty, null, pick(q.declare.leads).i] : [ty, ty === "romper" ? pick(q.declare.romper) : pick(t).id]);
     }
     if (rnd() < 0.5) return true;
   }

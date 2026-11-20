@@ -5,6 +5,13 @@
 (function (w) {
   "use strict";
   w.UMBRAL_NEWS = [
+    { version: "1.12.0", fecha: "2026-11-20", titulo: "Presentar pistas y NPC con carácter", puntos: [
+      "Contradecir desaparece: ahora puedes presentar ante el Consejo UNA de tus pistas de Indagar. Se muestra a todos con el mismo texto que viste, sin tu nombre, como pista verificada por el juego. Nada la compara con nadie: la mesa decide.",
+      "La sospecha ya no sube por acertar con una pista: solo por acusaciones de varias personas y actos hostiles a la vista. Quien dejó un rastro sabrá en privado que ha salido a la luz, sin saber quién lo presentó.",
+      "Cada NPC recibe un carácter al azar que nunca se muestra: solo se ve que es un NPC. Ya no se elige perfil al añadirlo.",
+      "En mesas de más de cuatro jugadores, el Umbral también puede tentar a mitad de partida a quien ya se ha acercado a la oscuridad.",
+      "Arreglo: un objeto que no se puede usar ya no cuenta como acto contra el hambre del Umbral."
+    ] },
     { version: "1.11.0", fecha: "2026-11-20", titulo: "Magia de nivel 2", puntos: [
       "Aparecen seis conjuros intermedios, uno o dos por escuela: Custodia y Aurora (Luz), Zarza (Naturaleza), Eco (Umbral), Olvido (Mente) y Mordedura (Sombra).",
       "Se aprenden estudiando un grimorio, y solo si ya eres Practicante en un conjuro de esa misma escuela (o si un ermitaño te enseña). En el estudio, una de las tres opciones pasa a ser de nivel 2: nadie ve menos opciones.",
@@ -27,12 +34,11 @@
       "Se puede desactivar desde la ayuda («Retos de pulso»). En mesas locales de 6 o más jugadores viene desactivado de serie.",
       "Los conjuros muestran su escuela (Luz, Sombra, Naturaleza, Mente o Umbral). De momento solo agrupa y da sabor: no cambia las tiradas."
     ] },
-    { version: "1.8.2", fecha: "2026-11-20", titulo: "Sospecha y contradicciones", puntos: [
+    { version: "1.8.2", fecha: "2026-11-20", titulo: "Sospecha acumulada", puntos: [
       "Acusar ya no revela quién es el Asesino con certeza: nadie ve si tus pruebas eran buenas. Solo sube la sospecha pública sobre esa persona.",
-      "Cada jugador tiene un marcador público de sospecha (0 a 4). Sube cuando varios jugadores distintos le acusan, cuando le contradicen con éxito y con actos hostiles a la vista; baja con rondas tranquilas y con actos de bien.",
+      "Cada jugador tiene un marcador público de sospecha (0 a 4). Sube cuando varios jugadores distintos le acusan, y con actos hostiles a la vista; baja con rondas tranquilas y con actos de bien.",
       "El marcador no es el rol y puede señalar a un inocente. Con sospecha alta, la mesa coopera mejor: enfrentarte a esa persona ya no es a ciegas y varios ataques seguidos le pesan más.",
-      "Nueva declaración secreta: Contradecir. Usas una pista de Indagar contra alguien; si encaja, su sospecha sube. Si no encaja, solo gastas la pista. No se revela tu pista ni de quién era el rastro.",
-      "Los NPC también acusan y contradicen."
+            "Los NPC también acusan."
     ] },
     { version: "1.8.1", fecha: "2026-11-20", titulo: "Indagar: seguir los rastros", puntos: [
       "Nueva acción para todos: Indagar. Gastas el turno en examinar las heridas y muertes de las últimas rondas y obtienes una pista.",
@@ -50,7 +56,7 @@
     ] },
     { version: "1.7.0", fecha: "2026-11-13", titulo: "Mesas de 2 y jugadores de la casa (NPC)", puntos: [
       "Ya se puede jugar con 2 jugadores.",
-      "Puedes añadir NPC a la mesa (hasta 10 jugadores en total) y sustituir por un NPC a quien se ausente, en local y en línea. Cada NPC tiene su perfil (prudente, agresivo, curandero u oscuro), se ve claramente que es un NPC, y quien se fue puede recuperar su lugar.",
+      "Puedes añadir NPC a la mesa (hasta 10 jugadores en total) y sustituir por un NPC a quien se ausente, en local y en línea. Cada NPC juega con su propio carácter, que no se revela, y se ve claramente que es un NPC, y quien se fue puede recuperar su lugar.",
       "Socorrer aparece destacado arriba en tu turno cuando alguien cae moribundo, con el plazo real que le queda.",
       "El aviso del moribundo es más claro y coincide con lo que de verdad ocurre.",
       "Los textos de los secretos al final de la partida ya no repiten el premio."

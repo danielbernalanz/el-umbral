@@ -9,7 +9,7 @@ const { playGame, ENGINE_DIR } = require("./helpers/bot");
 const L = require("./helpers/leakcheck");
 
 const NAMES = ["Ana", "Luis", "Marta", "Pablo", "Eva", "Iker", "Noa", "Leo", "Mia", "Rut"];
-const PROFILES = ["prudente", "agresivo", "curandero", "oscuro"];
+const PROFILES = ["prudente", "agresivo", "curandero", "oscuro", "mixto"];
 process.env.NPC_STRICT = "1";
 
 function mk(n, npcFrom, seed, o) {
@@ -159,9 +159,9 @@ test("sala: NPC en la sala de espera (solo anfitrión, límite 10), empezar con 
   const first = rooms.create("Ana"); const room = rooms.get(first.room);
   const host = room.players[0];
   assert.strictEqual(room.start(host, clk.t + 30 * 60000).ok, false, "1 solo jugador: no basta");
-  assert.strictEqual(room.npcOp(host, { op: "add", profile: "agresivo" }).ok, true);
+  assert.strictEqual(room.npcOp(host, { op: "add" }).ok, true);
   const lv = room.lobbyView(host);
-  assert.strictEqual(lv.npcs.length, 1); assert.strictEqual(lv.canStart, true); assert.strictEqual(lv.npcs[0].profile, "agresivo");
+  assert.strictEqual(lv.npcs.length, 1); assert.strictEqual(lv.canStart, true); assert.ok(!("profile" in lv.npcs[0]), "el perfil no se envía");
   room.join("Luis"); const guest = room.players[1];
   assert.strictEqual(room.npcOp(guest, { op: "add" }).ok, false, "solo el anfitrión añade NPC");
   assert.strictEqual(room.npcOp(host, { op: "remove", index: 5 }).ok, false);
@@ -175,7 +175,7 @@ test("sala: NPC en la sala de espera (solo anfitrión, límite 10), empezar con 
   room.leave(guest);
   assert.strictEqual(room.start(host, clk.t + 30 * 60000).ok, true, "1 humano + 1 NPC = 2 jugadores");
   const g = room.game;
-  assert.strictEqual(g.S().players.length, 2); assert.strictEqual(g.S().players[1].npc, "agresivo"); assert.strictEqual(g.S().players[0].npc, undefined);
+  assert.strictEqual(g.S().players.length, 2); assert.ok(PROFILES.indexOf(g.S().players[1].npc) !== -1); assert.strictEqual(g.S().players[0].npc, undefined);
   /* el humano juega; el NPC lo hace solo */
   let guard = 0;
   while (!g.ended() && guard++ < 400) {
@@ -206,4 +206,30 @@ test("instantánea/restauración con NPC y sustituciones: estado y vistas idént
   assert.ok(!g2.S().players[1].npc, "la recuperación pendiente sobrevive a la restauración");
   playGame(g2, 5, "mixed", {});
   assert.ok(g2.ended()); assert.strictEqual(g2.errors.length, 0, g2.errors[0]);
+});
+
+/* v1.12.0: perfil de NPC aleatorio y oculto */
+test("perfil de NPC: sorteado por semilla (reproducible), variado y oculto en toda vista, desenlace y log", () => {
+  const draw = (seed, n) => { const { g } = mk(n, 1, seed, { npc: NAMES.slice(0, n).map((x, i) => (i >= 1 ? "azar" : null)) }); return g.S().players.map((p) => p.npc || null); };
+  assert.deepStrictEqual(draw(5, 5), draw(5, 5), "misma semilla, mismos perfiles");
+  const seen = new Set();
+  for (let s = 1; s <= 30; s++) draw(s, 6).forEach((x) => { if (x) { assert.ok(PROFILES.indexOf(x) !== -1, x); seen.add(x); } });
+  assert.ok(seen.size >= 4, "el sorteo reparte varios perfiles: " + Array.from(seen));
+  /* partida completa: ninguna vista (ni el desenlace) ni el log llevan el perfil */
+  const { g } = mk(5, 2, 91, { npc: NAMES.slice(0, 5).map((x, i) => (i >= 2 ? "azar" : null)) });
+  const bad = [];
+  const scan = (tag) => { for (let pid = 0; pid < 5; pid++) { const j = JSON.stringify(g.view(pid)); if (/npcProfile|"npc":"(prudente|agresivo|curandero|oscuro|mixto)"/.test(j)) bad.push(tag + " vista " + pid); } };
+  scan("inicio");
+  playGame(g, 91, "mixed", { afterCommand() { scan("cmd"); } });
+  g.U.replaceWithNpc(0);
+  assert.ok(!(g.S().glog || []).some((e) => /\((prudente|agresivo|curandero|oscuro|mixto)\)/i.test(JSON.stringify(e))), "el log no cita perfil");
+  assert.deepStrictEqual(bad, []);
+  const end = g.ended() ? JSON.stringify(g.view(0).ending || {}) : "";
+  assert.ok(!/npcProfile/.test(end));
+});
+test("sustituir por NPC sortea el perfil (no depende del historial) y no lo cita en la crónica", () => {
+  const { g } = mk(4, 4, 55);
+  assert.strictEqual(g.U.replaceWithNpc(1).ok, true);
+  assert.ok(PROFILES.indexOf(g.S().players[1].npc) !== -1);
+  assert.ok(!JSON.stringify(g.S().chronicle).match(/prudente|agresivo|curandero|oscuro|mixto/i));
 });

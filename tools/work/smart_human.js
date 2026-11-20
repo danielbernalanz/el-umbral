@@ -57,7 +57,7 @@ for(let g=0;g<N;g++){
       adv(30000);
       { const cp=U.currentPlayer(); if(cp&&cp.acted&&!cp.dead&&!cp.dying){ const st=style[cp.id]; const al2=s.players.filter(x=>x.id!==cp.id&&!x.dead); let best=null,bs=0; al2.forEach(x=>{const sc=cp.clues.filter(c=>c.about===x.id).reduce((a,c)=>a+c.strength,0); if(sc>bs){bs=sc;best=x;}});
         const dop=U.declareOptions(cp.id); const ldz=(dop&&dop.leads)||[];
-        if(best&&bs>=2&&ldz.length&&Math.random()<0.5){ const dr=U.declare(cp.id,"contradiccion",best.id,ldz[0].i); if(dr.ok) res.contra=(res.contra||0)+1; }
+        if(best&&bs>=2&&ldz.length&&Math.random()<0.5){ const dr=U.declare(cp.id,"pista",null,ldz[0].i); if(dr.ok) res.contra=(res.contra||0)+1; }
         else if(best&&bs>=3&&Math.random()<0.7){ const dr=U.declare(cp.id,"acusacion",best.id); if(dr.ok) res.acc=(res.acc||0)+1; }
         else if(st==="agresivo"&&al2.length&&Math.random()<0.45) U.declare(cp.id,"emboscada",al2[rnd(al2.length)].id); } }
       U.finishTurn(); }

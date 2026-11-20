@@ -113,6 +113,7 @@ function mePlayer(game, p) {
   const o = clone(p);
   ME_EXCLUDE.forEach((k) => { delete o[k]; });
   o.notes = visibleNotes(game, p);
+  if (o.npc) o.npc = true;   /* el perfil del NPC nunca sale del servidor */
   o.wounds = p.wounds;
   o.protected = p.protection !== null && p.protection !== undefined;
   return o;
@@ -176,7 +177,7 @@ function buildView(game, pid) {
   };
   if (ending) {
     v.ending = clone(S.ending);
-    v.reveal = { assassinId: S.assassinId, shadow: clone(S.shadow || null), players: S.players.map((x) => { const o = clone(x); o.wounds = x.wounds; return o; }) };
+    v.reveal = { assassinId: S.assassinId, shadow: clone(S.shadow || null), players: S.players.map((x) => { const o = clone(x); o.wounds = x.wounds; if (o.npc) o.npc = true; return o; }) };
     v.log = game.endLog(); v.story = game.endStory(); v.storyList = game.endStoryList();
   }
   return v;

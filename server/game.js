@@ -542,9 +542,9 @@ const COMMANDS = {
   declare: priv(
     (g, pid, a) => isStr(a[0], 24) && isIdOrNull(a[1]) && (a[2] === undefined || a[2] === null || Number.isInteger(a[2])),
     (g, pid, a) => {
-      if (a[0] !== "ninguna" && view.aliveOthers(g, pid).indexOf(a[1]) === -1) return bad(GENERIC_BAD_TARGET);
+      if (a[0] !== "ninguna" && a[0] !== "pista" && view.aliveOthers(g, pid).indexOf(a[1]) === -1) return bad(GENERIC_BAD_TARGET);
       if (a[0] === "romper") { const d = view.asPlayer(g, pid, () => g.U.declareOptions(pid)); if (!d || d.romper.indexOf(a[1]) === -1) return bad(GENERIC_BAD_TARGET); }
-      return g._runAs(pid, () => g.U.declare(pid, a[0], a[0] === "ninguna" ? null : a[1], a[2]));
+      return g._runAs(pid, () => g.U.declare(pid, a[0], a[0] === "ninguna" || a[0] === "pista" ? null : a[1], a[2]));
     }),
   encounterAct: priv((g, pid, a) => isStr(a[0], 24), (g, pid, a) => g._runAs(pid, () => g.U.encounterAct(pid, a[0]))),
   finishTurn: priv((g, pid, a) => a.length === 0, (g, pid) => {

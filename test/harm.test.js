@@ -154,3 +154,20 @@ test("desbloqueo por acciones: trampa (2 explorar o cuerda) y sabotear (ganzúa 
   p.items = []; p.did = { explorar: 2 }; assert.ok(U.isUnlocked(p, A("trampa")) && !U.isUnlocked(p, A("sabotear")));
   p.did = { explorar: 2, robar: 1 }; assert.ok(U.isUnlocked(p, A("sabotear")));
 });
+
+/* v1.12.0: un objeto que falla no deja marcas de acto contra el Umbral */
+test("useItem con error no muta marcas antiRound/darkRound (exploit contra el hambre del Umbral)", () => {
+  const { loadEngine } = require("../server/engine_vm");
+  const { ENGINE_DIR } = require("./helpers/bot");
+  const { U, D } = loadEngine({ dir: ENGINE_DIR, rng: () => 0.5, now: () => 1.8e12 });
+  U.createGame(["Ana", "Luis", "Marta"], { minutes: 30 });
+  const S = U.getState(), p = S.players[S.turn];
+  assert.ok(D.ITEMS.vendas, "hay vendas");
+  p.items = [{ id: "vendas" }]; p.usedItem = false; p.wounds = 0; p.hp = 99;
+  delete p.antiRound; delete p.darkRound;
+  const r = U.useItem(p.id, 0, null);
+  assert.strictEqual(r.ok, false, JSON.stringify(r));
+  assert.strictEqual(p.antiRound, undefined, "antiRound no queda fijado");
+  assert.strictEqual(p.darkRound, undefined);
+  assert.strictEqual(p.items.length, 1, "el objeto no se gasta");
+});

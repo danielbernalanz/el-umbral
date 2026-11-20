@@ -27,14 +27,14 @@ class Room {
     this.status = "lobby";            /* lobby | playing | ended */
     this.ver = 0;                     /* contador monotónico de difusiones: el cliente descarta vistas más viejas que la que ya tiene */
     this.players = [];                /* { slot, name, tokenHash, host, conns:Set<res>, lastJson, lastSeen, left } */
-    this.npcs = [];                   /* NPC añadidos en la sala de espera: { name, profile } (ocupan los asientos tras los humanos) */
+    this.npcs = [];                   /* NPC añadidos en la sala de espera: { name } (ocupan los asientos tras los humanos) */
     this.game = null;
     this.hostOffSince = null; this.hostNote = null; this.noteSeq = 0;
     this.snapSeq = 0; this.lastBlob = null; this.snapKey = null; this.snapDirty = false; this.lastSnapAt = 0;
   }
   /* ---------- instantáneas ---------- */
   snapKeyNow() {
-    if (this.status === "lobby") return "L" + this.players.map((p) => p.name + (p.host ? "*" : "")).join("|") + "#" + this.npcs.map((n) => n.name + ":" + n.profile).join("|");
+    if (this.status === "lobby") return "L" + this.players.map((p) => p.name + (p.host ? "*" : "")).join("|") + "#" + this.npcs.map((n) => n.name).join("|");
     const S = this.game && this.game.S();
     return S ? [this.status, S.phase, S.round, S.timeAsk ? 1 : 0, S.maxRounds, this.game.clock ? this.game.clock.kind : "-"].join("|") : this.status;
   }
@@ -42,7 +42,7 @@ class Room {
     const m = this.mgr;
     return { schema: SCHEMA, engine: m.snap.engine, code: this.code, seq: ++this.snapSeq, savedAt: m.now(),
       room: { status: this.status, createdAt: this.createdAt, ver: this.ver, hostNote: this.hostNote, noteSeq: this.noteSeq,
-        npcs: this.npcs.map((n) => ({ name: n.name, profile: n.profile })),
+        npcs: this.npcs.map((n) => ({ name: n.name })),
         players: this.players.map((p) => ({ slot: p.slot, name: p.name, tokenHash: p.tokenHash, host: p.host })) },
       game: this.game ? this.game.snapshot() : null };
   }
@@ -75,7 +75,7 @@ class Room {
     r.createdAt = t - Math.max(0, plain.savedAt - rm.createdAt); r.lastActivity = t;
     r.ver = (Number(rm.ver) || 0) + VER_JUMP; r.hostNote = rm.hostNote || null; r.noteSeq = rm.noteSeq || 0;
     r.snapSeq = plain.seq;
-    r.npcs = Array.isArray(rm.npcs) ? rm.npcs.map((n) => ({ name: String(n.name), profile: String(n.profile) })) : [];
+    r.npcs = Array.isArray(rm.npcs) ? rm.npcs.map((n) => ({ name: String(n.name) })) : [];
     r.players = rm.players.map((p) => ({ slot: p.slot, name: p.name, tokenHash: p.tokenHash, host: !!p.host, conns: new Set(), lastJson: null, lastSeen: t }));
     if (r.status === "playing") {
       r.game = Game.restore(plain.game, { engineDir: mgr.engineDir, now: mgr.now, readMs: mgr.readMs, timeScale: mgr.timeScale, shift, graceTurnMs: mgr.restoreGraceTurnMs, graceMs: mgr.restoreGraceMs });
@@ -123,7 +123,7 @@ class Room {
     this.syncPresence(); this.broadcast();
     return { ok: true };
   }
-  /* NPC en la sala de espera: solo el anfitrión añade o quita. op: "add" (profile opcional) | "remove" (index). */
+  /* NPC en la sala de espera: solo el anfitrión añade o quita. op: "add" | "remove" (index). */
   npcOp(p, b) {
     if (!p.host) return { ok: false, msg: "Solo el anfitrión puede añadir o quitar NPC." };
     if (this.status !== "lobby") return { ok: false, msg: "La partida ya ha empezado." };
@@ -134,13 +134,11 @@ class Room {
       this.npcs.splice(i, 1);
     } else if (b && b.op === "add") {
       if (this.players.length + this.npcs.length >= MAX_PLAYERS) return { ok: false, msg: "La sala está llena." };
-      const ids = Object.keys(D.profiles);
-      const profile = ids.indexOf(b.profile) !== -1 ? b.profile : ids[(this.npcs.length + this.players.length) % ids.length];
       const used = this.players.map((x) => x.name).concat(this.npcs.map((x) => x.name));
       let name = null;
       for (let k = 0; k < D.names.length && !name; k++) { const c = D.names[(this.npcs.length * 7 + k) % D.names.length]; if (used.every((u) => u.toLowerCase() !== c.toLowerCase())) name = c; }
       if (!name) name = "NPC " + (this.npcs.length + 1);
-      this.npcs.push({ name, profile });
+      this.npcs.push({ name });
     } else return { ok: false, msg: "Orden de NPC no válida." };
     this.touch(); this.broadcast();
     return { ok: true };
@@ -154,7 +152,7 @@ class Room {
     if (!isFinite(mins) || mins < 5 || mins > 120) return { ok: false, msg: "La hora de fin debe estar entre 5 y 120 minutos desde ahora." };
     try {
       this.game = new Game(this.players.map((x) => x.name).concat(this.npcs.map((x) => x.name)), { engineDir: this.mgr.engineDir, endAt, now: this.mgr.now, readMs: this.mgr.readMs, timeScale: this.mgr.timeScale,
-        npc: this.players.map(() => null).concat(this.npcs.map((x) => x.profile)) });
+        npc: this.players.map(() => null).concat(this.npcs.map(() => "azar")) });
     } catch (e) { return { ok: false, msg: String(e.message || "No se pudo empezar.") }; }
     this.status = "playing"; this.touch();
     this.syncPresence();
@@ -240,8 +238,7 @@ class Room {
   lobbyView(p) {
     return { phase: "lobby", hostNote: this.hostNote, code: this.code, serverNow: this.mgr.now(), youId: p.slot, host: p.host, min: MIN_PLAYERS, max: MAX_PLAYERS,
       canStart: p.host && this.players.length + this.npcs.length >= MIN_PLAYERS,
-      npcs: this.npcs.map((n, i) => ({ id: i, name: n.name, profile: n.profile })),
-      profiles: this.mgr.npcData().profiles,
+      npcs: this.npcs.map((n, i) => ({ id: i, name: n.name })),
       players: this.players.map((x) => ({ id: x.slot, name: x.name, host: x.host, online: x.conns.size > 0 })) };
   }
   viewFor(p) { return this.status === "lobby" ? this.lobbyView(p) : this.game.view(p.slot); }
@@ -302,7 +299,7 @@ class Rooms {
   }
   /* Perfiles y nombres de NPC (de data.js; se leen una vez). */
   npcData() {
-    if (!this._npcData) { const { loadEngine } = require("./engine_vm"); const e = loadEngine({ dir: this.engineDir }); this._npcData = { profiles: JSON.parse(JSON.stringify(e.D.NPC_PROFILES)), names: e.D.NPC_NAMES.slice() }; }
+    if (!this._npcData) { const { loadEngine } = require("./engine_vm"); const e = loadEngine({ dir: this.engineDir }); this._npcData = { names: e.D.NPC_NAMES.slice() }; }
     return this._npcData;
   }
   get(code) { return this.rooms.get(String(code || "").toUpperCase()) || null; }

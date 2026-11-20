@@ -1,4 +1,4 @@
-/* EL UMBRAL — interfaz (v1.11.0) */
+/* EL UMBRAL — interfaz (v1.12.0) */
 (function () {
   "use strict";
 
@@ -233,7 +233,6 @@
       $("saveInfo").textContent = "Partida guardada: " + sv.names + " · ronda " + sv.round + " · " + ({ private: "turnos privados", council: "consejo", resolution: "resolución", ending: "desenlace" }[sv.phase] || "en curso");
     }
     /* Asientos de la mesa: humano o NPC (los ids name{i}/npc{i} se conservan para las pruebas). */
-    const NPC_IDS = Object.keys(D.NPC_PROFILES || {});
     let seats = [0, 1, 2].map(function (i) { return { name: "Jugador " + (i + 1), npc: "" }; });
     const stdName = function (n) { return /^Jugador \d+$/.test(n) || (D.NPC_NAMES || []).indexOf(n) !== -1; };
     function freeNpcName() {
@@ -244,8 +243,7 @@
     function renderSeats() {
       $("playerCount").value = String(seats.length);
       $("playerRows").innerHTML = seats.map(function (q, i) {
-        const opts = '<option value=""' + (!q.npc ? " selected" : "") + '>Humano</option><option value="azar"' + (q.npc === "azar" ? " selected" : "") + '>NPC · perfil al azar</option>' +
-          NPC_IDS.map(function (id) { return '<option value="' + id + '"' + (q.npc === id ? " selected" : "") + '>NPC · ' + esc(D.NPC_PROFILES[id].toLowerCase()) + '</option>'; }).join("");
+        const opts = '<option value=""' + (!q.npc ? " selected" : "") + '>Humano</option><option value="azar"' + (q.npc ? " selected" : "") + '>NPC</option>';
         return '<div class="seat' + (q.npc ? " npc" : "") + '" id="nameRow' + i + '"><label class="fl" data-ic="ui_jugador">Nombre del jugador ' + (i + 1) + '<input id="name' + i + '" value="' + esc(q.name) + '" maxlength="16" data-i="' + i + '"></label>' +
           '<select id="npc' + i + '" class="seatsel" data-i="' + i + '" aria-label="Tipo del jugador ' + (i + 1) + '">' + opts + '</select>' +
           (q.npc && seats.length > 2 ? '<button class="ghost smallbtn seatrm" id="rm' + i + '" data-i="' + i + '" aria-label="Quitar a ' + esc(q.name) + '">Quitar</button>' : '') + '</div>';
@@ -282,7 +280,7 @@
       const sn = JSON.parse(localStorage.getItem("umbral_setup") || "null");
       if (sn && sn.count >= 2 && sn.count <= 10) {
         seats = [];
-        for (let i = 0; i < sn.count; i++) { const nmv = (sn.names || [])[i], nv = (sn.npc || [])[i]; seats.push({ name: nmv || (nv ? "NPC" : "Jugador " + (i + 1)), npc: nv && (nv === "azar" || (D.NPC_PROFILES || {})[nv]) ? nv : "" }); }
+        for (let i = 0; i < sn.count; i++) { const nmv = (sn.names || [])[i], nv = (sn.npc || [])[i]; seats.push({ name: nmv || (nv ? "NPC" : "Jugador " + (i + 1)), npc: nv ? "azar" : "" }); }
       }
     } catch (e) { /* sin datos guardados */ }
     renderSeats();
@@ -311,8 +309,7 @@
       const pe = parseEnd();
       if (!pe.ok) { refreshEnd(); toast(pe.msg, true); return; }
       try { localStorage.setItem("umbral_setup", JSON.stringify({ count: count, names: names, npc: seats.map(function (q) { return q.npc || ""; }) })); } catch (e) { /* sin almacenamiento */ }
-      const salt = Date.now() % 97;
-      const npc = seats.map(function (q, i) { return q.npc ? (q.npc === "azar" && window.UMBRAL_NPC ? window.UMBRAL_NPC.profileFor(i, salt) : q.npc === "azar" ? "prudente" : q.npc) : null; });
+      const npc = seats.map(function (q) { return q.npc ? "azar" : null; });
       U.createGame(names, { minutes: pe.mins, endAt: pe.endAt, npc: npc });
       enterGame(true);
       $("roundLabel").textContent = "RONDA 1/" + U.maxRounds();
@@ -1471,7 +1468,7 @@
   /* Declaraciones secretas del turno: se resuelven en público al cerrar el Consejo. */
   const IX_INFO = [
     { v: "acusacion", ik: "a_acusar", t: "Acusar ante el Consejo", s: "Dices en público que desconfías de alguien. Nadie sabrá si tus pruebas eran buenas: solo sube su sospecha.", fx: ["La sospecha pública sobre esa persona sube un punto la primera vez que TÚ la acusas; varios acusadores distintos suman.", "Tus pistas deciden en privado si aciertas (solo tú lo sabrás, sin certeza para los demás): +4 virtud. Si fallas: +5 corrupción y −5 virtud.", "Con sospecha 2+ enfrentarte a esa persona ya no es a ciegas; con 3+ sus pistas salen completas."] },
-    { v: "contradiccion", ik: "a_indagar", t: "Contradecir", s: "Usas una pista tuya de Indagar contra lo que dice alguien. Si encaja, sube su sospecha; si no, solo gastas la pista.", fx: ["No se revela tu pista ni de quién fue el rastro.", "Si la pista es veraz y señala a esa persona: su sospecha sube 2 puntos y ganas 2 de virtud.", "Si no encaja: no pasa nada, salvo que la pista queda gastada. Una por Consejo."] },
+    { v: "pista", ik: "a_indagar", t: "Presentar una pista", s: "Muestras a todos una de tus pistas de Indagar, tal como la viste, sin tu nombre. La mesa decide qué hacer con ella.", fx: ["Se enseña el mismo texto que viste (rastro, sobre quién, rondas aproximadas), marcado como verificado por el juego; no dice quién fue.", "Nada la compara con nadie ni mueve la sospecha. Una por Consejo; la pista se gasta.", "Si el rastro es de alguien, esa persona sabrá en privado que su rastro salió a la luz (sin saber quién lo presentó)."] },
     { v: "emboscada", ik: "a_enfrentar", t: "Enfrentarte a alguien", s: "Atacas a alguien en público. Ambos tiráis dados.", fx: ["Si ganas: le causas daño (más si uno de los dos es Asesino); +8 corrupción y −3 virtud para ti.", "Si pierdes: −8 virtud y +6 corrupción para ti, y todos lo ven.", "Es lo más arriesgado del Consejo."] },
     { v: "romper", ik: "a_romper", t: "Romper un silencio", s: "Cuentas que alguien te tendió la mano en secreto.", fx: ["Solo si recibiste una mano de esa persona y sigue activa.", "Tú pierdes 4 virtud. Si su mano era sincera, ella gana 2.", "Nadie puede comprobar lo que dices."] },
     { v: "pacto", ik: "a_pacto", t: "Proponer un pacto secreto", s: "Se lo propones a alguien; lo verá y aceptará en su próximo turno privado.", fx: ["Solo lo sabéis los dos.", "Cumplido: +3 virtud para ambos. Roto: +8 corrupción y −6 virtud al que rompe; solo lo sabrá el otro.", "Se evalúa al final de la ronda siguiente a su aceptación (si es la última ronda, en esa misma)."] }
@@ -1496,7 +1493,7 @@
     box.innerHTML = "";
     IX_INFO.forEach(function (x) {
       if (x.v === "romper" && !o.romper.length) return;
-      if (x.v === "contradiccion" && !(o.leads && o.leads.length)) return;
+      if (x.v === "pista" && !(o.leads && o.leads.length)) return;
       const b = document.createElement("button");
       b.type = "button";
       b.className = "ixcard" + (x.v === prepSel ? " sel" : "");
@@ -1507,15 +1504,17 @@
     $("prepKindLabel").classList.toggle("hidden", prepSel !== "pacto");
     $("prepTargetLabel").classList.toggle("hidden", !prepSel);
     $("btnPrepSave").classList.toggle("hidden", !prepSel);
-    $("prepLeadLabel").classList.toggle("hidden", prepSel !== "contradiccion");
-    if (prepSel === "contradiccion") fillSelect($("prepLead"), (o.leads || []).map(function (l) { return { v: l.i, t: l.text.replace(/ No dice quién fue\.$/, "") }; }), $("prepLead").value);
-    if (prepSel) {
+    $("prepLeadLabel").classList.toggle("hidden", prepSel !== "pista");
+    if (prepSel === "pista") fillSelect($("prepLead"), (o.leads || []).map(function (l) { return { v: l.i, t: l.text.replace(/ No dice quién fue\.$/, "") }; }), $("prepLead").value);
+    if (prepSel === "pista") {
+      $("prepTargetLabel").classList.add("hidden"); $("btnPrepSave").classList.remove("hidden");
+    } else if (prepSel) {
       const list = prepSel === "romper" ? o.targets.filter(function (t) { return o.romper.indexOf(t.id) !== -1; }) : prepSel === "pacto" ? o.targets.filter(function (t) { return !t.dying; }) : o.targets;
       $("prepTargetLabel").classList.toggle("hidden", !list.length);
       $("btnPrepSave").classList.toggle("hidden", !list.length);
       const prev = $("prepTarget").value;
       fillSelect($("prepTarget"), list.map(function (t) { return { v: t.id, t: t.name + (prepSel === "acusacion" ? " (" + t.clues + " pista" + (t.clues === 1 ? "" : "s") + ")" : "") + (t.susp ? " · sospecha " + t.susp + "/4" : "") }; }), prev);
-      $("prepTargetLabel").firstChild.textContent = prepSel === "pacto" ? "Con quién " : prepSel === "romper" ? "Silencio de " : prepSel === "acusacion" ? "Acusar a " : prepSel === "contradiccion" ? "Contradecir a " : "Enfrentarte a ";
+      $("prepTargetLabel").firstChild.textContent = prepSel === "pacto" ? "Con quién " : prepSel === "romper" ? "Silencio de " : prepSel === "acusacion" ? "Acusar a " : "Enfrentarte a ";
     }
     $("prepKind").onchange = prepTerms;
     $("prepTarget").onchange = prepTerms;
@@ -1529,8 +1528,8 @@
     const p = U.currentPlayer();
     if (!prepSel) { onPrepSkip(); return; }
     const type = prepSel === "pacto" ? $("prepKind").value : prepSel;
-    if ($("prepTarget").value === "") { $("prepHint").textContent = "No hay nadie a quien dirigirlo."; return; }
-    run(U.declare(p.id, type, Number($("prepTarget").value), type === "contradiccion" ? Number($("prepLead").value) : undefined), function (r) {
+    if (type !== "pista" && $("prepTarget").value === "") { $("prepHint").textContent = "No hay nadie a quien dirigirlo."; return; }
+    run(U.declare(p.id, type, type === "pista" ? null : Number($("prepTarget").value), type === "pista" ? Number($("prepLead").value) : undefined), function (r) {
       if (!r.ok) { $("prepHint").textContent = r.msg; return; }
       leaveTurn();
     });
@@ -1573,8 +1572,8 @@
     hideAll(); $("councilPanel").classList.remove("hidden");
     /* Solo lo ya público: acusación = foco; emboscada = tajo (parada si pierde el duelo); romper silencio = sello que se parte. */
     const cok = r.duel ? r.duel.attacker.total > r.duel.defender.total : r.roll ? !!r.roll.success : true;
-    const cfx = list[i].type === "acusacion" ? { name: "focus", fam: "danger", ok: true } : list[i].type === "emboscada" ? { name: "slash", fam: "danger", ok: cok } : list[i].type === "romper" ? { name: "crack", fam: "gold", ok: true } : list[i].type === "contradiccion" ? { name: "focus", fam: "lore", ok: true } : null;
-    showRoll({ title: "RESOLUCIÓN PÚBLICA", fx: cfx, icon: list[i].type === "acusacion" ? "a_acusar" : list[i].type === "emboscada" ? "a_enfrentar" : list[i].type === "romper" ? "a_romper" : list[i].type === "contradiccion" ? "a_indagar" : "ph_resolucion", result: r.kind === "roll" ? r.roll : {}, duel: r.duel, text: r.text, buttons: [next] });
+    const cfx = list[i].type === "acusacion" ? { name: "focus", fam: "danger", ok: true } : list[i].type === "emboscada" ? { name: "slash", fam: "danger", ok: cok } : list[i].type === "romper" ? { name: "crack", fam: "gold", ok: true } : list[i].type === "pista" ? { name: "focus", fam: "lore", ok: true } : null;
+    showRoll({ title: "RESOLUCIÓN PÚBLICA", fx: cfx, icon: list[i].type === "acusacion" ? "a_acusar" : list[i].type === "emboscada" ? "a_enfrentar" : list[i].type === "romper" ? "a_romper" : list[i].type === "pista" ? "a_indagar" : "ph_resolucion", result: r.kind === "roll" ? r.roll : {}, duel: r.duel, text: r.text, buttons: [next] });
   }
 
   /* ---------------- resolución ---------------- */

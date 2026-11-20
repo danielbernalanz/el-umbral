@@ -355,16 +355,11 @@
       return '<div class="player rplayer"><div class="prow">' + ico("ui_jugador", "ic-md") + '<div class="grow"><b>' + esc(p.name) + '</b></div>' +
         (p.id === v.youId ? '<span class="chip mid">tú</span>' : '') + (p.host ? '<span class="chip good">anfitrión</span>' : '') + (p.online ? '' : '<span class="chip low">sin conexión</span>') + '</div></div>';
     }).join("");
-    const prof = v.profiles || {};
     $("roomNpcs").innerHTML = npcs.map(function (n) {
       return '<div class="player rplayer"><div class="prow">' + ico("ui_jugador", "ic-md") + '<div class="grow"><b>' + esc(n.name) + '</b></div><span class="chip mid">NPC</span>' +
-        (host ? '<span class="chip low">' + esc(String(prof[n.profile] || n.profile).toLowerCase()) + '</span><button class="ghost smallbtn" data-npcrm="' + n.id + '" aria-label="Quitar a ' + esc(n.name) + '">Quitar</button>' : '') + '</div></div>';
+        (host ? '<button class="ghost smallbtn" data-npcrm="' + n.id + '" aria-label="Quitar a ' + esc(n.name) + '">Quitar</button>' : '') + '</div></div>';
     }).join("");
     $("roomNpcCtl").classList.toggle("hidden", !host);
-    if (host && !$("npcProfSel").getAttribute("data-built")) {
-      $("npcProfSel").innerHTML = '<option value="">NPC · perfil al azar</option>' + Object.keys(prof).map(function (id) { return '<option value="' + esc(id) + '">NPC · ' + esc(String(prof[id]).toLowerCase()) + '</option>'; }).join("");
-      $("npcProfSel").setAttribute("data-built", "1");
-    }
     $("btnOnNpcAdd").disabled = total >= v.max;
     $("btnOnStart").disabled = !v.canStart;
     $("roomNeed").textContent = total < v.min ? "Hacen falta al menos " + v.min + " jugadores (con NPC) para empezar." : "";
@@ -414,7 +409,7 @@
     $("onName").onkeydown = function (e) { if (e.key === "Enter") ($("onCode").value ? joinRoom() : createRoom()); };
     $("btnOnLeave").onclick = function () { leaveRoom(false); };
     $("btnOnStart").onclick = startGame;
-    $("btnOnNpcAdd").onclick = function () { npcOp({ op: "add", profile: $("npcProfSel").value || undefined }); };
+    $("btnOnNpcAdd").onclick = function () { npcOp({ op: "add" }); };
     $("roomNpcs").addEventListener("click", function (e) { const b = e.target.closest ? e.target.closest("[data-npcrm]") : null; if (b) npcOp({ op: "remove", index: Number(b.getAttribute("data-npcrm")) }); });
     $("btnOnCopy").onclick = function () { copyText(lobby ? lobby.code : "", "Código copiado."); };
     $("btnOnShare").onclick = function () {

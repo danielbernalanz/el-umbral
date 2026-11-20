@@ -275,7 +275,8 @@ def privacy_scan(cs, leaks, structural, ctl):
                 if t[k] and t[k] != mine.get(k): probe.append((k, t[k]))
             mine_notes = [x for x in (mine.get("allNotes") or [])]
             for n in t["notes"]:
-                if n.split(": ", 1)[-1] in mine_notes or any(n.split(": ", 1)[-1] in m for m in mine_notes) or any(n[:60] in m for m in mine_notes) or any(n in x for x in (mine.get("pubClues") or [])): continue  # nota genérica que también recibió este jugador
+                if n.split(": ", 1)[-1] in mine_notes or any(n.split(": ", 1)[-1] in m for m in mine_notes) or any(n[:60] in m for m in mine_notes) or any(re.sub(r'\d+', '#', n)[:45] in re.sub(r'\d+', '#', m) for m in mine_notes) or any(n in x for x in (mine.get("pubClues") or [])): continue  # nota genérica que también recibió este jugador
+                if re.match(r'Ronda \d+: el Umbral te cobró lo que no le diste', n): continue  # nota genérica idéntica para cualquiera que no cumpla el hambre del Umbral
                 probe.append(("nota", n[:60]))
             for n in t["clues"]:
                 if n in (mine.get("clues") or []) or any(n in x for x in (mine.get("pubClues") or [])): continue  # rumor/testimonio público o pista idéntica que también tiene este jugador
@@ -779,15 +780,16 @@ def scenario_npcroom(pw):
         open_online(host, srv.url); code = create_room(host, "Ana")
         open_online(g2, srv.url); join_room(g2, "Luis", code)
         host.pg.wait_for_function("document.querySelectorAll('#roomPlayers .rplayer').length===2", timeout=8000)
-        for prof in ("agresivo", "curandero"):
-            host.pg.select_option("#npcProfSel", prof); host.pg.click("#btnOnNpcAdd")
+        check("npcroom: no hay selector de perfil", host.pg.locator("#npcProfSel").count() == 0)
+        for _ in range(2):
+            host.pg.click("#btnOnNpcAdd")
         host.pg.wait_for_function("document.querySelectorAll('#roomNpcs .rplayer').length===2", timeout=8000)
         host.shot("93_lobby_2npc_360")
         host.pg.fill("#netEnd", end_time(A.mins)); host.pg.click("#btnOnStart")
         for c in (host, g2): c.pg.wait_for_selector("#privatePanel", state="visible", timeout=15000)
         npcs = jsq(host, "s.players.map(p=>!!p.npc)")
         check("npcroom: NPC marcados en la mesa (público)", npcs == [False, False, True, True], npcs)
-        check("npcroom: el perfil NO está en las vistas de los demás", not jsq(host, "JSON.stringify(s.players.filter(p=>p.id!==s.youId)).match(/agresivo|curandero|prudente|oscuro/)") )
+        check("npcroom: el perfil NO está en ninguna vista ni en la sala", not jsq(host, "JSON.stringify(s.players).match(/agresivo|curandero|prudente|oscuro|mixto/)") and not host.pg.evaluate("document.body.innerText.toLowerCase().includes('perfil')"))
         host.pg.click("#btnStatus"); host.pg.wait_for_selector("#statusOverlay:not(.hidden)")
         check("npcroom: «NPC» visible en el Estado de la compañía", host.pg.locator("#allPlayers .npcchip").count() == 2)
         host.shot("94_mesa_npc_360"); host.pg.click("#btnCloseStatus")

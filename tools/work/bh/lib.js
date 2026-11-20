@@ -49,7 +49,7 @@ function invState(E, ctx) {
     if (p.dying && s.phase === "private" && !p.acted) out.push(pre + "moribundo con turno (acted false)");
     if (p.wounds !== woundsOf(U, p)) out.push(pre + "wounds " + p.wounds + " != " + woundsOf(U, p));
     if (Object.keys(p).includes("wounds")) out.push(pre + "wounds enumerable (se guarda)");
-    ["cabeza", "torso", "brazos", "piernas"].forEach(z => { if (!(p.zones[z] >= 0) || !Number.isInteger(p.zones[z])) out.push(pre + "zona " + z + "=" + p.zones[z]); });
+    ["cabeza", "torso", "miembros"].forEach(z => { const zv = p.zones[z] === undefined ? 0 : p.zones[z]; if (!(zv >= 0) || !Number.isInteger(zv)) out.push(pre + "zona " + z + "=" + p.zones[z]); });
     ["cuerpo", "mente", "sombra"].forEach(k => { if (!Number.isFinite(p.stats[k]) || p.stats[k] < 0 || p.stats[k] > 12) out.push(pre + "stat " + k + "=" + p.stats[k]); });
     ["corr", "virtue"].forEach(k => { if (!(p[k] >= 0 && p[k] <= 100)) out.push(pre + k + "=" + p[k]); });
     if (!(p.focus >= 0 && p.focus <= 2)) out.push(pre + "focus " + p.focus);

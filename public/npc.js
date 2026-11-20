@@ -24,13 +24,15 @@
     prudente:  { hostile: 0.03, soc: 0.75, tempt: 0.05, pact: 0.7,  hand: 0.6, offer: 0.3,  cura: 0.8,  accuse: 0.8,  ambush: 0.02, prop: 0.12, spell: 0.35, rest: 2, explore: 3 },
     agresivo:  { hostile: 0.5,  soc: 0.35, tempt: 0.5,  pact: 0.35, hand: 0.4, offer: 0.35, cura: 0.7,  accuse: 0.55, ambush: 0.4,  prop: 0.04, spell: 0.5,  rest: 1, explore: 2 },
     curandero: { hostile: 0,    soc: 0.97, tempt: 0.02, pact: 0.8,  hand: 0.7, offer: 0.45, cura: 0.95, accuse: 0.7,  ambush: 0,    prop: 0.2,  spell: 0.3,  rest: 3, explore: 2 },
-    oscuro:    { hostile: 0.3,  soc: 0.3,  tempt: 0.6,  pact: 0.45, hand: 0.35, offer: 0.5, cura: 0.8,  accuse: 0.5,  ambush: 0.2,  prop: 0.06, spell: 0.55, rest: 1, explore: 3 }
+    oscuro:    { hostile: 0.3,  soc: 0.3,  tempt: 0.6,  pact: 0.45, hand: 0.35, offer: 0.5, cura: 0.8,  accuse: 0.5,  ambush: 0.2,  prop: 0.06, spell: 0.55, rest: 1, explore: 3 },
+    mixto:     { hostile: 0.2,  soc: 0.6,  tempt: 0.25, pact: 0.55, hand: 0.5, offer: 0.4, cura: 0.85, accuse: 0.6,  ambush: 0.15, prop: 0.1,  spell: 0.45, rest: 2, explore: 3 }
   };
   const DESC = {
     prudente: "Evita el conflicto, investiga y busca pactos de protección.",
     agresivo: "Ataca con facilidad y acepta antes la tentación.",
     curandero: "Socorre, protege y cura; casi nunca hace daño.",
-    oscuro: "Juega con la magia prohibida y se deja tentar."
+    oscuro: "Juega con la magia prohibida y se deja tentar.",
+    mixto: "Mezcla de prudencia, ataque y cuidados."
   };
   const HP_RANK = { "Sin heridas visibles": 0, "Magullado": 1, "Herido": 2, "Malherido": 3, "Al borde de caer": 4, "Moribundo": 5 };
   function hpRank(io, x) { const t = String(io.visibleHealth ? io.visibleHealth(x) : "").split(" · ")[0]; return HP_RANK[t] !== undefined ? HP_RANK[t] : 0; }
@@ -189,7 +191,7 @@
     let best = null, bs = 0;
     op.targets.forEach(function (t) { const sc = score(t); if (sc > bs) { bs = sc; best = t; } });
     const leads = op.leads || [];
-    if (best && bs >= 2 && leads.length && R() < 0.5 && io.declare(pid, "contradiccion", best.id, leads[0].i).ok) return;
+    if (leads.length && R() < (best && bs >= 2 ? 0.4 : 0.15) && io.declare(pid, "pista", null, leads[0].i).ok) return;
     if (best && bs >= 3 && R() < prof.accuse) { io.declare(pid, "acusacion", best.id); return; }
     if (op.romper && op.romper.length && R() < 0.05) { io.declare(pid, "romper", op.romper[0]); return; }
     const free = op.targets.filter(function (t) { return !t.dying && (!best || t.id !== best.id || bs < 2); });
