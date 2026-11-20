@@ -1,4 +1,4 @@
-/* EL UMBRAL — datos del juego (v1.10.0)
+/* EL UMBRAL — datos del juego (v1.9.1)
    Roles, afinidades, objetos, acciones, eventos, secretos y pistas. */
 (function (g) {
   "use strict";
@@ -234,13 +234,19 @@
   const NPC_PROFILES = { prudente: "Prudente", agresivo: "Agresivo", curandero: "Curandero", oscuro: "Oscuro" };
   const NPC_NAMES = ["Brisa", "Cuervo", "Dara", "Elan", "Fenn", "Gaia", "Hael", "Ibis", "Jora", "Kael", "Lumi", "Mirt", "Nox", "Orla", "Pyra", "Quill", "Rhea", "Sable", "Tilo", "Vesta"];
 
-  /* Escuelas de magia (v1.9.0, metadatos): cada forma de conjuro pertenece a una escuela; agrupa y da sabor, NO cambia tiradas.
-     Todo lo actual es Tier 1 (básico). Tiers 2+, afinidad y resolución por capas: v1.9.1. */
+  /* Escuelas de magia. v1.9.0: metadatos (agrupan y dan sabor). v1.9.1: tiers. Todo lo antiguo es Tier 1 (básico, efecto inmediato);
+     Tier 2 (intermedio) se desbloquea SOLO estudiando: exige ser Practicante en algún conjuro de la misma escuela y un grimorio.
+     Los T2 se resuelven al caer la noche, por capas (ver engine.js resolveArcane). `icon` = sprite reutilizado. */
   const SPELL_SCHOOLS = {
     names: { luz: "Luz", sombra: "Sombra", naturaleza: "Naturaleza", mente: "Mente", umbral: "Umbral" },
-    of: { egida: "luz", sanar: "luz", purga: "luz", presagio: "mente", maleficio: "mente", drenar: "mente", velo: "umbral", reflejo: "umbral", grillete: "umbral", rayo: "sombra", pesadilla: "sombra", plaga: "naturaleza", marchitar: "naturaleza" }
+    of: { egida: "luz", sanar: "luz", purga: "luz", presagio: "mente", maleficio: "mente", drenar: "mente", velo: "umbral", reflejo: "umbral", grillete: "umbral", rayo: "sombra", pesadilla: "sombra", plaga: "naturaleza", marchitar: "naturaleza",
+      custodia: "luz", aurora: "luz", zarza: "naturaleza", eco: "umbral", olvido: "mente", mordedura: "sombra" },
+    tier: { custodia: 2, aurora: 2, zarza: 2, eco: 2, olvido: 2, mordedura: 2 },
+    icon: { custodia: "egida", aurora: "sanar", zarza: "marchitar", eco: "reflejo", olvido: "velo", mordedura: "rayo" },
+    tierNames: { 1: "Básico", 2: "Intermedio" },
+    weight: { 1: 1, 2: 2 }, cap: 5
   };
-  const D = { VERSION: "1.10.0", SPELL_SCHOOLS, NPC_PROFILES, NPC_NAMES, STATUS, ROLES, AFFINITIES, ITEMS, LOOT_ITEMS, DARK_ITEMS, UTIL_ITEMS, MEDIC_ITEMS, ACTIONS, STAKES, EVENTS, CLUES, ASSASSIN_CLUES, SECRETS };
+  const D = { VERSION: "1.9.1", SPELL_SCHOOLS, NPC_PROFILES, NPC_NAMES, STATUS, ROLES, AFFINITIES, ITEMS, LOOT_ITEMS, DARK_ITEMS, UTIL_ITEMS, MEDIC_ITEMS, ACTIONS, STAKES, EVENTS, CLUES, ASSASSIN_CLUES, SECRETS };
   g.UMBRAL_DATA = D;
   if (typeof module !== "undefined") module.exports = D;
 })(typeof globalThis !== "undefined" ? globalThis : this);

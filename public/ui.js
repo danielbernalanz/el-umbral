@@ -1,4 +1,4 @@
-/* EL UMBRAL — interfaz (v1.10.0) */
+/* EL UMBRAL — interfaz (v1.9.1) */
 (function () {
   "use strict";
 
@@ -916,9 +916,12 @@
     $("actionOverlay").classList.remove("hidden");
   }
 
-  const MAGIA_VIAS = 'Cómo se aprende magia: (1) Estudiar un grimorio desde tu ficha (se encuentran Explorando, en eventos y en tratos): aprendes un conjuro nuevo o perfeccionas uno que ya sabes, y el saber prohibido te cuesta +3 oscuridad. (2) Meditar: si no sabes ninguno, el silencio te enseña uno defensivo sencillo (una vez). (3) Practicar: cada conjuro sube de nivel con sus éxitos: Aprendiz, Practicante (1 éxito), Dominado (2) y Maestro (4).';
+  const MAGIA_VIAS = 'Cómo se aprende magia: (1) Estudiar un grimorio desde tu ficha (se encuentran Explorando, en eventos y en tratos): aprendes un conjuro nuevo o perfeccionas uno que ya sabes, y el saber prohibido te cuesta +3 oscuridad. (2) Meditar: si no sabes ninguno, el silencio te enseña uno defensivo sencillo (una vez). (3) Practicar: cada conjuro sube de nivel con sus éxitos: Aprendiz, Practicante (1 éxito), Dominado (2) y Maestro (4). (4) Nivel 2: si eres Practicante en un conjuro de una escuela, al estudiar un grimorio puede asomar un conjuro intermedio de esa escuela; se resuelve al caer la noche y pesa el doble en tu tope de conjuros (máx. 4 conjuros y 5 de peso).';
   /* Forma + aspecto del conjuro como medallón doble (la maestría va aparte, con su icono). */
-  function spellMedals(sp) { return '<span class="medal md ' + "f-" + famOf("sp_" + sp.form) + '" aria-hidden="true">' + ic("sp_" + sp.form) + '</span>'; }
+  function spIconForm(sp) { const S = D.SPELL_SCHOOLS; return (S && S.icon && S.icon[sp.form]) || sp.form; }
+  function spellMedals(sp) { const k = "sp_" + spIconForm(sp); return '<span class="medal md ' + "f-" + famOf(k) + '" aria-hidden="true">' + ic(k) + '</span>'; }
+  function tierOf(sp) { const S = D.SPELL_SCHOOLS; return (S && S.tier && S.tier[sp.form]) || 1; }
+  function tierChip(sp) { const t = tierOf(sp); return '<span class="chip ' + (t > 1 ? "good" : "mid") + '">' + (t > 1 ? "Nivel 2 · intermedio" : "Nivel 1 · básico") + '</span>'; }
   function spellMinis(sp) {
     const pr = U.spellProgress(sp);
     return '<span class="minis">' + medal("as_" + sp.aspect, "sm") + medal("m_" + pr.level, "sm") + (sp.kind === "off" ? medal("a_enfrentar", "sm", "danger") : medal("a_proteger", "sm", "guard")) + '</span>';
@@ -928,7 +931,7 @@
     const grim = (p.items || []).some(function (i) { return i.id === "grimorio"; });
     const list = (p.spells || []).map(function (sp) {
       const pr = U.spellProgress(sp);
-      return '<div class="spellrow">' + spellMedals(sp) + '<div class="small"><b>' + esc(sp.name) + '</b> <span class="chip mid">' + ic("m_" + pr.level, "ic-sm") + " " + esc(pr.label) + '</span> <span class="chip mid">' + esc(schoolOf(sp)) + '</span><br>' + (sp.kind === "off" ? "Ofensivo" : "Defensivo") + ' · ' + sp.uses + ' uso' + (sp.uses > 1 ? "s" : "") + '</div></div>';
+      return '<div class="spellrow">' + spellMedals(sp) + '<div class="small"><b>' + esc(sp.name) + '</b> <span class="chip mid">' + ic("m_" + pr.level, "ic-sm") + " " + esc(pr.label) + '</span> <span class="chip mid">' + esc(schoolOf(sp)) + '</span> ' + tierChip(sp) + '<br>' + (sp.kind === "off" ? "Ofensivo" : "Defensivo") + ' · ' + sp.uses + ' uso' + (sp.uses > 1 ? "s" : "") + '</div></div>';
     }).join("");
     return h3i("Conjuros", "a_conjurar") + (list || '<p class="small">Aún no conoces ninguno.</p>') +
       (grim ? '<p class="small">Tienes un grimorio: púlsalo en Objetos para estudiarlo.</p>' : '') +
@@ -958,7 +961,7 @@
     const pl = SK.plan(seed), ov = $("skillOverlay"), W = SK.CFG.windowMs, taps = [];
     let t0 = performance.now(), raf = 0, done = false;
     const zone = $("skillZone"), needle = $("skillNeedle"), st = $("skillStatus");
-    $("skillInfo").textContent = "Toca cuando la aguja esté sobre la zona clara (2 toques). Acertar suma hasta +15 puntos a tu probabilidad; fallar del todo resta 6. Si omites, queda la probabilidad normal.";
+    $("skillInfo").textContent = "Toca cuando la aguja esté sobre la zona clara (2 toques). Acertar suma hasta +15 puntos a tu probabilidad; fallar del todo resta 6. Al estudiar, un buen pulso reduce la oscuridad que te cuesta y uno torpe la sube. Si omites, queda lo normal.";
     function setZone() { const c = pl.centers[Math.min(taps.length, pl.centers.length - 1)]; zone.style.left = ((c - SK.CFG.width / 2) * 100) + "%"; zone.style.width = (SK.CFG.width * 100) + "%"; st.textContent = "Toque " + (taps.length + 1) + " de " + SK.CFG.taps; }
     function finish(skillArg, msg) {
       if (done) return; done = true; cancelAnimationFrame(raf);
@@ -1011,7 +1014,7 @@
       if (sp) {
         const af = ASP_FAM[sp.aspect] || "lore";
         o.fx = sp.kind === "off" ? { name: "flash", fam: af, ok: !fxFailed(res), cls: sp.aspect === "vacio" ? "vac" : "" }
-          : (sp.form === "sanar" || sp.form === "purga") ? { name: "glow", fam: "heal", ok: !fxFailed(res) } : { name: "shield", fam: af, ok: !fxFailed(res) };
+          : (sp.form === "sanar" || sp.form === "purga" || sp.form === "aurora") ? { name: "glow", fam: "heal", ok: !fxFailed(res) } : { name: "shield", fam: af, ok: !fxFailed(res) };
       }
       showRoll({ title: "CONJURO", icon: "a_conjurar", result: res, text: res.outcome, fx: o.fx, hit: o.hit, heal: o.heal, dying: o.dying, buttons: [{ label: "Continuar", cls: "primary", onClick: endTurn }] });
     });
@@ -1019,7 +1022,7 @@
   function schoolOf(sp) { const S = D.SPELL_SCHOOLS; return S ? (S.names[S.of[sp.form]] || "Umbral") : "Umbral"; }
   function spellLine(sp, info) {
     return '<span class="small">' + (sp.kind === "off" ? "Ofensivo" : "Defensivo") + ' · ' + esc(sp.desc) + '</span>' +
-      '<span class="small">Escuela de ' + esc(schoolOf(sp)) + ' · nivel 1 (básico)</span><span class="small">Usa tu ' + esc(info.attr) + ' · ' + sp.uses + ' uso' + (sp.uses > 1 ? "s" : "") + ' · ' + esc(U.spellProgress(sp).label) + '</span>';
+      '<span class="small">Escuela de ' + esc(schoolOf(sp)) + ' · ' + (tierOf(sp) > 1 ? "nivel 2 (intermedio): se resuelve al caer la noche" : "nivel 1 (básico): efecto inmediato") + '</span><span class="small">Usa tu ' + esc(info.attr) + ' · ' + sp.uses + ' uso' + (sp.uses > 1 ? "s" : "") + ' · ' + esc(U.spellProgress(sp).label) + '</span>';
   }
   function probChip(prob) {
     return ' <span class="chip ' + (prob >= 70 ? "good" : prob >= 45 ? "mid" : "low") + '">' + prob + '% éxito</span>';
@@ -1062,7 +1065,11 @@
       return;
     }
     $("actionHint").textContent = "Elige un conjuro. Cada uno tiene usos limitados (Meditar repone uno) y un porcentaje de éxito propio. Luego decides con cuánto empeño lo lanzas.";
-    (p.spells || []).forEach(function (sp) {
+    const sorted = (p.spells || []).slice().sort(function (a, b) { return schoolOf(a) < schoolOf(b) ? -1 : schoolOf(a) > schoolOf(b) ? 1 : tierOf(a) - tierOf(b); });
+    const multi = sorted.some(function (x) { return schoolOf(x) !== schoolOf(sorted[0]); });
+    let lastSchool = null;
+    sorted.forEach(function (sp) {
+      if (multi && schoolOf(sp) !== lastSchool) { lastSchool = schoolOf(sp); const hd = document.createElement("div"); hd.className = "small"; hd.style.cssText = "margin:6px 2px 0;opacity:.8"; hd.textContent = "Escuela de " + lastSchool; box.appendChild(hd); }
       const info = U.spellInfo(p.id, sp.id, null, "normal");
       const btn = document.createElement("button");
       btn.className = "choice";
@@ -1080,11 +1087,11 @@
     $("actionHint").classList.remove("hidden");
     const st = pendingStudy;
     if (st.pick === null) {
-      $("actionHint").textContent = "Tres conjuros asoman entre las páginas: aprende uno nuevo o perfecciona uno que ya sabes. Estudiar te cuesta +3 oscuridad.";
+      $("actionHint").textContent = "Tres conjuros asoman entre las páginas: aprende uno nuevo o perfecciona uno que ya sabes. Estudiar te cuesta +3 oscuridad (un buen pulso en el reto lo deja en +2; uno torpe, en +4). Los de nivel 2 solo aparecen si eres Practicante en esa escuela.";
       st.opts.forEach(function (sp, i) {
         const btn = document.createElement("button");
         btn.className = "choice";
-        btn.innerHTML = spellMedals(sp) + '<span class="cbody"><b>' + esc(sp.name) + '</b><span class="small">' + (sp.kind === "off" ? "Ofensivo" : "Defensivo") + ' · ' + esc(sp.desc) + ' · ' + sp.uses + ' uso' + (sp.uses > 1 ? "s" : "") + '</span><span class="minis">' + medal("as_" + sp.aspect, "sm") + '</span></span>';
+        btn.innerHTML = spellMedals(sp) + '<span class="cbody"><b>' + esc(sp.name) + '</b><span class="small">' + tierChip(sp) + ' ' + esc(schoolOf(sp)) + ' · ' + (sp.kind === "off" ? "Ofensivo" : "Defensivo") + ' · ' + esc(sp.desc) + ' · ' + sp.uses + ' uso' + (sp.uses > 1 ? "s" : "") + (tierOf(sp) > 1 ? ' · pesa el doble en tu tope de conjuros' : '') + '</span><span class="minis">' + medal("as_" + sp.aspect, "sm") + '</span></span>';
         btn.onclick = function () { st.pick = i; renderPrivate(); };
         box.appendChild(btn);
       });
@@ -1094,7 +1101,7 @@
         const btn = document.createElement("button");
         btn.className = "choice";
         btn.innerHTML = medal("a_perfeccionar", "md") + '<span class="cbody"><b>Perfeccionar «' + esc(sp.name) + '»</b><span class="small">En vez de aprender uno nuevo, subes este conjuro de nivel (ahora: ' + esc(pr.label) + '). ' + esc(pr.next) + '</span><span class="minis">' + medal("m_" + pr.level, "sm") + '</span></span>';
-        btn.onclick = function () { pendingStudy = null; mut(U.improveSpell(p.id, sp.id)); };
+        btn.onclick = function () { withSkill(function (sk) { pendingStudy = null; mut(U.improveSpell(p.id, sp.id, sk)); }); };
         box.appendChild(btn);
       });
     } else {
@@ -1103,7 +1110,7 @@
         const btn = document.createElement("button");
         btn.className = "choice";
         btn.innerHTML = medal(o[3], "md", o[4]) + '<span class="cbody"><b>' + o[1] + '</b><span class="small">' + o[2] + '</span></span>';
-        btn.onclick = function () { const pk = st.pick; pendingStudy = null; mut(U.learnSpell(p.id, pk, o[0])); };
+        btn.onclick = function () { const pk = st.pick; withSkill(function (sk) { pendingStudy = null; mut(U.learnSpell(p.id, pk, o[0], sk)); }); };
         box.appendChild(btn);
       });
     }

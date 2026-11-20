@@ -5,6 +5,15 @@
 (function (w) {
   "use strict";
   w.UMBRAL_NEWS = [
+    { version: "1.9.1", fecha: "2026-11-20", titulo: "Magia de nivel 2", puntos: [
+      "Aparecen seis conjuros intermedios, uno o dos por escuela: Custodia y Aurora (Luz), Zarza (Naturaleza), Eco (Umbral), Olvido (Mente) y Mordedura (Sombra).",
+      "Se aprenden estudiando un grimorio, y solo si ya eres Practicante en un conjuro de esa misma escuela (o si un ermitaño te enseña). En el estudio, una de las tres opciones pasa a ser de nivel 2: nadie ve menos opciones.",
+      "Sus efectos se resuelven al caer la noche, todos a la vez y por capas: primero los contrahechizos, luego los amparos, después los ataques, las curas y la información. Da igual quién actuó antes.",
+      "Eco te deja nombrar a alguien: si lanzó un conjuro de nivel 2 esa noche, lo deshaces; si no, el eco se pierde y te mancha. Custodia protege a otra persona del primer conjuro de nivel 2 que le lancen.",
+      "Los conjuros de nivel 2 pesan el doble en tu tope (máximo 4 conjuros y 5 de peso). Tu primera escuela practicada te da afinidad: −1 dificultad en tus conjuros de nivel 2 de esa escuela.",
+      "Si usas el reto de pulso al estudiar, un buen pulso te cuesta 1 de oscuridad menos y uno torpe, 1 más. Omitirlo deja el coste normal.",
+      "Lo que se oye en la crónica de un conjuro de nivel 2 nunca nombra a su objetivo, salga bien o mal."
+    ] },
     { version: "1.10.0", fecha: "2026-11-20", titulo: "Salud más realista: tres zonas", puntos: [
       "El cuerpo ahora tiene tres zonas: cabeza, torso y brazos y piernas. Cada zona guarda una sola lesión, con su gravedad (leve, seria o grave) y su tipo (corte, perforación, contusión, fractura o quemadura).",
       "Sin sorpresas: un corte o una perforación de 3 o más de daño sangra siempre; las contusiones y quemaduras no. Y una herida abierta seria que lleva dos rondas sin cuidados se infecta; la ronda anterior se te avisa.",

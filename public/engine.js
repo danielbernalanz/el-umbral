@@ -1,4 +1,4 @@
-/* EL UMBRAL — motor de juego (v1.10.0)
+/* EL UMBRAL — motor de juego (v1.9.1)
    Sin DOM. Toda la lógica vive aquí para poder probarla con Node. */
 (function (g) {
   "use strict";
@@ -396,9 +396,10 @@
   function npcTeach(p) {
     p.spells = p.spells || [];
     if (p.spells.length >= 2 && p.spells.some(function (x) { return spellLevel(x) < 3; })) return npcPerfect(p);
-    const sp = genSpell(null); sp.uses = 1 + rnd(2); finalizeSpell(sp);
-    if (p.spells.length >= 4) { p.spells.sort(function (x, y) { return x.uses - y.uses; }); p.spells.shift(); }
-    p.spells.push(sp);
+    const el = t2Eligible(p);
+    const sp = el.length && Math.random() < 0.5 ? genSpell(null, null, pick(el)) : genSpell(null);   /* v1.9.1: quien ya es Practicante puede recibir una lección intermedia */
+    sp.uses = 1 + rnd(2); finalizeSpell(sp);
+    addSpell(p, sp);
     return " Aprendes «" + sp.name + "» (" + sp.uses + " uso" + (sp.uses > 1 ? "s" : "") + ").";
   }
   const NPCS = {
@@ -735,8 +736,28 @@
     velo: { name: "Velo", kind: "def", attr: "sombra", diff: 3, target: false },
     purga: { name: "Purga", kind: "def", attr: "mente", diff: 4, target: false },
     reflejo: { name: "Reflejo", kind: "def", attr: "sombra", diff: 4, target: false },
-    presagio: { name: "Presagio", kind: "def", attr: "mente", diff: 3, target: true }
+    presagio: { name: "Presagio", kind: "def", attr: "mente", diff: 3, target: true },
+    /* Tier 2 (v1.9.1): efecto diferido, se resuelve al caer la noche por capas (C1 contrahechizo, C2 amparo, C4 ofensivo, C5 cura, C6 información). */
+    custodia: { name: "Custodia", kind: "def", attr: "mente", diff: 5, target: true, tier: 2, layer: 2 },
+    aurora: { name: "Aurora", kind: "def", attr: "mente", diff: 5, target: true, tier: 2, layer: 5 },
+    zarza: { name: "Zarza", kind: "off", attr: "sombra", diff: 6, target: true, tier: 2, layer: 4 },
+    eco: { name: "Eco", kind: "def", attr: "mente", diff: 5, target: true, tier: 2, layer: 1 },
+    olvido: { name: "Olvido", kind: "def", attr: "mente", diff: 5, target: true, tier: 2, layer: 6 },
+    mordedura: { name: "Mordedura", kind: "off", attr: "sombra", diff: 6, target: true, tier: 2, layer: 4, selfCorr: 3 }
   };
+  const SCH = D.SPELL_SCHOOLS || { of: {}, names: {}, weight: { 1: 1, 2: 2 }, cap: 5 };
+  function formTier(form) { return (SPELL_FORMS[form] && SPELL_FORMS[form].tier) || 1; }
+  function spellSchool(sp) { return SCH.of[sp.form] || "umbral"; }
+  function spellWeight(sp) { return SCH.weight[formTier(sp.form)] || 1; }
+  const SPELL_CAP = SCH.cap || 5, SPELL_MAX_N = 4;
+  /* Añade un conjuro respetando el tope: máx. 4 conjuros y 5 de «peso» (T1 pesa 1, T2 pesa 2). Si no cabe, se pierde el de menos usos. */
+  function addSpell(p, sp) {
+    p.spells = p.spells || [];
+    const w = spellWeight(sp);
+    const tot = function () { return p.spells.reduce(function (n, x) { return n + spellWeight(x); }, 0); };
+    while (p.spells.length && (p.spells.length >= SPELL_MAX_N || tot() + w > SPELL_CAP)) { p.spells.sort(function (x, y) { return x.uses - y.uses; }); p.spells.shift(); }
+    p.spells.push(sp);
+  }
   const SPELL_ASPECTS = {
     fuego: { adj: "ígneo", roll: 1, selfCorr: 3, text: "más certero, pero te mancha un poco" },
     hielo: { adj: "gélido", dur: 1, text: "sus efectos duran una ronda más" },
@@ -761,12 +782,18 @@
       case "purga": return "Expulsa " + (10 + 6 * (pw - 1)) + " de oscuridad y limpia sangrado, veneno, infección y maldición.";
       case "reflejo": return "Preparas un reflejo: la próxima agresión directa rebota contra su autor.";
       case "presagio": return "Una visión: obtienes una pista " + (pw > 1 ? "muy fuerte " : "fuerte ") + "sobre el objetivo.";
+      case "custodia": return "Un amparo sobre otra persona: absorbe el primer conjuro ofensivo de segundo grado que se le lance esta noche. Se resuelve al caer la noche.";
+      case "aurora": return "Cierras " + (pw > 1 ? 6 : 4) + " de vitalidad de heridas ajenas y limpias un estado (sangrado, veneno, infección o maldición). Se resuelve al caer la noche; no sirve con moribundos.";
+      case "zarza": return "Raíces que desgarran: sangrado " + (2 + dur + (pw > 1 ? 1 : 0)) + " rondas y maldición 1 ronda sobre el objetivo. Se resuelve al caer la noche.";
+      case "eco": return "Nombras a alguien: si lanzó un conjuro de segundo grado esta noche, lo deshaces. Si no había nada, el eco se pierde y te mancha (+2 oscuridad). Se resuelve al caer la noche.";
+      case "olvido": return "Borras " + (pw > 1 ? "las dos pistas más recientes" : "la pista más reciente") + " que el objetivo tenga sobre ti. Se resuelve al caer la noche.";
+      case "mordedura": return "Una dentellada de sombra: " + (pw > 1 ? "5-6" : "4-5") + " de vitalidad y +2 de oscuridad al objetivo. Se resuelve al caer la noche.";
     }
     return "";
   }
   function finalizeSpell(sp) {
     const f = SPELL_FORMS[sp.form], asp = SPELL_ASPECTS[sp.aspect];
-    sp.kind = f.kind; sp.target = f.target;
+    sp.kind = f.kind; sp.target = f.target; sp.tier = f.tier || 1;
     sp.power = 1 + (asp.power || 0) + (sp.tune === "potente" ? 1 : 0) + (sp.mastered ? 1 : 0);
     sp.stealth = !!(asp.stealth || sp.tune === "sutil");
     const tn = { potente: "mayor", estable: "perdurable", sutil: "silente" };
@@ -776,15 +803,25 @@
     sp.desc = spellFormText(sp.form, sp.power, asp.dur || 0) + " " + asp.text.charAt(0).toUpperCase() + asp.text.slice(1) + "." + tuneTxt + mastTxt;
     return sp;
   }
-  function genSpell(kind, avoidForm) {
-    const forms = Object.keys(SPELL_FORMS).filter(function (k) { return (!kind || SPELL_FORMS[k].kind === kind) && k !== avoidForm; });
+  function genSpell(kind, avoidForm, forceForm) {
+    const forms = forceForm ? [forceForm] : Object.keys(SPELL_FORMS).filter(function (k) { return (!kind || SPELL_FORMS[k].kind === kind) && k !== avoidForm && formTier(k) === 1; });
     const sp = { id: "s" + Date.now().toString(36) + rnd(99999), form: pick(forms), aspect: pick(Object.keys(SPELL_ASPECTS)), epithet: pick(SPELL_EPITHETS), uses: 1 + rnd(2), tune: null };
     return finalizeSpell(sp);
   }
-  function genOptions() {
+  /* Formas de Tier 2 que este jugador PUEDE estudiar: ser Practicante (≥1 éxito) en algún conjuro de la misma escuela y no tenerlas ya. */
+  function t2Eligible(p) {
+    const ok = {};
+    (p.spells || []).forEach(function (x) { if (spellLevel(x) >= 1) ok[spellSchool(x)] = true; });
+    const known = {}; (p.spells || []).forEach(function (x) { known[x.form] = true; });
+    return Object.keys(SPELL_FORMS).filter(function (k) { return formTier(k) >= 2 && ok[SCH.of[k]] && !known[k]; });
+  }
+  /* Tres opciones para todos. Si cumples el requisito, una de ellas (la tercera) es de Tier 2: nadie ve menos opciones. */
+  function genOptions(p) {
     const a = genSpell("off"), b = genSpell("def");
     const c = genSpell(Math.random() < 0.5 ? "off" : "def", null);
-    return [a, b, c.form === a.form || c.form === b.form ? genSpell(c.kind, c.form) : c];
+    const third = c.form === a.form || c.form === b.form ? genSpell(c.kind, c.form) : c;
+    const el = p ? t2Eligible(p) : [];
+    return [a, b, el.length ? genSpell(null, null, pick(el)) : third];
   }
   function spellAttr(sp) { return sp.aspect === "luz" ? "mente" : SPELL_FORMS[sp.form].attr; }
   function applySpell(p, sp, t, crit, powOv) {
@@ -835,6 +872,10 @@
     } else if (before < 1 && spellLevel(sp) >= 1) {
       txt += " Practicante: «" + sp.name + "» te cuesta una dificultad menos.";
     }
+    if (before < 1 && spellLevel(sp) >= 1) {
+      txt += " Ya conoces lo bastante de la escuela de " + (SCH.names[spellSchool(sp)] || "") + " para estudiar conjuros intermedios de ella.";
+      if (!p.arcAff) { p.arcAff = spellSchool(sp); txt += " Es tu afinidad: −1 dificultad en tus conjuros de segundo grado de esa escuela."; }
+    }
     return txt;
   }
   function spellMode(m) { return m === "cauto" || m === "desatado" ? m : "normal"; }
@@ -851,6 +892,7 @@
       else { diff += 1; why.push("la oscuridad se resiste a protegerte (+1 dificultad)"); }
     }
     if (spellLevel(sp) >= 1) { diff -= 1; why.push("práctica con este conjuro (−1 dificultad)"); }
+    if (formTier(sp.form) >= 2 && p.arcAff && p.arcAff === spellSchool(sp)) { diff -= 1; why.push("afinidad con la escuela de " + (SCH.names[p.arcAff] || "") + " (−1 dificultad)"); }
     diff = Math.max(2, diff);
     const cm = corrMod(p, attr), zm = zoneMod(p, attr), sm = statusMod(p), fo = p.focus > 0 ? p.focus : 0;
     statusWhy(p).forEach(function (x) { why.push(x); });
@@ -869,13 +911,13 @@
     const t = SPELL_FORMS[sp.form].target && targetId != null ? state.players[targetId] : null;
     const c = spellCheck(p, sp, t, mode), asp = SPELL_ASPECTS[sp.aspect];
     const cost = [];
-    const master = spellLevel(sp) >= 3, corrCost = (asp.selfCorr || 0) + (sp.tune === "potente" ? 3 : 0) + (mode === "desatado" && !master ? 3 : 0);
+    const master = spellLevel(sp) >= 3, corrCost = (asp.selfCorr || 0) + (SPELL_FORMS[sp.form].selfCorr || 0) + (sp.tune === "potente" ? 3 : 0) + (mode === "desatado" && !master ? 3 : 0);
     if (corrCost > 0) cost.push("+" + corrCost + " oscuridad"); else if (corrCost < 0) cost.push(corrCost + " oscuridad");
     if (asp.selfWound) cost.push("−" + asp.selfWound + " de vitalidad");
     if (mode === "desatado" && !master) cost.push("si falla: 2 de daño y +4 oscuridad");
     if (mode === "desatado") cost.push("estallido visible para todos");
     else if (sp.kind === "off" && !sp.stealth) cost.push("deja rastro público (se oyen palabras)");
-    return { prob: c.prob, diff: c.diff, bonus: c.bonus, attr: c.attr, mods: c.why, power: c.power, effect: spellFormText(sp.form, c.power, asp.dur || 0), cost: cost.filter(Boolean), uses: sp.uses, kind: sp.kind, target: sp.target, mode: mode };
+    return { prob: c.prob, diff: c.diff, bonus: c.bonus, attr: c.attr, mods: c.why, power: c.power, effect: spellFormText(sp.form, c.power, asp.dur || 0), cost: cost.filter(Boolean), uses: sp.uses, kind: sp.kind, target: sp.target, mode: mode, tier: formTier(sp.form), school: SCH.names[spellSchool(sp)] || "", delayed: formTier(sp.form) >= 2 };
   }
   function cast(actorId, spellId, targetId, modeArg, skill) {
     if (!state || state.phase !== "private") return err("Ahora no puedes actuar.");
@@ -915,11 +957,15 @@
       res.why = ["tu " + sc.attr + " (" + p.stats[sc.attr] + ")"].concat(sc.why);
       if (r.skillFlip) res.why.push(r.skillFlip > 0 ? "tu pulso firme inclinó la tirada a tu favor" : "tu pulso torpe empeoró la tirada");
       res.die = r.die; res.stat = r.stat; res.focus = r.focus; res.status = r.status || 0; res.total = r.total; res.diff = r.diff; res.crit = r.crit; res.fumble = r.fumble; res.success = r.success;
-      if ((asp.selfCorr || 0) > 0 || sp.tune === "potente" || f.kind === "off") darkAct(p);
+      if ((asp.selfCorr || 0) > 0 || (f.selfCorr || 0) > 0 || sp.tune === "potente" || f.kind === "off") darkAct(p);
       if ((asp.selfCorr || 0) < 0) antiAct(p);
-      p.corr = clamp(p.corr + (asp.selfCorr || 0) + (sp.tune === "potente" ? 3 : 0) + (mode === "desatado" && spellLevel(sp) < 3 ? 3 : 0), 0, 100);
+      p.corr = clamp(p.corr + (asp.selfCorr || 0) + (f.selfCorr || 0) + (sp.tune === "potente" ? 3 : 0) + (mode === "desatado" && spellLevel(sp) < 3 ? 3 : 0), 0, 100);
       if (asp.selfWound) { const sw = damage(p, asp.selfWound, { zone: "brazos" }); selfTxt = " Pagas el hechizo con tu sangre (−" + sw.dealt + " de vitalidad)."; p.notes.push("Ronda " + state.round + ": pagaste un conjuro con tu sangre" + hitNote(sw) + "."); }
-      if (r.success) { text = applySpell(p, sp, t, r.crit, mode === "normal" ? 0 : sc.power); addXp(p, sc.attr, r.crit ? 2 : 1); }
+      if (r.success) {
+        if (formTier(sp.form) >= 2) text = queueArcane(p, sp, t, r.crit, mode === "normal" ? 0 : sc.power);
+        else { text = applySpell(p, sp, t, r.crit, mode === "normal" ? 0 : sc.power); if (off && t) harmSig(t, p, "conjurar", "marca"); }
+        addXp(p, sc.attr, r.crit ? 2 : 1);
+      }
       else if (r.fumble) { p.corr = clamp(p.corr + 3, 0, 100); text = "El conjuro se retuerce entre tus dedos y te mancha."; }
       else text = "El conjuro se deshace sin efecto.";
       if (!r.success && mode === "desatado" && spellLevel(sp) < 3) {
@@ -934,7 +980,8 @@
     if (mode === "desatado") state.chronicle.push({ round: state.round, text: "Un estallido de magia desatada iluminó las ruinas un instante." });
     if (off && t) {
       noteAggr(p, "spell", 1);
-      if (!sp.stealth && mode !== "desatado") state.chronicle.push({ round: state.round, text: res.success ? "Se oyeron palabras antiguas cerca de " + t.name + "." : "Se oyeron palabras antiguas entre las ruinas." });
+      /* T1: el éxito nombra el objetivo (como siempre); T2: NUNCA nombra objetivo, salga bien o mal. */
+      if (!sp.stealth && mode !== "desatado") state.chronicle.push({ round: state.round, text: res.success && formTier(sp.form) < 2 ? "Se oyeron palabras antiguas cerca de " + t.name + "." : "Se oyeron palabras antiguas entre las ruinas." });
       p.deeds = p.deeds || [];
       p.deeds.push({ round: state.round, kind: "conjurar", target: t.id, ok: res.success });
     }
@@ -947,6 +994,99 @@
     res.outcome = text;
     save();
     return res;
+  }
+  /* ---------- v1.9.1: cola de conjuros de Tier 2 y resolución por capas ----------
+     La TIRADA y los costes se pagan al lanzar (feedback inmediato y privado); el EFECTO se encola en state.arcane y se resuelve
+     al abrir el Consejo (beginCouncil: resolveArcane → resolveHarm → shadowStrike), por capas fijas y en orden determinista
+     (potencia desc., id de lanzador asc.): el resultado NO depende de quién actuó antes. state.arcane nunca sale en la vista pública. */
+  function queueArcane(p, sp, t, crit, powOv) {
+    const f = SPELL_FORMS[sp.form], asp = SPELL_ASPECTS[sp.aspect];
+    state.arcane = state.arcane || []; state.arcaneSeq = (state.arcaneSeq || 0) + 1;
+    state.arcane.push({ id: state.arcaneSeq, caster: p.id, form: sp.form, name: sp.name, kind: f.kind, layer: f.layer, tier: f.tier || 2, target: t ? t.id : null,
+      power: powOv || sp.power, crit: !!crit, dur: asp.dur || 0, pierce: !!asp.pierce, round: state.round });
+    return "El conjuro cobra forma: sus efectos se resolverán al caer la noche, a la vez que los de los demás (por capas, sin importar quién actuó primero).";
+  }
+  function arcNote(pl, txt) { if (pl && !pl.dead) pl.notes.push("Ronda " + state.round + ": " + txt); }
+  function arcEffect(e, c, v) {
+    const pw = e.power;
+    if (e.form === "zarza") {
+      giveStatus(v, "sangrado", 2 + e.dur + (pw > 1 ? 1 : 0)); giveStatus(v, "maldito", 1);
+      arcNote(v, "unas raíces invisibles te desgarran y la suerte te da la espalda.");
+      arcNote(c, "tus raíces atraparon a " + v.name + ".");
+    } else if (e.form === "mordedura") {
+      const big = e.crit || pw > 1, res = damage(v, big ? rr(5, 6) : rr(4, 5), { src: "magia" });
+      v.corr = clamp(v.corr + 2, 0, 100);
+      arcNote(v, "algo oscuro te mordió desde la nada" + hitNote(res) + ".");
+      arcNote(c, "tu mordedura alcanzó a " + v.name + (res.died ? ": ya estaba moribundo y cae." : res.dying ? ": cae moribundo." : "."));
+    }
+    harmSig(v, c, "conjurar", "marca");
+  }
+  function resolveArcane() {
+    const q = state.arcane || [];
+    state.arcane = [];
+    if (!q.length) return;
+    const P = function (i) { return state.players[i]; };
+    const order = function (a, b) { return (b.power - a.power) || (a.caster - b.caster) || (a.id - b.id); };
+    q.forEach(function (e) {
+      const c = P(e.caster), t = e.target != null ? P(e.target) : null;
+      e.void = !c || c.dead || c.dying; e.gone = !!(t && t.dead);
+      if (e.void) arcNote(c, "tu magia («" + e.name + "») se apagó antes de tomar forma.");
+      else if (e.gone) { e.void = true; arcNote(c, "tu conjuro «" + e.name + "» se perdió: " + t.name + " ya no está."); }
+    });
+    const live = function (L) { return q.filter(function (e) { return e.layer === L && !e.void && !e.canceled; }).sort(order); };
+    /* C1: contrahechizo (Eco). Anula el conjuro T2 de mayor potencia de la persona nombrada. Un conjuro anulado gasta su uso. */
+    live(1).forEach(function (e) {
+      if (e.canceled) return;
+      const c = P(e.caster), v = P(e.target);
+      const hit = q.filter(function (x) { return x !== e && x.caster === e.target && !x.void && !x.canceled; }).sort(order)[0];
+      if (hit) {
+        hit.canceled = true;
+        arcNote(c, "tu eco deshizo un conjuro de " + v.name + ".");
+        arcNote(v, "tu conjuro «" + hit.name + "» se deshizo sin que sepas por qué.");
+      } else {
+        c.corr = clamp(c.corr + 2, 0, 100);
+        arcNote(c, "tu eco sobre " + v.name + " no encontró ningún conjuro que deshacer y te manchó (+2 oscuridad).");
+      }
+    });
+    /* C2: amparos (Custodia): cada uno absorbe un conjuro ofensivo T2 contra su protegido. */
+    const wards = {};
+    live(2).forEach(function (e) { (wards[e.target] = wards[e.target] || []).push(e); });
+    /* C4: ofensivos, por potencia. */
+    live(4).forEach(function (e) {
+      if (e.canceled) return;
+      const c = P(e.caster), v = P(e.target);
+      const w = !e.pierce && wards[e.target] && wards[e.target].shift();
+      if (w) {
+        e.canceled = true; w.used = true;
+        arcNote(c, "tu conjuro «" + e.name + "» chocó contra un amparo y se disipó.");
+        arcNote(v, "un amparo desvió un conjuro dirigido a ti.");
+        arcNote(P(w.caster), "tu custodia sobre " + v.name + " resistió un conjuro.");
+        return;
+      }
+      arcEffect(e, c, v);
+    });
+    q.forEach(function (e) { if (e.layer === 2 && !e.void && !e.canceled && !e.used) arcNote(P(e.caster), "tu custodia sobre " + P(e.target).name + " no llegó a ser puesta a prueba."); });
+    /* C5: curación (Aurora). */
+    live(5).forEach(function (e) {
+      const c = P(e.caster), v = P(e.target);
+      if (v.dying) { arcNote(c, "tu aurora no pudo con " + v.name + ": está moribundo y necesita Socorrer."); return; }
+      const h = heal(v, e.power > 1 ? 6 : 4);
+      const st = ["sangrado", "veneno", "infeccion", "maldito"].filter(function (id) { return hasStatus(v, id); })[0];
+      if (st) dropStatus(v, st);
+      arcNote(v, h > 0 || st ? "una luz suave te cura" + (h > 0 ? " (+" + h + " de vitalidad)" : "") + (st ? " y limpia un mal" : "") + "." : "una luz suave te envolvió, pero no tenías nada que curar.");
+      arcNote(c, "tu aurora sobre " + v.name + (h > 0 || st ? " surtió efecto." : " no encontró nada que curar."));
+    });
+    /* C6: información (Olvido). */
+    live(6).forEach(function (e) {
+      const c = P(e.caster), v = P(e.target);
+      let n = 0;
+      for (let k = e.power > 1 ? 2 : 1; k > 0; k--) {
+        let idx = -1; (v.clues || []).forEach(function (cl, i) { if (cl.about === c.id) idx = i; });
+        if (idx >= 0) { v.clues.splice(idx, 1); n++; }
+      }
+      arcNote(c, n ? "tu olvido borró " + n + " pista" + (n > 1 ? "s" : "") + " de " + v.name + " sobre ti." : "tu olvido no encontró nada que borrar en la mente de " + v.name + ".");
+      if (n) arcNote(v, "sientes un hueco en la memoria, como si algo se te hubiera escapado.");
+    });
   }
   const STUDY_CORR = 3;
   function studyChecks(pid) {
@@ -961,11 +1101,13 @@
     const p = state.players[pid];
     const it = p.items[idx];
     if (!it || it.id !== "grimorio") return err("Ese objeto no se puede estudiar.");
-    if (!p.study || p.study.idx !== idx) p.study = { idx: idx, opts: genOptions() };
+    if (!p.study || p.study.idx !== idx) p.study = { idx: idx, opts: genOptions(p) };
     save();
     return { ok: true, options: p.study.opts };
   }
-  function learnSpell(pid, optIdx, tune) {
+  /* Reto de pulso opcional al estudiar (bonus -6..+15): página limpia (≥+8) cuesta −1 oscuridad; pulso torpe (≤−3) la mancha (+1). Sin reto: coste normal. */
+  function studyCost(skill) { const d = skillClamp(skill); return STUDY_CORR + (d >= 8 ? -1 : d <= -3 ? 1 : 0); }
+  function learnSpell(pid, optIdx, tune, skill) {
     const bad = studyChecks(pid); if (bad) return err(bad);
     const p = state.players[pid];
     const st = p.study;
@@ -976,18 +1118,17 @@
     const sp = Object.assign({}, base, { tune: tune, id: "s" + Date.now().toString(36) + rnd(99999) });
     if (tune === "estable") sp.uses += 1;
     finalizeSpell(sp);
-    p.spells = p.spells || [];
-    if (p.spells.length >= 4) { p.spells.sort(function (x, y) { return x.uses - y.uses; }); p.spells.shift(); }
-    p.spells.push(sp);
+    addSpell(p, sp);
     p.items.splice(st.idx, 1);
     p.usedItem = true; p.study = null;
-    p.corr = clamp(p.corr + STUDY_CORR, 0, 100);
-    p.notes.push("Ronda " + state.round + ": estudiaste un grimorio y aprendiste «" + sp.name + "» (el saber prohibido te mancha: +" + STUDY_CORR + " oscuridad).");
+    const sc = studyCost(skill);
+    p.corr = clamp(p.corr + sc, 0, 100);
+    p.notes.push("Ronda " + state.round + ": estudiaste un grimorio y aprendiste «" + sp.name + "» (el saber prohibido te mancha: +" + sc + " oscuridad).");
     save();
-    return { ok: true, spell: sp, msg: "Aprendes «" + sp.name + "». El saber prohibido te mancha (+" + STUDY_CORR + " oscuridad)." };
+    return { ok: true, spell: sp, msg: "Aprendes «" + sp.name + "». El saber prohibido te mancha (+" + sc + " oscuridad)." };
   }
   /* Perfeccionar: en vez de aprender uno nuevo, el grimorio sube un nivel de maestría a un conjuro que ya conoces. */
-  function improveSpell(pid, spellId) {
+  function improveSpell(pid, spellId, skill) {
     const bad = studyChecks(pid); if (bad) return err(bad);
     const p = state.players[pid];
     const st = p.study;
@@ -999,10 +1140,11 @@
     const extra = spellRise(p, sp, Math.max(1, target - Math.max(sp.wins || 0, sp.mastered ? 2 : 0)));
     p.items.splice(st.idx, 1);
     p.usedItem = true; p.study = null;
-    p.corr = clamp(p.corr + STUDY_CORR, 0, 100);
-    p.notes.push("Ronda " + state.round + ": perfeccionaste «" + sp.name + "» con un grimorio (+" + STUDY_CORR + " oscuridad).");
+    const sc = studyCost(skill);
+    p.corr = clamp(p.corr + sc, 0, 100);
+    p.notes.push("Ronda " + state.round + ": perfeccionaste «" + sp.name + "» con un grimorio (+" + sc + " oscuridad).");
     save();
-    return { ok: true, spell: sp, msg: "Perfeccionas «" + sp.name + "»: ahora es " + MASTERY[spellLevel(sp)].name + "." + extra + " El saber prohibido te mancha (+" + STUDY_CORR + " oscuridad)." };
+    return { ok: true, spell: sp, msg: "Perfeccionas «" + sp.name + "»: ahora es " + MASTERY[spellLevel(sp)].name + "." + extra + " El saber prohibido te mancha (+" + sc + " oscuridad)." };
   }
 
   /* ---------- La mano tendida: ayuda discreta, sincera o trampa ---------- */
@@ -1575,7 +1717,7 @@
       pacts: [], pactOffers: [], council: null, lastResolution: [],
       event: null, umbralAbierto: false, assassinId: null, assassinExposed: false, ending: null,
       createdAt: Date.now(), durationMin: minutes, playedMs: 0, hands: [],
-      harm: { sigs: [], traps: [], sabs: [], poisons: [] }
+      harm: { sigs: [], traps: [], sabs: [], poisons: [] }, arcane: []
     };
     if (opts && Number(opts.endAt) > Date.now()) state.endAt = Math.round(Number(opts.endAt));
     planRounds(true);
@@ -1931,6 +2073,7 @@
     state.handoff = false;
     state.pendingPush = null;
     state.council = null;
+    state.arcane = [];
     /* Un moribundo tiene una ronda completa para ser socorrido. */
     state.players.forEach(function (p) {
       if (!p.dead && p.dying && state.round >= (p.dyingRound || 0) + (p.dyingFast ? 1 : 2)) {
@@ -2766,6 +2909,7 @@
 
   function beginCouncil() {
     if (!state || state.phase !== "private" || state.players.some(function (p) { return !p.dead && !p.acted; })) return err("No puede abrirse el Consejo hasta que todos los supervivientes hayan actuado.");
+    resolveArcane();
     resolveHarm();
     shadowStrike();
     if (checkTerminal()) return state;

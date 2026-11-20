@@ -90,7 +90,13 @@
       const i = p.items.findIndex(function (it) { const kd = D.ITEMS[it.id] && D.ITEMS[it.id].kind; return ["heal", "cleanse", "elixir", "reflect", "ward", "defense", "fog"].indexOf(kd) !== -1 && (p.wounds > 0 || kd !== "heal"); });
       if (i >= 0 && R() < 0.5) io.useItem(pid, i, null);
       const ti = p.items.findIndex(function (it) { return D.ITEMS[it.id] && D.ITEMS[it.id].kind === "tome"; });
-      if (ti >= 0) { const so = io.studyOptions(pid, ti); if (so && so.ok) io.learnSpell(pid, idx(3), "estable"); }
+      if (ti >= 0) {
+        const so = io.studyOptions(pid, ti);
+        if (so && so.ok) {
+          const t2 = so.options.map(function (o, k) { return (o.tier || 1) >= 2 ? k : -1; }).filter(function (k) { return k >= 0; });
+          io.learnSpell(pid, t2.length && R() < 0.6 ? t2[0] : idx(3), "estable");   /* v1.9.1: si asoma un conjuro intermedio, suele elegirlo */
+        }
+      }
     }
 
     /* 3) socorrer */
@@ -119,7 +125,10 @@
     /* 5) conjuros */
     if (p.spells && p.spells.length && R() < prof.spell) {
       const sp = p.spells[idx(p.spells.length)];
-      if (sp.kind === "def" || R() < prof.hostile) { const t = sp.target ? tgt : null; if (!sp.target || t) { const r = io.cast(pid, sp.id, t ? t.id : null, "normal"); if (r && r.ok) return finishWith(io, s, p, R, prof, pickOf, "conjuro"); } }
+      if (sp.kind === "def" || R() < prof.hostile) {
+        let t = sp.target ? tgt : null;
+        if (sp.target && (sp.form === "aurora" || sp.form === "custodia")) { const w = al.filter(function (x) { return !x.dying; }).sort(function (a, b) { return a.hp - b.hp; })[0]; if (w) t = w; }   /* curar/amparar al más débil */
+        if (!sp.target || t) { const r = io.cast(pid, sp.id, t ? t.id : null, "normal"); if (r && r.ok) return finishWith(io, s, p, R, prof, pickOf, "conjuro"); } }
     }
 
     /* 6) acción hostil */

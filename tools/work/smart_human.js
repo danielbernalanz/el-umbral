@@ -22,7 +22,7 @@ function turn(p,s){
   const ho=U.getHandOffer(p.id); if(ho) U.answerHand(p.id,Math.random()<0.5);
   U.getPactOffers(p.id).forEach(o=>U.answerPact(p.id,o.idx,Math.random()<0.5));
   if(p.items.length&&!p.usedItem){ const i=p.items.findIndex(it=>["heal","cleanse","elixir","reflect","ward","defense","fog"].includes(D.ITEMS[it.id].kind)&&(p.wounds>0||D.ITEMS[it.id].kind!=="heal")); if(i>=0&&Math.random()<0.5) U.useItem(p.id,i,null);
-    const ti=p.items.findIndex(it=>D.ITEMS[it.id].kind==="tome"); if(ti>=0){const so=U.studyOptions(p.id,ti); if(so.ok) U.learnSpell(p.id,rnd(3),"estable");} }
+    const ti=p.items.findIndex(it=>D.ITEMS[it.id].kind==="tome"); if(ti>=0){const so=U.studyOptions(p.id,ti); if(so.ok){ const t2=so.options.findIndex(x=>(x.tier||1)>=2); if(t2>=0){res.t2offer=(res.t2offer||0)+1;} const pk=t2>=0&&Math.random()<0.6?t2:rnd(3); const lr=U.learnSpell(p.id,pk,"estable"); if(lr.ok&&lr.spell.tier>=2) res.t2learn=(res.t2learn||0)+1; }} }
   const dy=al.find(x=>x.dying);
   if(p.alignment!=="asesino"&&dy&&can(p,"socorrer")&&Math.random()<0.7&&act(p,"socorrer",dy.id)) return;
   if(process.env.NOATE!=="1"&&p.alignment!=="asesino"&&can(p,"atender")&&style[p.id]!=="agresivo"){ const bl=al.find(x=>!x.dying&&/sangra/.test(U.visibleHealth(x))); if(bl&&Math.random()<0.5&&act(p,"atender",bl.id)){res.atender=(res.atender||0)+1;return;} }
@@ -34,7 +34,7 @@ function turn(p,s){
     if(w&&can(p,"devorar")&&w.wounds>=2&&Math.random()<0.5&&act(p,"devorar",w.id)) return;
     if(w&&Math.random()<0.8&&act(p,"cazar",w.id)) return;
   }
-  if(p.spells&&p.spells.length&&Math.random()<0.5){ const sp=p.spells[rnd(p.spells.length)]; if(sp.kind==="def"||Math.random()<hostileP){ const t=sp.target?tgt:null; if(!sp.target||t){ if(U.cast(p.id,sp.id,t?t.id:null).ok) return; } } }
+  if(p.spells&&p.spells.length&&Math.random()<0.5){ const sp=p.spells[rnd(p.spells.length)]; if(sp.kind==="def"||Math.random()<hostileP){ const t=sp.target?tgt:null; if(!sp.target||t){ { const t2c=sp.tier>=2; const tt=(sp.form==="aurora"||sp.form==="custodia")?al.filter(x=>!x.dying).sort((a,b)=>a.hp-b.hp)[0]||t:t; if(U.cast(p.id,sp.id,tt?tt.id:null).ok){ if(t2c) res.t2cast=(res.t2cast||0)+1; return; } } } } }
   if(Math.random()<hostileP&&tgt){
     const hs=["apunalar","robar","hechizar","envenenar","maldecir","aturdir","sombra_hostiga","trampa","sabotear"].filter(id=>can(p,id));
     for(const id of hs.sort(()=>Math.random()-0.5)){ if(act(p,id,tgt.id)) return; }
@@ -48,7 +48,8 @@ function turn(p,s){
   act(p,"meditar",null);
 }
 for(let g=0;g<N;g++){
-  U.createGame(NAMES,{minutes:MIN}); style={}; NAMES.forEach((n,i)=>style[i]=pickStyle()); let guard=0; res.games++;
+  U.createGame(NAMES,{minutes:MIN}); style={};
+  if(process.env.T2ALL){ const fs=["custodia","aurora","zarza","eco","olvido","mordedura"], off=["zarza","mordedura"]; U.getState().players.forEach((p,i)=>{ p.spells=[0,1].map(k=>{const f=fs[(i*2+k+g)%6]; return {id:"z"+g+"_"+i+k,form:f,aspect:["fuego","hielo","sangre","sombra","luz","vacio"][(g+k)%6],epithet:"x",uses:3,tune:null,wins:1,kind:off.includes(f)?"off":"def",target:true,tier:2,power:1,stealth:false,name:f,desc:""};}); }); } NAMES.forEach((n,i)=>style[i]=pickStyle()); let guard=0; res.games++;
   while(guard++<3000){
     const s=U.getState(); if(!s||s.phase==="ending") break;
     if(s.phase==="private"){ const p=U.currentPlayer(); if(s.handoff){U.nextTurn();continue;} turn(p,s);
@@ -75,4 +76,5 @@ if(process.env.COUNT){ console.log("ronda | turnos | principales | en «Más acc
 const pc=x=>(100*x/res.games).toFixed(1);
 if(process.env.LVL) console.log("niveles asesino por ronda",JSON.stringify(res.lvl),"inocentes",JSON.stringify(res.lvlI),"contra",res.contra);
 console.log(MODE,"NP",NAMES.length,"min",MIN,"N",res.games,"| asesino emergente",pc(res.withAss)+"%","| gana asesino (de todas)",pc(res.asesino)+"%","| gana asesino (de las con asesino)",(100*res.assWin/Math.max(1,res.withAss)).toFixed(1)+"%","| supers",pc(res.supers)+"%","| ofertas",res.offers,"aceptadas",res.accepts,"| partidas con oferta",pc(res.gamesWithOffer)+"%","| via",JSON.stringify(res.via),"| ronda media conversión",(res.assRound/Math.max(1,res.withAss)).toFixed(1),"| rondas",(res.rounds/res.games).toFixed(1),"muertes",(res.muertes/res.games).toFixed(2),"| sombras",JSON.stringify(res.sombra),"alzar",res.alzar,"acus",res.acc||0,"acusOK",res.accok||0,"tiempo",res.tiempo,"errs",res.errs);
+console.log("T2: ofrecidos",res.t2offer||0,"aprendidos",res.t2learn||0,"lanzados",res.t2cast||0);
 console.log("preguntas de tiempo:",global.ASK||0,"rondas añadidas:",global.EXT||0,"terminar ahora:",global.TEND||0,"tiempoAgotadoSinDesenlace(timedOut):",res.tiempo);

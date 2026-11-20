@@ -514,8 +514,19 @@ const COMMANDS = {
       return g._runAs(pid, () => g.U.useItem(pid, a[0], a[1] == null ? null : a[1]));
     }),
   study: priv((g, pid, a) => isInt(a[0], 0, 30), (g, pid, a) => g._runAs(pid, () => g.U.studyOptions(pid, a[0]))),
-  learnSpell: priv((g, pid, a) => isInt(a[0], 0, 5) && isStr(a[1], 12), (g, pid, a) => g._runAs(pid, () => g.U.learnSpell(pid, a[0], a[1]))),
-  improveSpell: priv((g, pid, a) => isIdStr(a[0]), (g, pid, a) => g._runAs(pid, () => g.U.improveSpell(pid, a[0]))),
+  /* estudiar admite el reto de pulso opcional (a[2] / a[1]): página limpia = −1 oscuridad, pulso torpe = +1 */
+  learnSpell: priv((g, pid, a) => isInt(a[0], 0, 5) && isStr(a[1], 12) && isTaps(a[2]), (g, pid, a) => {
+    const sk = g.skillFor(pid, a[2]);
+    const r = g._runAs(pid, () => g.U.learnSpell(pid, a[0], a[1], sk.delta));
+    if (r && r.ok) g.endChallenge(pid, sk.c);
+    return r;
+  }),
+  improveSpell: priv((g, pid, a) => isIdStr(a[0]) && isTaps(a[1]), (g, pid, a) => {
+    const sk = g.skillFor(pid, a[1]);
+    const r = g._runAs(pid, () => g.U.improveSpell(pid, a[0], sk.delta));
+    if (r && r.ok) g.endChallenge(pid, sk.c);
+    return r;
+  }),
   answerOffer: priv((g, pid, a) => typeof a[0] === "boolean", (g, pid, a) => g._runAs(pid, () => g.U.answerOffer(pid, a[0]))),
   answerHand: priv((g, pid, a) => typeof a[0] === "boolean", (g, pid, a) => g._runAs(pid, () => g.U.answerHand(pid, a[0]))),
   answerPact: priv(

@@ -3,6 +3,7 @@
 Juego social de deducción para 2-10 jugadores (pasar el móvil en local, o en línea con salas por código). Empaquetado como APK firmado (WebView) + servidor Node en Render. Idioma de todo: español.
 
 ## Estado
+- **v1.9.1 (rama feat-v191 sobre main v1.10.0, sin fusionar ni desplegar)**: magia de Tier 2 (6 conjuros), desbloqueo por estudio con Practicante, resolución por capas al abrir el Consejo, tope por peso, afinidad, reto de pulso al estudiar. Detalle y pendientes (v1.9.2) en `docs/designs/magia-v191.md`. Cambia el motor: desplegar con mesa vacía. Ojo: el número de versión (1.9.1) es menor que el de main (1.10.0) por indicación expresa; renumerar al fusionar. `npm test` 110/110.
 - **v1.10.0 (rama feat-v1100, sin fusionar ni desplegar)**: salud recortada a 3 zonas, tick determinista, señales públicas, Atender (ver `docs/designs/salud-v110.md`). Cambia el motor: desplegar con mesa vacía.
 - **v1.7.0 cerrada Y DESPLEGADA** (2026-11-14, commit e75d11e, por API de Render con mesa vacía; verificada en vivo: `VERSION 1.7.0`, CACHE `umbral-v17-0`, create/join/start/leave OK). `npm test` 59/59; E2E online 18/18 escenarios (130 comprobaciones, Playwright ya instalado). APK firmado v1.7.0 entregado. Pendiente: Android real, humanos 6-10, Render bajo carga.
 - v1.8.2 (rama feat-v182, sin fusionar): sospecha acumulada + contradecir (ver NOTAS_PROYECTO).
