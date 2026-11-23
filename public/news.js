@@ -5,6 +5,11 @@
 (function (w) {
   "use strict";
   w.UMBRAL_NEWS = [
+    { version: "1.13.2", fecha: "2026-11-23", titulo: "La sospecha responde antes a las pistas", puntos: [
+      "Las acusaciones de personas distintas elevan la sospecha con más rapidez.",
+      "Presentar una pista verificada puede elevar la sospecha sobre quien dejó ese rastro.",
+      "No se revela quién presentó la pista ni el rol de quien dejó el rastro."
+    ] },
     { version: "1.13.1", fecha: "2026-11-23", titulo: "Arreglos de una partida real", puntos: [
       "El plazo para socorrer a un moribundo tras una caza ahora se explica bien: en partidas largas tiene hasta que acabe la próxima ronda.",
       "El premio de «dos pistas» ya no repite jugador cuando hay otros candidatos.",
