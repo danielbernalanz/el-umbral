@@ -17,6 +17,7 @@
   <div class="headright">
     <span class="roundpill clockwrap" data-ic="ui_reloj"><span id="clockPill">0 min</span><span id="clockEnd" class="clockend"></span></span>
     <button class="ghost smallbtn iconbtn" id="btnHelp" aria-label="Ayuda" title="Ayuda" data-ic="ui_ayuda"><span class="sr">Ayuda</span></button>
+    <button class="ghost smallbtn hidden" id="btnChat" aria-label="Chat" title="Chat" data-ic="ui_rumor">Chat</button>
     <button class="ghost smallbtn hidden" id="btnStatus" data-ic="ui_jugadores">Estado</button>
   </div>
 </header>
@@ -78,6 +79,16 @@
         <div id="roomNpcs" class="stack tight roomplayers"></div>
         <div id="roomNpcCtl" class="row hidden"><button class="ghost smallbtn" id="btnOnNpcAdd" data-ic="ui_jugadores">+ NPC</button></div>
         <p class="small center muted" id="roomNeed"></p>
+        <div class="chatbox" id="roomChatBox">
+          <div class="tag" data-ic="ui_rumor">CHAT DE LA SALA</div>
+          <div class="chatlog" id="roomChat" role="log" aria-live="polite"></div>
+          <div class="emojipicker hidden" id="roomEmojiPicker" aria-label="Emojis"></div>
+          <form class="chatform" id="roomChatForm">
+            <button class="ghost smallbtn emoji-toggle" type="button" id="btnRoomEmoji" aria-label="Abrir emojis" title="Emojis">&#128578;</button>
+            <input id="roomChatInput" maxlength="300" autocomplete="off" placeholder="Escribe un mensaje…" aria-label="Mensaje del chat">
+            <button class="primary smallbtn" type="submit" id="btnRoomChat" data-ic="ui_continuar">Enviar</button>
+          </form>
+        </div>
         <div id="roomHost" class="stack hidden">
           <label class="fl" data-ic="ui_reloj">¿A qué hora queréis terminar?<input id="netEnd" type="time" step="60" value="20:00"></label>
           <p class="small endinfo" id="netEndInfo" aria-live="polite"></p>
@@ -286,6 +297,23 @@
     <div class="row"><button class="ghost smallbtn" id="btnSoundHelp" data-ic="ui_silencio"><span class="lbl">Sonido: apagado</span></button><button class="ghost smallbtn" id="btnVibHelp" data-ic="ui_vibrar"><span class="lbl">Vibración: completa</span></button></div>
     <h3 class="h3i" data-ic="ui_reloj">Final y tiempo</h3>
     <p class="small">El reloj marca el tiempo que queda; si se agota, llega el amanecer y la partida termina. Puede acabar antes si no quedan supervivientes o cae el Asesino. Quien esté en la partida y caiga puede ser alzado como sombra por un nigromante.</p>
+  </div>
+</div>
+
+<!-- Chat en línea -->
+<div id="chatOverlay" class="overlay hidden">
+  <div class="sheet chatbox">
+    <div class="row between">
+      <h2 class="h2i" data-ic="ui_rumor">Chat</h2>
+      <button class="ghost smallbtn" id="btnCloseChat" data-ic="ui_cerrar">Cerrar</button>
+    </div>
+    <div class="chatlog" id="gameChat" role="log" aria-live="polite"></div>
+    <div class="emojipicker hidden" id="gameEmojiPicker" aria-label="Emojis"></div>
+    <form class="chatform" id="gameChatForm">
+      <button class="ghost smallbtn emoji-toggle" type="button" id="btnGameEmoji" aria-label="Abrir emojis" title="Emojis">&#128578;</button>
+      <input id="gameChatInput" maxlength="300" autocomplete="off" placeholder="Escribe un mensaje…" aria-label="Mensaje del chat">
+      <button class="primary smallbtn" type="submit" id="btnGameChat" data-ic="ui_continuar">Enviar</button>
+    </form>
   </div>
 </div>
 

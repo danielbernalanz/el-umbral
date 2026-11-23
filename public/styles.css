@@ -501,6 +501,20 @@ button.primary.big:disabled{opacity:.45}
 .netbanner{position:fixed;left:0;right:0;top:0;z-index:90;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;padding:8px 12px;background:#4a1f2a;border-bottom:1px solid #a24e58;color:#ffd7db;font-size:13px;text-align:center}
 .netbanner button{min-height:36px;padding:4px 10px;font-size:13px}
 .netbusy button{pointer-events:none;opacity:.75}
+.chatbox{width:100%}
+.chatlog{min-height:120px;max-height:280px;overflow-y:auto;padding:8px;border:1px solid var(--line);border-radius:12px;background:#110e16}
+.chatmsg{display:flex;gap:8px;align-items:flex-start;padding:5px 2px;border-bottom:1px solid rgba(193,153,91,.10)}
+.chatmsg:last-child{border-bottom:0}
+.chatmsg b{color:var(--gold2);flex:none;max-width:120px;overflow:hidden;text-overflow:ellipsis}
+.chatmsg span{min-width:0;overflow-wrap:anywhere;white-space:pre-wrap}
+.chatmsg.mine b{color:#a3dcba}
+.chatform{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;margin-top:8px}
+.chatform input{min-width:0}
+.emoji-toggle{min-width:42px;padding-inline:8px;font-size:20px;line-height:1}
+.emojipicker{display:grid;grid-template-columns:repeat(8,minmax(36px,1fr));gap:4px;margin-top:8px;padding:8px;border:1px solid var(--line);border-radius:12px;background:#110e16}
+.emojipicker button{min-width:36px;min-height:36px;padding:4px;border:0;border-radius:8px;background:transparent;font-size:20px;cursor:pointer}
+.emojipicker button:hover,.emojipicker button:focus-visible{background:rgba(193,153,91,.16)}
+@media (max-width:420px){.emojipicker{grid-template-columns:repeat(6,minmax(36px,1fr))}}
 .waitlist{text-align:left}
 .waitlist .wrow{display:flex;align-items:center;gap:10px;padding:7px 9px;border:1px solid var(--line);border-radius:12px;background:#15111a}
 .waitlist .wrow b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

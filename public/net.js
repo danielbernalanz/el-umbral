@@ -205,8 +205,10 @@
     if (v.hostNote && v.hostNote.seq > noteSeq) { noteSeq = v.hostNote.seq; if (UI().toast) UI().toast(v.hostNote.name === (v.players && v.players[v.youId] && v.players[v.youId].name) ? "Ahora eres el anfitrión." : v.hostNote.name + " es ahora el anfitrión (el anterior perdió la conexión).", false); }
     if (v.phase === "ending" && session) snapDel(session.room); /* partida terminada: la instantánea ya no sirve */
     if (v.phase === "error") { if (UI().toast) UI().toast(v.msg || "Error del servidor.", true); return; }
-    if (v.phase === "lobby") { lobby = v; renderRoom(); return; }
+    if (v.phase === "lobby") { lobby = v; if ($("btnChat")) $("btnChat").classList.add("hidden"); renderRoom(); return; }
     if (!v.me || !v.players || !v.players[v.youId]) return;
+    if ($("btnChat")) $("btnChat").classList.remove("hidden");
+    renderChat(v);
     if (v.srvVer && LOCAL.D && LOCAL.D.VERSION && v.srvVer !== LOCAL.D.VERSION && versionGuard(v.srvVer)) return;
     cur = v; offset = (v.serverNow || Date.now()) - Date.now(); st = buildState(v); B.sig = signature(v);
     if (!attached) { attached = true; if (UI().attach) UI().attach(B); return; }
@@ -292,7 +294,8 @@
     replaceWithNpc: function (pid) { return cmd("replaceWithNpc", [pid]); }, recoverSeat: function () { return cmd("recoverSeat", []); },
     councilReady: function () { return cmd("councilReady", []); },
     nextRound: function () { return cmd("continue", []); },
-    answerTime: function (k) { return cmd("vote", [k]); }
+    answerTime: function (k) { return cmd("vote", [k]); },
+    sendChat: sendChat
   };
 
   /* ---------- lobby ---------- */
@@ -360,6 +363,55 @@
     if (!ok && navigator.clipboard) { navigator.clipboard.writeText(t).then(function () { UI().toast(okMsg); }, function () { UI().toast("No se pudo copiar: " + t, true); }); return; }
     UI().toast(ok ? okMsg : "No se pudo copiar: " + t, !ok);
   }
+  function escChat(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+  function renderChat(v) {
+    const msgs = v && Array.isArray(v.chat) ? v.chat : [];
+    const render = function (id) {
+      const el = $(id); if (!el) return;
+      el.innerHTML = msgs.map(function (m) {
+        const mine = typeof v.youId === "number" && m.pid === v.youId;
+        return '<div class="chatmsg' + (mine ? ' mine' : '') + '"><b>' + escChat(m.name) + '</b><span>' + escChat(m.text) + '</span></div>';
+      }).join("");
+      el.scrollTop = el.scrollHeight;
+    };
+    render("roomChat"); render("gameChat");
+  }
+  function sendChat(text) {
+    if (!session) return Promise.resolve({ ok: false, msg: "No hay sesión en línea." });
+    text = String(text || "").trim();
+    if (!text) return Promise.resolve({ ok: false, msg: "Escribe un mensaje." });
+    return post("/api/chat", { text: text }, session.token).then(function (r) {
+      if (isUnknownRoom(r) || r.status === 401) roomGone(r);
+      return r;
+    });
+  }
+  function setupEmojiPicker(buttonId, inputId, pickerId) {
+    const button = $(buttonId), input = $(inputId), picker = $(pickerId);
+    if (!button || !input || !picker) return;
+    const emojis = ["😀","😂","😍","🥰","😎","🤔","😭","😡","😈","👻","👍","👏","🙌","🙏","👋","🤝","❤️","🔥","✨","⭐","🎉","🎲","🗡️","🛡️","🌙","☠️","🍀","💀","👁️","🕯️","🌑","💛"];
+    picker.innerHTML = emojis.map(function (emoji) {
+      return '<button type="button" data-emoji="' + esc(emoji) + '" aria-label="Añadir ' + esc(emoji) + '">' + esc(emoji) + '</button>';
+    }).join("");
+    button.onclick = function () {
+      const willOpen = picker.classList.contains("hidden");
+      document.querySelectorAll(".emojipicker").forEach(function (el) { el.classList.add("hidden"); });
+      picker.classList.toggle("hidden", !willOpen);
+      if (willOpen) input.focus();
+    };
+    picker.onclick = function (e) {
+      const el = e.target.closest("button[data-emoji]");
+      if (!el) return;
+      const emoji = el.getAttribute("data-emoji") || "";
+      const start = typeof input.selectionStart === "number" ? input.selectionStart : input.value.length;
+      const end = typeof input.selectionEnd === "number" ? input.selectionEnd : start;
+      const combined = input.value.slice(0, start) + emoji + input.value.slice(end);
+      input.value = Array.from(combined).slice(0, 300).join("");
+      const cursor = Math.min(start + Array.from(emoji).length, input.value.length);
+      input.focus();
+      if (typeof input.setSelectionRange === "function") input.setSelectionRange(cursor, cursor);
+      picker.classList.add("hidden");
+    };
+  }
   function renderRoom() {
     showMode(true); showPanel("onRoom");
     const v = lobby;
@@ -383,6 +435,7 @@
     $("btnOnNpcAdd").disabled = total >= v.max;
     $("btnOnStart").disabled = !v.canStart;
     $("roomNeed").textContent = total < v.min ? "Hacen falta al menos " + v.min + " jugadores (con NPC) para empezar." : "";
+    renderChat(v);
     refreshNetEnd();
   }
   function refreshNetEnd() {
@@ -411,6 +464,8 @@
 
   function initLobby() {
     const base0 = serverBase();
+    setupEmojiPicker("btnRoomEmoji", "roomChatInput", "roomEmojiPicker");
+    setupEmojiPicker("btnGameEmoji", "gameChatInput", "gameEmojiPicker");
     /* parámetros de la URL: ?sala=ABCDE y ?server=http://... (para pruebas) */
     let qs = null; try { qs = new URLSearchParams(location.search); } catch (e) { qs = null; }
     if (qs && qs.get("server")) lsSet(K_SERVER, String(qs.get("server")).trim().replace(/\/+$/, ""));
@@ -428,6 +483,20 @@
     $("onCode").onkeydown = function (e) { if (e.key === "Enter") joinRoom(); };
     $("onName").onkeydown = function (e) { if (e.key === "Enter") ($("onCode").value ? joinRoom() : createRoom()); };
     $("btnOnLeave").onclick = function () { leaveRoom(false); };
+    if ($("roomChatForm")) $("roomChatForm").onsubmit = function (e) {
+      if (e.preventDefault) e.preventDefault();
+      const input = $("roomChatInput"), text = input ? input.value : "";
+      sendChat(text).then(function (r) { if (!r.ok) UI().toast(r.msg || "No se pudo enviar.", true); else if (input) { input.value = ""; input.focus(); } });
+      return false;
+    };
+    if ($("gameChatForm")) $("gameChatForm").onsubmit = function (e) {
+      if (e.preventDefault) e.preventDefault();
+      const input = $("gameChatInput"), text = input ? input.value : "";
+      sendChat(text).then(function (r) { if (!r.ok) UI().toast(r.msg || "No se pudo enviar.", true); else if (input) { input.value = ""; input.focus(); } });
+      return false;
+    };
+    if ($("btnChat")) $("btnChat").onclick = function () { if ($("chatOverlay")) $("chatOverlay").classList.remove("hidden"); };
+    if ($("btnCloseChat")) $("btnCloseChat").onclick = function () { if ($("chatOverlay")) $("chatOverlay").classList.add("hidden"); };
     $("btnOnStart").onclick = startGame;
     $("btnOnNpcAdd").onclick = function () { npcOp({ op: "add" }); };
     $("roomNpcs").addEventListener("click", function (e) { const b = e.target.closest ? e.target.closest("[data-npcrm]") : null; if (b) npcOp({ op: "remove", index: Number(b.getAttribute("data-npcrm")) }); });

@@ -62,7 +62,7 @@ function checkView(game, pid, v, pre) {
   if (v.phase === "ending") return probs; /* en el desenlace todo se revela */
   const prep = pre || prepare(game);
   const ownSet = new Set(strings([JSON.parse(JSON.stringify(S.players[pid])), v.q && v.q.encounter], [], 1));
-  const pubSet = new Set(strings([v.players, v.event, v.chronicle, v.councilResults, v.lastResolution, v.publicClues], [], 1));
+  const pubSet = new Set(strings([v.players, v.event, v.chronicle, v.councilResults, v.lastResolution, v.publicClues, v.chat], [], 1));
   const leafSet = new Set(strings(v, [], 5));
   S.players.forEach((q) => {
     if (q.id === pid) return;
@@ -88,7 +88,7 @@ function checkResult(game, pid, res) {
 
 /* Retención: lo que otro jugador provoca no debe cambiar mi crónica/notas en la fase privada, ni nombrar al actor fuera de zonas permitidas. */
 /* q.secret.hint es dinámica y cita al socio de un pacto o a quien te propone uno: reflejo de q.pactOffers/q.pacts, que ya son en vivo por diseño. */
-const ALLOWED_LIVE = ["q.secret", "players", "wait", "q.pactOffers", "q.handOffer", "q.pacts", "q.targets", "q.declare", "q.itemTargets", "q.spellTargets", "q.spells"];
+const ALLOWED_LIVE = ["q.secret", "players", "chat", "wait", "q.pactOffers", "q.handOffer", "q.pacts", "q.targets", "q.declare", "q.itemTargets", "q.spellTargets", "q.spells"];
 function checkRetention(actorName, pidActor, before, after) {
   const probs = [];
   after.forEach((va, qid) => {

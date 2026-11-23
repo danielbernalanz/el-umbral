@@ -121,7 +121,7 @@ function createServer(opts) {
         rooms.restore(b.room, b.blob, tok).then((r) => { try { send(res, r.status, r.json); } catch (e) { /* conexión cerrada */ } });
       }, MAX_RESTORE_BODY);
     }
-    if (p === "/cmd" || p === "/api/leave" || p === "/api/start" || p === "/api/ping" || p === "/api/npc") {
+    if (p === "/cmd" || p === "/api/leave" || p === "/api/start" || p === "/api/ping" || p === "/api/npc" || p === "/api/chat") {
       const who = rooms.byToken(tokenOf(req, url));
       if (!who) return unknownToken(req, url, res);
       if (!cmdLimit(who.player.tokenHash)) return send(res, 429, { ok: false, msg: "Demasiados comandos por segundo." });
@@ -132,6 +132,7 @@ function createServer(opts) {
         if (p === "/api/leave") return send(res, 200, room.leave(player));
         if (p === "/api/start") return send(res, 200, room.start(player, b.endAt));
         if (p === "/api/npc") return send(res, 200, room.npcOp(player, b));
+        if (p === "/api/chat") return send(res, 200, room.chatSend(player, b));
         if (typeof b.cmd !== "string" || b.cmd.length > 32) return send(res, 400, { ok: false, msg: "Comando no válido." });
         send(res, 200, room.command(player, b.cmd, b.args === undefined ? [] : b.args));
       });

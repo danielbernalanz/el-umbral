@@ -8,7 +8,7 @@
    encounterStart) las materializa el servidor en game.js (refresh) y aquí solo se lee su resultado. */
 
 const PUBLIC_PLAYER_KEYS = ["id", "name", "dead", "dying", "exposed", "visibleHealth", "look", "ready", "online", "host", "absent", "dyingUntil", "npc", "susp"];
-const TOP_KEYS = ["srvVer", "ver", "youId", "serverNow", "phase", "round", "maxRounds", "endAt", "durationMin", "event", "timeAsk", "publicClues", "chronicle", "skipped", "players", "me", "q", "wait", "waitN", "votes", "clock", "timeAdd", "councilResults", "lastResolution", "umbralAbierto", "ending", "reveal", "log", "story", "storyList", "host", "hostNote", "npcInfo"];
+const TOP_KEYS = ["srvVer", "ver", "youId", "serverNow", "phase", "round", "maxRounds", "endAt", "durationMin", "event", "timeAsk", "publicClues", "chronicle", "skipped", "players", "me", "q", "wait", "waitN", "votes", "clock", "timeAdd", "councilResults", "lastResolution", "umbralAbierto", "chat", "ending", "reveal", "log", "story", "storyList", "host", "hostNote", "npcInfo"];
 /* Campos del jugador propio que guardan IDENTIDADES AJENAS (quién me socorrió, quién me alzó, quién me protege). */
 const ME_EXCLUDE = ["socBy", "risenBy", "protection", "lastSeen", "suspBy"];
 const MODES = ["cauto", "normal", "desatado"];

@@ -100,3 +100,58 @@ test("no-fuga: la semilla del reto no aparece en ninguna vista", () => {
   for (let i = 0; i < 3; i++) assert.ok(!JSON.stringify(game.view(i)).includes('"seed"'), "vista " + i + " sin semilla");
   assert.ok(r.seed > 0);
 });
+
+test("pulso tematico: cada sello arcano tiene un ritmo distinto y conserva sus limites", () => {
+  const pruebas = [
+    ["El grimorio de Vael", 29],
+    ["Aurora sobre las ruinas", 97],
+    ["Eco entre los muertos", 144],
+    ["Zarza bajo la luna", 311],
+    ["Olvido del Umbral", 512],
+    ["Mordedura de sombra", 777]
+  ];
+
+  const planes = new Set();
+  pruebas.forEach(([nombre, seed]) => {
+    const plan = SK.plan(seed);
+    planes.add(JSON.stringify(plan));
+    assert.ok(plan.period >= 1300 && plan.period < 1800, nombre + ": periodo fuera de alcance");
+    assert.ok(plan.phase >= 0 && plan.phase < 1, nombre + ": fase fuera de alcance");
+    assert.strictEqual(plan.centers.length, SK.CFG.taps);
+    plan.centers.forEach((center) => assert.ok(center >= 0.2 && center <= 0.8, nombre + ": zona fuera del umbral"));
+
+    const perfect = bestTaps(seed);
+    assert.ok(SK.delta(SK.score(seed, perfect)) >= 13, nombre + ": pulso firme sin recompensa");
+  });
+  assert.strictEqual(planes.size, pruebas.length, "los sellos tematicos deben producir ritmos variados");
+});
+
+test("pulso tematico: estudio, curacion y conjuro reciben solo el efecto permitido por la calidad", () => {
+  const casos = [
+    ["Estudiar el grimorio", 15, 15],
+    ["Sellar una herida", 2, 2],
+    ["Invocar la Aurora", 0, 0],
+    ["Desatar la Mordedura", -6, -6]
+  ];
+  casos.forEach(([nombre, delta, esperado]) => {
+    assert.strictEqual(SK.clampDelta(delta), esperado, nombre);
+  });
+
+  const clock = { t: 1.8e12 };
+  const seeds = [29, 97, 144, 311, 512, 777];
+  seeds.forEach((seed) => {
+    const game = new Game(["Ana", "Luis", "Marta"], {
+      readMs: 0,
+      engineDir: ENGINE_DIR,
+      endAt: clock.t + 30 * 60000,
+      now: () => clock.t,
+      rng: seeded(seed)
+    });
+    const pid = game.S().turn;
+    assert.strictEqual(game.exec(pid, "challenge", [], {}).ok, true);
+    const trace = bestTaps(game.chal[pid].seed);
+    clock.t += 6000;
+    const result = game.skillFor(pid, trace);
+    assert.ok(result.delta >= 13, "sello " + seed + ": el pulso tematico no debio quedar sin recompensa");
+  });
+});

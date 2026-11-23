@@ -781,25 +781,25 @@
   const SPELL_EPITHETS = ["de Vael", "de Orum", "de la Ceniza", "del Cuervo", "de Ithra", "de la Marea Negra", "de Kesh", "del Último Umbral", "de Mor", "de la Aguja"];
   function spellFormText(id, pw, dur) {
     switch (id) {
-      case "rayo": return "Una descarga que hiere al objetivo (" + (pw > 1 ? "5-6 de vitalidad" : "3-4 de vitalidad, 5-6 si es crítico") + ").";
+      case "rayo": return "Una descarga que hiere al objetivo (" + (pw > 1 ? "6-7 de vitalidad" : "4-5 de vitalidad, 6-7 si es crítico") + ").";
       case "plaga": return "Envenena al objetivo durante " + (2 + dur + (pw > 1 ? 1 : 0)) + " rondas.";
       case "marchitar": return "Abre un sangrado en el objetivo durante " + (1 + dur + (pw > 1 ? 1 : 0)) + " rondas.";
       case "grillete": return "Inmoviliza al objetivo: pierde su turno.";
       case "maleficio": return "Maldice al objetivo: −1 a sus tiradas durante " + (2 + dur + (pw > 1 ? 1 : 0)) + " rondas.";
-      case "drenar": return "Arrebatas " + (pw > 1 ? 12 : 8) + " de virtud al objetivo y recuperas la mitad.";
-      case "pesadilla": return "Siembra una pesadilla: el objetivo se mancha de oscuridad sin saber por qué.";
-      case "egida": return "Una barrera: +" + (3 + 2 * (pw - 1)) + " de defensa esta ronda.";
-      case "sanar": return "Recuperas " + (pw > 1 ? 6 : 3) + " de vitalidad.";
+      case "drenar": return "Arrebatas " + (pw > 1 ? 16 : 12) + " de virtud al objetivo y recuperas " + (pw > 1 ? 8 : 6) + ".";
+      case "pesadilla": return "Siembra una pesadilla: el objetivo gana " + (pw > 1 ? "7-10" : "5-7") + " de oscuridad y una maldición breve.";
+      case "egida": return "Una barrera: +" + (5 + 3 * (pw - 1)) + " de defensa esta ronda.";
+      case "sanar": return "Recuperas " + (pw > 1 ? 8 : 4) + " de vitalidad.";
       case "velo": return "Un velo: anula la próxima acusación contra ti" + (pw > 1 ? " y debilita las dos próximas pistas sobre ti." : ".");
-      case "purga": return "Expulsa " + (10 + 6 * (pw - 1)) + " de oscuridad y limpia sangrado, veneno, infección y maldición.";
+      case "purga": return "Expulsa " + (12 + 6 * (pw - 1)) + " de oscuridad y limpia sangrado, veneno, infección y maldición.";
       case "reflejo": return "Preparas un reflejo: la próxima agresión directa rebota contra su autor.";
       case "presagio": return "Una visión: obtienes una pista " + (pw > 1 ? "muy fuerte " : "fuerte ") + "sobre el objetivo.";
       case "custodia": return "Un amparo sobre otra persona: absorbe el primer conjuro ofensivo de segundo grado que se le lance esta noche. Se resuelve al caer la noche.";
-      case "aurora": return "Cierras " + (pw > 1 ? 6 : 4) + " de vitalidad de heridas ajenas y limpias un estado (sangrado, veneno, infección o maldición). Se resuelve al caer la noche; no sirve con moribundos.";
+      case "aurora": return "Cierras " + (pw > 1 ? 9 : 6) + " de vitalidad de heridas ajenas y limpias hasta dos estados (sangrado, veneno, infección o maldición). Se resuelve al caer la noche; no sirve con moribundos.";
       case "zarza": return "Raíces que desgarran: sangrado " + (2 + dur + (pw > 1 ? 1 : 0)) + " rondas y maldición 1 ronda sobre el objetivo. Se resuelve al caer la noche.";
       case "eco": return "Nombras a alguien: si lanzó un conjuro de segundo grado esta noche, lo deshaces. Si no había nada, el eco se pierde y te mancha (+2 oscuridad). Se resuelve al caer la noche.";
       case "olvido": return "Borras " + (pw > 1 ? "las dos pistas más recientes" : "la pista más reciente") + " que el objetivo tenga sobre ti. Se resuelve al caer la noche.";
-      case "mordedura": return "Una dentellada de sombra: " + (pw > 1 ? "5-6" : "4-5") + " de vitalidad y +2 de oscuridad al objetivo. Se resuelve al caer la noche.";
+      case "mordedura": return "Una dentellada de sombra: " + (pw > 1 ? "7-8" : "5-6") + " de vitalidad y +2 de oscuridad al objetivo. Se resuelve al caer la noche.";
     }
     return "";
   }
@@ -812,7 +812,8 @@
     sp.name = f.name + " " + asp.adj + (sp.tune ? " " + tn[sp.tune] : "") + " " + sp.epithet;
     const tuneTxt = sp.tune === "potente" ? " Potenciado: más intensidad, pero te mancha." : sp.tune === "estable" ? " Estable: un uso extra." : sp.tune === "sutil" ? " Sutil: no deja rastro público." : "";
     const mastTxt = sp.mastered ? " Dominado: más intensidad." : "";
-    sp.desc = spellFormText(sp.form, sp.power, asp.dur || 0) + " " + asp.text.charAt(0).toUpperCase() + asp.text.slice(1) + "." + tuneTxt + mastTxt;
+    const aspectText = sp.aspect === "sangre" && f.kind === "def" ? "más intensa, sin pagar con tu vitalidad" : asp.text;
+    sp.desc = spellFormText(sp.form, sp.power, asp.dur || 0) + " " + aspectText.charAt(0).toUpperCase() + aspectText.slice(1) + "." + tuneTxt + mastTxt;
     return sp;
   }
   function genSpell(kind, avoidForm, forceForm) {
@@ -836,22 +837,27 @@
     return [a, b, el.length ? genSpell(null, null, pick(el)) : third];
   }
   function spellAttr(sp) { return sp.aspect === "luz" ? "mente" : SPELL_FORMS[sp.form].attr; }
+  function spellSelfWound(sp) {
+    const f = SPELL_FORMS[sp.form];
+    if (!f || f.kind === "def") return 0;
+    return SPELL_ASPECTS[sp.aspect].selfWound || 0;
+  }
   function applySpell(p, sp, t, crit, powOv) {
     const pw = powOv || sp.power, dur = SPELL_ASPECTS[sp.aspect].dur || 0, r = state.round;
     switch (sp.form) {
-      case "rayo": { const big = pw > 1 || crit; const res = damage(t, big ? rr(5, 6) : rr(3, 4), { src: "magia" }); t.notes.push("Ronda " + r + ": una descarga te golpeó desde la nada" + hitNote(res) + "."); return t.name + (res.died ? " ya estaba moribundo y la descarga lo remata." : res.dying ? " cae moribundo bajo la descarga." : " recibe la descarga y queda " + (big ? "muy " : "") + "herido."); }
+      case "rayo": { const big = pw > 1 || crit; const res = damage(t, big ? rr(6, 7) : rr(4, 5), { src: "magia" }); t.notes.push("Ronda " + r + ": una descarga te golpeó desde la nada" + hitNote(res) + "."); return t.name + (res.died ? " ya estaba moribundo y la descarga lo remata." : res.dying ? " cae moribundo bajo la descarga." : " recibe la descarga y queda " + (big ? "muy " : "") + "herido."); }
       case "plaga": giveStatus(t, "veneno", 2 + dur + (pw > 1 ? 1 : 0)); t.notes.push("Ronda " + r + ": un sabor amargo te sube por la garganta."); return t.name + " enferma.";
       case "marchitar": giveStatus(t, "sangrado", 1 + dur + (pw > 1 ? 1 : 0)); t.notes.push("Ronda " + r + ": una herida se abre sola."); return "Un sangrado se abre en " + t.name + ".";
       case "grillete":
         if (!t.acted) { t.acted = true; state.chronicle.push({ round: r, text: "✖ " + t.name + " pierde su turno de esta ronda." }); t.notes.push("Ronda " + r + ": tus miembros se quedaron rígidos."); return t.name + " pierde su turno de esta ronda."; }
         giveStatus(t, "aturdido", 1); t.notes.push("Ronda " + r + ": tus miembros se quedaron rígidos."); return t.name + " perderá su próximo turno.";
       case "maleficio": giveStatus(t, "maldito", 2 + dur + (pw > 1 ? 1 : 0)); t.notes.push("Ronda " + r + ": sientes que la suerte te da la espalda."); return t.name + " queda maldito.";
-      case "drenar": { const v = pw > 1 ? 12 : 8; t.virtue = clamp(t.virtue - v, 0, 100); p.virtue = clamp(p.virtue + Math.floor(v / 2), 0, 100); t.notes.push("Ronda " + r + ": algo bueno se apagó dentro de ti."); return "Le arrebatas virtud a " + t.name + "."; }
-      case "pesadilla": t.corr = clamp(t.corr + 5 + 2 * (pw - 1), 0, 100); t.notes.push("Ronda " + r + ": una pesadilla te dejó un regusto oscuro."); return t.name + " tendrá pesadillas.";
-      case "egida": p.roundDefense += 3 + 2 * (pw - 1); return "Una barrera te rodea esta ronda.";
-      case "sanar": { const h = heal(p, pw > 1 ? 6 : 3); return h > 0 ? "Tus heridas se cierran (+" + h + " de vitalidad)." : "No tenías heridas que cerrar: el conjuro se pierde."; }
+      case "drenar": { const v = pw > 1 ? 16 : 12; const gain = pw > 1 ? 8 : 6; t.virtue = clamp(t.virtue - v, 0, 100); p.virtue = clamp(p.virtue + gain, 0, 100); t.notes.push("Ronda " + r + ": algo bueno se apagó dentro de ti."); return "Le arrebatas virtud a " + t.name + "."; }
+      case "pesadilla": { const corr = pw > 1 ? 7 : 5; t.corr = clamp(t.corr + corr, 0, 100); giveStatus(t, "maldito", 1); t.notes.push("Ronda " + r + ": una pesadilla te dejó un regusto oscuro."); return t.name + " tendrá pesadillas y una maldición breve."; }
+      case "egida": p.roundDefense += 5 + 3 * (pw - 1); return "Una barrera te rodea esta ronda.";
+      case "sanar": { const h = heal(p, pw > 1 ? 8 : 4); return h > 0 ? "Tus heridas se cierran (+" + h + " de vitalidad)." : "No tenías heridas que cerrar: el conjuro se pierde."; }
       case "velo": p.shield = true; if (pw > 1) p.fog = (p.fog || 0) + 2; return "Un velo te cubre.";
-      case "purga": p.corr = clamp(p.corr - (10 + 6 * (pw - 1)), 0, 100); dropStatus(p, "sangrado"); dropStatus(p, "veneno"); dropStatus(p, "infeccion"); dropStatus(p, "maldito"); easeHands(p, 99); return "La oscuridad sale de ti.";
+      case "purga": p.corr = clamp(p.corr - (12 + 6 * (pw - 1)), 0, 100); dropStatus(p, "sangrado"); dropStatus(p, "veneno"); dropStatus(p, "infeccion"); dropStatus(p, "maldito"); easeHands(p, 99); return "La oscuridad sale de ti.";
       case "reflejo": p.reflect = true; return "Un reflejo te protege de la próxima agresión directa.";
       case "presagio": { const c = makeClue(t, pw > 1 ? 3 : 2); if (c) p.clues.push(c); return c ? "La visión te revela algo sobre " + t.name + "." : "La visión se desvanece."; }
     }
@@ -925,7 +931,8 @@
     const cost = [];
     const master = spellLevel(sp) >= 3, corrCost = (asp.selfCorr || 0) + (SPELL_FORMS[sp.form].selfCorr || 0) + (sp.tune === "potente" ? 3 : 0) + (mode === "desatado" && !master ? 3 : 0);
     if (corrCost > 0) cost.push("+" + corrCost + " oscuridad"); else if (corrCost < 0) cost.push(corrCost + " oscuridad");
-    if (asp.selfWound) cost.push("−" + asp.selfWound + " de vitalidad");
+    const selfWound = spellSelfWound(sp);
+    if (selfWound) cost.push("−" + selfWound + " de vitalidad");
     if (mode === "desatado" && !master) cost.push("si falla: 2 de daño y +4 oscuridad");
     if (mode === "desatado") cost.push("estallido visible para todos");
     else if (sp.kind === "off" && !sp.stealth) cost.push("deja rastro público (se oyen palabras)");
@@ -945,7 +952,7 @@
     const f = SPELL_FORMS[sp.form], asp = SPELL_ASPECTS[sp.aspect];
     let t = null;
     if (f.target) { t = state.players[targetId]; if (!t || t.id === p.id || t.dead) return err("Debes elegir a otro jugador que siga en la partida."); }
-    if (asp.selfWound && p.hp <= 4) return err("No te queda sangre que ofrecer.");
+    if (spellSelfWound(sp) && p.hp <= 4) return err("No te queda sangre que ofrecer.");
     const off = f.kind === "off";
     if (p.offer && !p.offer.done) resolveOffer(p, false);
     if (handOfferFor(p)) resolveHand(p, false);
@@ -972,7 +979,8 @@
       if ((asp.selfCorr || 0) > 0 || (f.selfCorr || 0) > 0 || sp.tune === "potente" || f.kind === "off") darkAct(p);
       if ((asp.selfCorr || 0) < 0) antiAct(p);
       p.corr = clamp(p.corr + (asp.selfCorr || 0) + (f.selfCorr || 0) + (sp.tune === "potente" ? 3 : 0) + (mode === "desatado" && spellLevel(sp) < 3 ? 3 : 0), 0, 100);
-      if (asp.selfWound) { const sw = damage(p, asp.selfWound, { zone: "brazos" }); selfTxt = " Pagas el hechizo con tu sangre (−" + sw.dealt + " de vitalidad)."; p.notes.push("Ronda " + state.round + ": pagaste un conjuro con tu sangre" + hitNote(sw) + "."); }
+      const selfWound = spellSelfWound(sp);
+      if (selfWound) { const sw = damage(p, selfWound, { zone: "brazos" }); selfTxt = " Pagas el hechizo con tu sangre (−" + sw.dealt + " de vitalidad)."; p.notes.push("Ronda " + state.round + ": pagaste un conjuro con tu sangre" + hitNote(sw) + "."); }
       if (r.success) {
         if (formTier(sp.form) >= 2) text = queueArcane(p, sp, t, r.crit, mode === "normal" ? 0 : sc.power);
         else { text = applySpell(p, sp, t, r.crit, mode === "normal" ? 0 : sc.power); if (off && t) harmSig(t, p, "conjurar", "marca"); }
@@ -1026,7 +1034,7 @@
       arcNote(v, "unas raíces invisibles te desgarran y la suerte te da la espalda.");
       arcNote(c, "tus raíces atraparon a " + v.name + ".");
     } else if (e.form === "mordedura") {
-      const big = e.crit || pw > 1, res = damage(v, big ? rr(5, 6) : rr(4, 5), { src: "magia" });
+      const big = e.crit || pw > 1, res = damage(v, big ? rr(7, 8) : rr(5, 6), { src: "magia" });
       v.corr = clamp(v.corr + 2, 0, 100);
       arcNote(v, "algo oscuro te mordió desde la nada" + hitNote(res) + ".");
       arcNote(c, "tu mordedura alcanzó a " + v.name + (res.died ? ": ya estaba moribundo y cae." : res.dying ? ": cae moribundo." : "."));
@@ -1082,11 +1090,11 @@
     live(5).forEach(function (e) {
       const c = P(e.caster), v = P(e.target);
       if (v.dying) { arcNote(c, "tu aurora no pudo con " + v.name + ": está moribundo y necesita Socorrer."); return; }
-      const h = heal(v, e.power > 1 ? 6 : 4);
-      const st = ["sangrado", "veneno", "infeccion", "maldito"].filter(function (id) { return hasStatus(v, id); })[0];
-      if (st) dropStatus(v, st);
-      arcNote(v, h > 0 || st ? "una luz suave te cura" + (h > 0 ? " (+" + h + " de vitalidad)" : "") + (st ? " y limpia un mal" : "") + "." : "una luz suave te envolvió, pero no tenías nada que curar.");
-      arcNote(c, "tu aurora sobre " + v.name + (h > 0 || st ? " surtió efecto." : " no encontró nada que curar."));
+      const h = heal(v, e.power > 1 ? 9 : 6);
+      const sts = ["sangrado", "veneno", "infeccion", "maldito"].filter(function (id) { return hasStatus(v, id); }).slice(0, e.power > 1 ? 2 : 1);
+      sts.forEach(function (id) { dropStatus(v, id); });
+      arcNote(v, h > 0 || sts.length ? "una luz suave te cura" + (h > 0 ? " (+" + h + " de vitalidad)" : "") + (sts.length ? " y limpia " + (sts.length > 1 ? "los males" : "un mal") : "") + "." : "una luz suave te envolvió, pero no tenías nada que curar.");
+      arcNote(c, "tu aurora sobre " + v.name + (h > 0 || sts.length ? " surtió efecto." : " no encontró nada que curar."));
     });
     /* C6: información (Olvido). */
     live(6).forEach(function (e) {

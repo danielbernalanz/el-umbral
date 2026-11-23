@@ -47,6 +47,41 @@ test("datos: T2 en las 5 escuelas existentes, metadatos coherentes con el motor"
   assert.strictEqual(S.cap, 5); assert.strictEqual(S.weight[2], 2);
 });
 
+test("balance: defensa de sangre protege sin cobrar vitalidad y las formas débiles ganan utilidad", () => {
+  const { U, D, S } = mk();
+  const caster = S.players[0];
+  S.turn = 0; S.handoff = false;
+  const egida = spell(U, D, "egida", { aspect: "sangre", power: 2 });
+  caster.spells = [egida];
+  const hp = caster.hp;
+  const info = U.spellInfo(0, egida.id, null, "normal");
+  assert.ok(!info.cost.some((x) => /vitalidad/.test(x)), "una defensa de sangre no debe herirte");
+  const r = U.cast(0, egida.id, null, "normal");
+  assert.ok(r.ok && r.success, JSON.stringify(r));
+  assert.strictEqual(caster.hp, hp, "la barrera sangrienta no paga vitalidad");
+  assert.ok(caster.roundDefense >= 8, "la Égida conserva una defensa útil");
+
+  const sanar = spell(U, D, "sanar", { aspect: "hielo", power: 2 });
+  caster.hp = Math.max(1, caster.hp - 5); caster.spells = [sanar];
+  caster.acted = false;
+  const before = caster.hp;
+  const heal = U.cast(0, sanar.id, null, "normal");
+  assert.ok(heal.ok);
+  assert.ok(caster.hp >= before);
+  assert.match(heal.outcome, /\+\d+ de vitalidad/, "Sanar aumenta su curación");
+
+  const pesadilla = spell(U, D, "pesadilla", { power: 1 });
+  S.players[0].spells = [pesadilla];
+  S.players[0].acted = false;
+  S.players[1].status = [];
+  S.turn = 0; S.handoff = false;
+  const corr = S.players[1].corr;
+  const nightmare = U.cast(0, pesadilla.id, 1, "normal");
+  assert.ok(nightmare.ok);
+  assert.ok(S.players[1].corr >= corr);
+  assert.ok(hasSt(S.players[1], "maldito"), "Pesadilla añade una maldición breve");
+});
+
 test("desbloqueo: sin ser Practicante nunca asoma un T2; con Practicante, siempre 3 opciones y la 3.ª es T2 de su escuela", () => {
   const { U, D, S, R } = mk(); R.fn = seeded(7);
   const p = S.players[0], schoolOf = (f) => D.SPELL_SCHOOLS.of[f];
@@ -158,11 +193,11 @@ test("Custodia absorbe el primer T2 ofensivo; el aspecto del vacío la atraviesa
     assert.ok(S.players[0].notes.some((n) => /no llegó a ser puesta a prueba/.test(n))); }
 });
 
-test("Aurora cura y limpia un estado; Olvido borra la pista más reciente del objetivo sobre ti; caster caído = magia apagada", () => {
-  { const { U, D, S } = mk(); const a = spell(U, D, "aurora"); S.players[0].spells = [a];
-    const v = S.players[2]; v.hp = Math.max(3, v.hp - 5); const hp = v.hp; v.status.push({ id: "veneno", left: 3 });
+test("Aurora cura y limpia estados; Olvido borra la pista más reciente del objetivo sobre ti; caster caído = magia apagada", () => {
+  { const { U, D, S } = mk(); const a = spell(U, D, "aurora", { power: 2 }); S.players[0].spells = [a];
+    const v = S.players[2]; v.hp = Math.max(3, v.hp - 5); const hp = v.hp; v.status.push({ id: "veneno", left: 3 }, { id: "sangrado", left: 2, sev: 1 });
     round(U, { 0: [a.id, 2] });
-    assert.ok(v.hp > hp, "cura"); assert.ok(!hasSt(v, "veneno"), "limpia"); }
+    assert.ok(v.hp > hp, "cura"); assert.ok(!hasSt(v, "veneno"), "limpia veneno"); assert.ok(!hasSt(v, "sangrado"), "limpia hasta dos estados"); }
   { const { U, D, S } = mk(); const o = spell(U, D, "olvido"); S.players[0].spells = [o];
     S.players[1].clues = [{ about: 0, text: "a" }, { about: 2, text: "b" }, { about: 0, text: "c" }];
     round(U, { 0: [o.id, 1] });

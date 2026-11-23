@@ -10,6 +10,8 @@ const HOST_MS = 30000;
 const SNAP_EVERY_MS = 10000;  /* máximo de pérdida si el proceso muere sin avisar (kill -9): cambios menores se instantanean cada 10 s */
 const VER_JUMP = 1000000;     /* al restaurar, `ver` salta para que ningún cliente descarte las vistas nuevas por «viejas» */
 const HOST_GRACE_MS = 60000;   /* anfitrión sin conexión: tras esto el papel pasa al siguiente conectado */
+const CHAT_MAX = 300;
+const CHAT_KEEP = 100;
 
 const sha = (s) => crypto.createHash("sha256").update(String(s)).digest("hex");
 const newToken = () => crypto.randomBytes(16).toString("hex"); /* 128 bits */
@@ -17,6 +19,12 @@ const newToken = () => crypto.randomBytes(16).toString("hex"); /* 128 bits */
 function cleanName(raw) {
   let s = String(raw == null ? "" : raw).normalize("NFC").replace(/[\p{C}\p{Zl}\p{Zp}]/gu, "").replace(/\s+/g, " ").trim();
   s = Array.from(s).slice(0, NAME_MAX).join("").trim();
+  return s;
+}
+
+function cleanChat(raw) {
+  let s = String(raw == null ? "" : raw).normalize("NFC").replace(/[\p{C}\p{Zl}\p{Zp}]/gu, "").replace(/\r\n?/g, "\n").replace(/[^\S\n]+/g, " ").trim();
+  s = Array.from(s).slice(0, CHAT_MAX).join("").trim();
   return s;
 }
 
@@ -28,6 +36,7 @@ class Room {
     this.ver = 0;                     /* contador monotónico de difusiones: el cliente descarta vistas más viejas que la que ya tiene */
     this.players = [];                /* { slot, name, tokenHash, host, conns:Set<res>, lastJson, lastSeen, left } */
     this.npcs = [];                   /* NPC añadidos en la sala de espera: { name } (ocupan los asientos tras los humanos) */
+    this.chat = [];                   /* { id, pid, name, text, at } */
     this.game = null;
     this.hostOffSince = null; this.hostNote = null; this.noteSeq = 0;
     this.snapSeq = 0; this.lastBlob = null; this.snapKey = null; this.snapDirty = false; this.lastSnapAt = 0;
@@ -43,6 +52,7 @@ class Room {
     return { schema: SCHEMA, engine: m.snap.engine, code: this.code, seq: ++this.snapSeq, savedAt: m.now(),
       room: { status: this.status, createdAt: this.createdAt, ver: this.ver, hostNote: this.hostNote, noteSeq: this.noteSeq,
         npcs: this.npcs.map((n) => ({ name: n.name })),
+        chat: this.chat.map((m) => ({ id: m.id, pid: m.pid, name: m.name, text: m.text, at: m.at })),
         players: this.players.map((p) => ({ slot: p.slot, name: p.name, tokenHash: p.tokenHash, host: p.host })) },
       game: this.game ? this.game.snapshot() : null };
   }
@@ -76,6 +86,10 @@ class Room {
     r.ver = (Number(rm.ver) || 0) + VER_JUMP; r.hostNote = rm.hostNote || null; r.noteSeq = rm.noteSeq || 0;
     r.snapSeq = plain.seq;
     r.npcs = Array.isArray(rm.npcs) ? rm.npcs.map((n) => ({ name: String(n.name) })) : [];
+    r.chat = Array.isArray(rm.chat) ? rm.chat.slice(-CHAT_KEEP).map((m) => ({
+      id: Number(m.id) || 0, pid: Number(m.pid) || 0, name: String(m.name || "").slice(0, NAME_MAX),
+      text: cleanChat(m.text), at: Number(m.at) || t
+    })).filter((m) => m.text) : [];
     r.players = rm.players.map((p) => ({ slot: p.slot, name: p.name, tokenHash: p.tokenHash, host: !!p.host, conns: new Set(), lastJson: null, lastSeen: t }));
     if (r.status === "playing") {
       r.game = Game.restore(plain.game, { engineDir: mgr.engineDir, now: mgr.now, readMs: mgr.readMs, timeScale: mgr.timeScale, shift, graceTurnMs: mgr.restoreGraceTurnMs, graceMs: mgr.restoreGraceMs });
@@ -142,6 +156,15 @@ class Room {
     } else return { ok: false, msg: "Orden de NPC no válida." };
     this.touch(); this.broadcast();
     return { ok: true };
+  }
+  chatSend(p, b) {
+    const text = cleanChat(b && b.text);
+    if (!text) return { ok: false, msg: "Escribe un mensaje." };
+    const msg = { id: (this.chat.length ? this.chat[this.chat.length - 1].id : 0) + 1, pid: p.slot, name: p.name, text, at: this.mgr.now() };
+    this.chat.push(msg);
+    if (this.chat.length > CHAT_KEEP) this.chat.splice(0, this.chat.length - CHAT_KEEP);
+    this.touch(); this.broadcast();
+    return { ok: true, message: msg };
   }
   start(p, endAt) {
     if (!p.host) return { ok: false, msg: "Solo el anfitrión puede empezar." };
@@ -238,10 +261,16 @@ class Room {
   lobbyView(p) {
     return { phase: "lobby", hostNote: this.hostNote, code: this.code, serverNow: this.mgr.now(), youId: p.slot, host: p.host, min: MIN_PLAYERS, max: MAX_PLAYERS,
       canStart: p.host && this.players.length + this.npcs.length >= MIN_PLAYERS,
+      chat: this.chat.slice(),
       npcs: this.npcs.map((n, i) => ({ id: i, name: n.name })),
       players: this.players.map((x) => ({ id: x.slot, name: x.name, host: x.host, online: x.conns.size > 0 })) };
   }
-  viewFor(p) { return this.status === "lobby" ? this.lobbyView(p) : this.game.view(p.slot); }
+  viewFor(p) {
+    if (this.status === "lobby") return this.lobbyView(p);
+    const view = this.game.view(p.slot);
+    view.chat = this.chat.slice();
+    return view;
+  }
   sendTo(p) {
     if (!p.conns.size) return;
     let json;

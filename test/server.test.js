@@ -15,6 +15,30 @@ const shut = (app) => new Promise((r) => { app.rooms.closeAll(); app.server.clos
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const NAMES = ["Ana", "Luis", "Marta", "Pablo", "Eva"];
 
+test("chat online: mensajes visibles en lobby y partida", async () => {
+  const app = await boot({ cmdPerSec: 100 });
+  try {
+    const a = new Client(app.port, "Ana"), b = new Client(app.port, "Luis");
+    await a.create(); await b.join(a.room);
+    await a.connect(); await b.connect();
+    await a.until((v) => v.phase === "lobby" && v.players.length === 2);
+
+    const sent = await request(app.port, "POST", "/api/chat", { text: "  Hola a todos  " }, a.token);
+    assert.strictEqual(sent.status, 200); assert.strictEqual(sent.json.ok, true);
+    await b.until((v) => v.chat && v.chat.length === 1);
+    assert.strictEqual(b.view.chat[0].text, "Hola a todos");
+    assert.strictEqual(b.view.chat[0].name, "Ana");
+    assert.strictEqual((await request(app.port, "POST", "/api/chat", { text: " " }, b.token)).json.ok, false);
+
+    await a.start(Date.now() + 30 * 60000);
+    for (const c of [a, b]) await c.until((v) => v.phase === "private");
+    const inGame = await request(app.port, "POST", "/api/chat", { text: "Estoy listo" }, b.token);
+    assert.strictEqual(inGame.json.ok, true);
+    await a.until((v) => v.chat && v.chat.some((m) => m.text === "Estoy listo"));
+    assert.strictEqual(a.view.chat[0].text, "Hola a todos");
+  } finally { await shut(app); }
+});
+
 test("healthz y rutas desconocidas", async () => {
   const app = await boot();
   try {
