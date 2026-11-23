@@ -1,5 +1,5 @@
 "use strict";
-/* v1.8.2/v1.12.0: sospecha acumulada + presentar pista. Acusar ya no revela el rol; marcador público 0-4; contradicción veraz o gastada; no-fuga. */
+/* v1.8.2/v1.12.0: sospecha acumulada + presentar pista. Acusar ya no revela el rol; marcador público 0-4; las pistas verificadas mueven una duda sobre el rastro; no-fuga. */
 const test = require("node:test");
 const assert = require("node:assert");
 const { loadEngine } = require("../server/engine_vm");
@@ -38,10 +38,10 @@ test("acusar sube la sospecha por acusadores DISTINTOS (no repite) y no revela e
   assert.ok(r1.ok);
   assert.strictEqual(r1.revealedAssassin, false);
   assert.ok(!/es el Asesino|desenmascar|identificad/i.test(r1.text + " " + r1.log), "texto público neutral");
-  assert.strictEqual(S.players[1].suspPts, 1);
-  const r2 = U.registerInteraction(2, "acusacion", 1);
   assert.strictEqual(S.players[1].suspPts, 2);
-  assert.strictEqual(U.suspLevel(S.players[1]), 1);
+  const r2 = U.registerInteraction(2, "acusacion", 1);
+  assert.strictEqual(S.players[1].suspPts, 4);
+  assert.strictEqual(U.suspLevel(S.players[1]), 2);
   assert.ok(!S.players.some((p) => p.exposed) && !S.assassinExposed, "nadie queda expuesto");
   assert.strictEqual(S.publicClues.length, 0, "ninguna pista pública por acertar");
   /* el resultado público es idéntico acierte o falle */
@@ -102,7 +102,7 @@ function withLead(S, author, victim, who) {
   S.players[who].leadSeq = 1;
 }
 
-test("presentar pista: pública sin autor ni oráculo; no mueve la sospecha; se gasta; el autor del rastro se entera en privado", () => {
+test("presentar pista: pública sin autor ni oráculo; mueve la sospecha del rastro; se gasta; el autor del rastro se entera en privado", () => {
   const { U, S } = mk(4);
   withLead(S, 1, 2, 0);
   toCouncil(U, S);
@@ -117,7 +117,9 @@ test("presentar pista: pública sin autor ni oráculo; no mueve la sospecha; se 
   assert.strictEqual(r[0].actor, null, "sin autor");
   assert.strictEqual(r[0].target, null);
   assert.ok(/Sobre X: un golpe directo/.test(r[0].res.text), "texto tal como lo viste");
-  S.players.forEach((p) => assert.strictEqual(p.suspPts || 0, 0, "ninguna sospecha se mueve (sin oráculo)"));
+  assert.strictEqual(S.players[1].suspPts, 1, "el rastro presentado hace subir una duda sobre su autor");
+  assert.strictEqual(S.players[0].suspPts, 0, "presentar no señala al jugador que la trae");
+  assert.strictEqual(S.players[2].suspPts, 0, "presentar no señala a la víctima");
   assert.ok(S.players[0].leads[0].used, "la pista se gasta");
   assert.ok(S.players[0].notes.some((n) => /presentaste una pista/.test(n)));
   assert.ok(S.players[1].notes.some((n) => /rastro tuyo/.test(n)), "el autor se entera en privado");

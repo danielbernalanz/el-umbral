@@ -1239,7 +1239,7 @@
   function umbralLevel(p) { return !p || isAssassin(p) ? 0 : p.corr >= UMBRAL_HIGH ? 2 : p.corr >= UMBRAL_MID ? 1 : 0; }
   function umbralDmg(p) { const l = umbralLevel(p); return l === 0 ? 0 : l === 1 ? 1 : p.corr >= 70 ? 3 : 2; }
   /* ---------- v1.8.2: SOSPECHA ACUMULADA. Marcador PÚBLICO 0-4 por jugador (p.susp) derivado de puntos internos (p.suspPts 0-8).
-     Sube por acusaciones de DISTINTOS jugadores (la misma persona no suma dos veces) y emboscadas públicas (presentar pistas NO la mueve: la mesa decide).
+     Sube por acusaciones de DISTINTOS jugadores (la misma persona no suma dos veces), pistas verificadas presentadas ante el Consejo y emboscadas públicas.
      Baja con una ronda sin incidentes y con actos de bien (socorrer, bendecir, proteger con éxito). NO es el rol y puede señalar a un inocente.
      Efectos cooperativos moderados: con nivel 2+ enfrentarse a esa persona ya no es a ciegas y varias emboscadas en el mismo Consejo la debilitan
      (−1 defensa por cada atacante previo, máx. −2); con nivel 3+ sus pistas salen completas y, si es Asesino, cazar le cuesta +1. Nada la inhabilita. ---------- */
@@ -3199,7 +3199,7 @@
       r.success = false; r.crit = false; r.shielded = true;
     }
     target.suspBy = target.suspBy || [];
-    if (target.suspBy.indexOf(actor.id) === -1) { target.suspBy.push(actor.id); addSusp(target, state.players.filter(function (x) { return !x.dead; }).length <= 3 ? 2 : 1); }
+    if (target.suspBy.indexOf(actor.id) === -1) { target.suspBy.push(actor.id); addSusp(target, 2); }
     const isAss = isAssassin(target);
     const pub = { success: false, roll: null, revealedAssassin: false,
       text: actor.name + " acusa a " + target.name + " ante el Consejo. Nadie puede comprobarlo: la asamblea solo sopesa quién más desconfía de " + target.name + ".",
@@ -3228,8 +3228,8 @@
     return pub;
   }
 
-  /* Presentar pista (v1.12.0): el jugador muestra a todos UNA de sus pistas de Indagar, tal cual la vio, sin autor. Nada la compara con nadie ni mueve la sospecha:
-     la mesa decide. Solo el autor real del rastro (si lo hay) se entera en privado de que su rastro salió a la luz. */
+  /* Presentar pista (v1.12.0): el jugador muestra a todos UNA de sus pistas de Indagar, tal cual la vio, sin autor.
+     Un rastro verificable eleva +1 la sospecha pública de su autor real, sin revelar nombre ni rol; solo ese autor se entera en privado. */
   function resolvePista(actor, leadId) {
     const ld = (actor.leads || []).find(function (l) { return typeof l.k === "number" && l.k === leadId && !l.used; });
     if (!ld) return null;
@@ -3238,6 +3238,7 @@
     let body = String(ld.text).replace(/ No dice quién fue\.$/, "");
     if (sg && state.players[sg.victim]) body = body.replace(/^Sobre ti:/, "Sobre " + state.players[sg.victim].name + ":");   /* el texto público nombra a la víctima: no delata quién la presenta */
     if (sg && sg.author !== null && sg.author !== undefined && sg.author !== actor.id && state.players[sg.author] && !state.players[sg.author].dead) {
+      addSusp(state.players[sg.author], 1);
       state.players[sg.author].notes.push("Ronda " + state.round + ": ante el Consejo se presentó una pista verificada sobre un rastro tuyo: «" + body + "».");
     }
     actor.notes.push("Ronda " + state.round + ": presentaste una pista ante el Consejo. La mesa decidirá qué hacer con ella.");
