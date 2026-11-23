@@ -1,4 +1,4 @@
-/* EL UMBRAL — datos del juego (v1.13.0)
+/* EL UMBRAL — datos del juego (v1.13.1)
    Roles, afinidades, objetos, acciones, eventos, secretos y pistas. */
 (function (g) {
   "use strict";
@@ -231,7 +231,7 @@
   };
 
 
-  /* v1.13.0: técnicas de Atender. Todas disponibles de entrada para todos; las que exigen objeto se atenúan con «falta: …» (solo depende de TU mochila).
+  /* v1.13.1: técnicas de Atender. Todas disponibles de entrada para todos; las que exigen objeto se atenúan con «falta: …» (solo depende de TU mochila).
      Efecto y coste se muestran antes de elegir. Ninguna lleva azar: el riesgo es de coste (objeto, vitalidad o miembro entumecido) y de acertar con las señales públicas. */
   const TREATS = [
     { id: "presionar", name: "Presionar y limpiar", effect: "Corta un sangrado leve y frena la infección; un sangrado fuerte solo baja a goteo.", cost: "Sin coste." },
@@ -256,7 +256,7 @@
     tierNames: { 1: "Básico", 2: "Intermedio" },
     weight: { 1: 1, 2: 2 }, cap: 5
   };
-  const D = { VERSION: "1.13.0", TREATS, SPELL_SCHOOLS, NPC_PROFILES, NPC_NAMES, STATUS, ROLES, AFFINITIES, ITEMS, LOOT_ITEMS, DARK_ITEMS, UTIL_ITEMS, MEDIC_ITEMS, ACTIONS, STAKES, EVENTS, CLUES, ASSASSIN_CLUES, SECRETS };
+  const D = { VERSION: "1.13.1", TREATS, SPELL_SCHOOLS, NPC_PROFILES, NPC_NAMES, STATUS, ROLES, AFFINITIES, ITEMS, LOOT_ITEMS, DARK_ITEMS, UTIL_ITEMS, MEDIC_ITEMS, ACTIONS, STAKES, EVENTS, CLUES, ASSASSIN_CLUES, SECRETS };
   g.UMBRAL_DATA = D;
   if (typeof module !== "undefined") module.exports = D;
 })(typeof globalThis !== "undefined" ? globalThis : this);

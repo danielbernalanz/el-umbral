@@ -1,4 +1,4 @@
-/* EL UMBRAL — motor de juego (v1.13.0)
+/* EL UMBRAL — motor de juego (v1.13.1)
    Sin DOM. Toda la lógica vive aquí para poder probarla con Node. */
 (function (g) {
   "use strict";
@@ -78,7 +78,7 @@
   /* Nivel de la lesión: 0 ninguna, 1 leve (1-3), 2 seria (4-5), 3 grave (6+). Penalizadores desde el nivel 2. */
   function zoneN(p, z) { const n = (p && p.zones && p.zones[z]) || 0; return n >= 6 ? 3 : n >= 4 ? 2 : n >= 1 ? 1 : 0; }
   function partOf(p) { return (p && p.inj && p.inj.miembros && p.inj.miembros.part) || null; }
-  /* v1.13.0: un torniquete entumece un miembro la ronda en que se pone y la siguiente (−1 cuerpo/ataque y −1 defensa). */
+  /* v1.13.1: un torniquete entumece un miembro la ronda en que se pone y la siguiente (−1 cuerpo/ataque y −1 defensa). */
   function tornActive(p) { return !!(p && state && typeof p.tournRound === "number" && state.round >= p.tournRound && state.round - p.tournRound <= 1); }
   function legPen(p) { return (zoneN(p, "miembros") >= 2 && partOf(p) === "piernas") || tornActive(p) ? 1 : 0; }
   function armPen(p) { return (zoneN(p, "miembros") >= 2 && partOf(p) === "brazos") || tornActive(p) ? 1 : 0; }
@@ -298,7 +298,7 @@
     if (!sg && fc) out.push({ key: "caer", text: "Al ritmo actual, caes moribundo en " + fc.caer + " ronda" + (fc.caer > 1 ? "s" : "") + ".", todo: "" });
     return out.slice(0, 3);
   }
-  /* v1.13.0: técnicas de Atender con su disponibilidad. Solo depende de la mochila de quien atiende (consulta pura, sin fugas). */
+  /* v1.13.1: técnicas de Atender con su disponibilidad. Solo depende de la mochila de quien atiende (consulta pura, sin fugas). */
   function treatOptions(pid) {
     const p = state && state.players[pid];
     return D.TREATS.map(function (t) {
@@ -2443,7 +2443,7 @@
           for (let i = 0; i < s.items; i++) { const it = pick(D.DARK_ITEMS); p.items.push(mkItem(it)); got.push(itemName(it)); }
           const seen = [];
           const possible = others(p);
-          for (let i = 0; i < s.clues && possible.length; i++) { const o = pick(possible); const clue = makeClue(o, 2); if (clue) { p.clues.push(clue); seen.push(o.name); } }
+          for (let i = 0; i < s.clues && possible.length; i++) { const o = possible.splice(rnd(possible.length), 1)[0]; const clue = makeClue(o, 2); if (clue) { p.clues.push(clue); seen.push(o.name); } }
           p.virtue = clamp(p.virtue + s.virtue, 0, 100);
           let txt = "El Umbral paga. Ganas " + (got.length ? got.join(", ") : "nada material") + ".";
           if (seen.length) txt += " Pistas sobre " + seen.join(" y ") + ".";
@@ -2488,7 +2488,7 @@
           harmSig(t, p, "cazar", "golpe");
           t.notes.push("Ronda " + state.round + ": una sombra te atacó durante la noche" + (hres.died ? hitNote(hres) : " y te hirió" + hitNote(hres)) + ".");
           const fed = heal(p, 2);
-          return { text: "La caza alcanza a " + t.name + (hres.died ? (r.rematar ? ", que yacía moribundo: lo rematas sin tirada y queda eliminada o eliminado." : ", que ya estaba moribundo: queda eliminada o eliminado.") : hres.dying ? ": cae moribundo, y solo tendrá lo que reste de esta ronda para que alguien lo socorra." : (hres.zone ? " " + ZONE_IN[hres.zone] + ": queda " + visibleHealth(t).split(" · ")[0].toLowerCase() + "." : ".")) + (fed > 0 ? " Te alimentas de su miedo (+" + fed + " de vitalidad)." : ""), log: null };
+          return { text: "La caza alcanza a " + t.name + (hres.died ? (r.rematar ? ", que yacía moribundo: lo rematas sin tirada y queda eliminada o eliminado." : ", que ya estaba moribundo: queda eliminada o eliminado.") : hres.dying ? (t.dyingFast ? ": cae moribundo, y solo tendrá lo que reste de esta ronda para que alguien lo socorra." : ": cae moribundo, y tendrá hasta que acabe la próxima ronda para que alguien lo socorra.") : (hres.zone ? " " + ZONE_IN[hres.zone] + ": queda " + visibleHealth(t).split(" · ")[0].toLowerCase() + "." : ".")) + (fed > 0 ? " Te alimentas de su miedo (+" + fed + " de vitalidad)." : ""), log: null };
         }
         p.corr = clamp(p.corr + 3, 0, 100);
         p.virtue = clamp(p.virtue - 2, 0, 100);
@@ -2607,7 +2607,7 @@
       }
       case "indagar": return doIndagar(p);
       case "atender": {
-        /* Cuidados sin tirada, con la técnica elegida (v1.13.0). Al actor no se le cuenta qué había (solo lo que ya vería a simple vista);
+        /* Cuidados sin tirada, con la técnica elegida (v1.13.1). Al actor no se le cuenta qué había (solo lo que ya vería a simple vista);
            el atendido lo sabe en privado. Los objetos se gastan aunque no hicieran falta: el coste es de quien elige sin certeza. */
         if (t.dying) return { text: t.name + " está moribundo: eso es un Socorro, no unos cuidados.", log: null };
         const tech = stake || "presionar", did = [], extra = [];
@@ -2891,7 +2891,7 @@
       case "shield": p.shield = true; msg = "Una coartada te protegerá de la próxima acusación."; break;
       default: return err("Ese objeto no se puede usar ahora.");
     }
-    if (def.uses && def.uses > 1) { it.left = (it.left === undefined ? def.uses : it.left) - 1; msg += " (" + (it.left > 0 ? "le quedan " + it.left + " uso" + (it.left > 1 ? "s" : "") : "ya no sirve") + ")"; if (it.left <= 0) p.items.splice(index, 1); }
+    if (def.uses && def.uses > 1) { it.left = (it.left === undefined ? def.uses : it.left) - 1; msg += " (" + (it.left > 0 ? (it.left > 1 ? "le quedan " + it.left + " usos" : "le queda 1 uso") : "ya no sirve") + ")"; if (it.left <= 0) p.items.splice(index, 1); }
     else p.items.splice(index, 1);
     if (def.kind === "heal" || def.kind === "cleanse" || def.kind === "elixir") p.healN = (p.healN || 0) + 1;
     p.usedItem = true;
@@ -3763,7 +3763,7 @@
     L.push("fecha: " + new Date().toISOString() + (state.endAt ? " · hora de fin: " + hhmm(state.endAt) + " (inicio " + hhmm(state.createdAt) + ")" : "") + " · duración elegida: " + (state.durationMin || "-") + " min · jugada: " + Math.round(playedMs() / 60000) + " min · rondas: " + state.round + "/" + maxRounds());
     L.push("final: " + (e.title || "(sin final)") + " · ganador: " + (e.winner || "-") + (e.timedOut ? " · TIEMPO AGOTADO" : "") + (e.tableEnded ? " · cierre por la mesa" : "") + (state.extraRounds ? " · rondas añadidas: " + state.extraRounds : ""));
     state.players.forEach(function (p) {
-      L.push("J" + p.id + " " + p.name + (p.npc ? " [NPC " + p.npc + "]" : "") + " | " + p.role.name + "/" + p.affinity.name + " | " + (p.alignment === "asesino" ? "ASESINO(r" + p.asesinoRound + ")" : "inocente") + " | vir " + p.virtue + " cor " + p.corr + " vit " + p.hp + "/" + maxHp(p) + (p.dying ? " MORIBUNDO(r" + p.dyingRound + ")" : "") + (p.dead ? " MUERTO(" + (p.cause || "?") + ")" : "") + " | secreto: " + (p.secret && p.secret.id) + (p.secretPaid ? " (PREMIO r" + p.secretPaid + ")" : "") + " | objetos: " + (p.items.length ? p.items.map(function (i) { return i.id + (i.left !== undefined ? "x" + i.left : ""); }).join(",") : "-") + (p.ally ? " | ALIADO listo" : "") + " | agr " + (p.aggr || 0) + (aggrSummary(p) ? " (" + aggrSummary(p) + ")" : "") + " | dominio sombras " + domLevel(p) + " (" + ((p.dom && p.dom.wins) || 0) + " éxitos)" + ((p.risen || []).length ? " | alzados: " + p.risen.map(function (id) { return state.players[id] ? state.players[id].name : "?"; }).join(",") : "") + (p.risenBy !== undefined && p.risenBy !== null ? " | ALZADO por J" + p.risenBy : "") + ((p.tempOffers || 0) ? " | tentaciones ofrecidas " + p.tempOffers : ""));
+      L.push("J" + p.id + " " + p.name + (p.npc ? " [NPC]" : "") + " | " + p.role.name + "/" + p.affinity.name + " | " + (p.alignment === "asesino" ? "ASESINO(r" + p.asesinoRound + ")" : "inocente") + " | vir " + p.virtue + " cor " + p.corr + " vit " + p.hp + "/" + maxHp(p) + (p.dying ? " MORIBUNDO(r" + p.dyingRound + ")" : "") + (p.dead ? " MUERTO(" + (p.cause || "?") + ")" : "") + " | secreto: " + (p.secret && p.secret.id) + (p.secretPaid ? " (PREMIO r" + p.secretPaid + ")" : "") + " | objetos: " + (p.items.length ? p.items.map(function (i) { return i.id + (i.left !== undefined ? "x" + i.left : ""); }).join(",") : "-") + (p.ally ? " | ALIADO listo" : "") + " | agr " + (p.aggr || 0) + (aggrSummary(p) ? " (" + aggrSummary(p) + ")" : "") + " | dominio sombras " + domLevel(p) + " (" + ((p.dom && p.dom.wins) || 0) + " éxitos)" + ((p.risen || []).length ? " | alzados: " + p.risen.map(function (id) { return state.players[id] ? state.players[id].name : "?"; }).join(",") : "") + (p.risenBy !== undefined && p.risenBy !== null ? " | ALZADO por J" + p.risenBy : "") + ((p.tempOffers || 0) ? " | tentaciones ofrecidas " + p.tempOffers : ""));
     });
     const an = [];
     state.players.forEach(function (p) {

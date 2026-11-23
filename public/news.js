@@ -5,6 +5,12 @@
 (function (w) {
   "use strict";
   w.UMBRAL_NEWS = [
+    { version: "1.13.1", fecha: "2026-11-23", titulo: "Arreglos de una partida real", puntos: [
+      "El plazo para socorrer a un moribundo tras una caza ahora se explica bien: en partidas largas tiene hasta que acabe la próxima ronda.",
+      "El premio de «dos pistas» ya no repite jugador cuando hay otros candidatos.",
+      "Los NPC ya no muestran su estilo de juego en el registro exportado.",
+      "Corregida la gramática de los usos que le quedan a un objeto (le queda 1 uso).",
+    ] },
     { version: "1.13.0", fecha: "2026-11-20", titulo: "Atender con técnicas y silueta del cuerpo", puntos: [
       "Atender ahora tiene cuatro técnicas, y antes de confirmar ves qué hace y qué cuesta cada una: presionar y limpiar (gratis), torniquete, entablillar y cauterizar.",
       "Presionar corta un sangrado leve, pero uno fuerte solo lo baja a goteo. El torniquete corta cualquiera, pero deja un miembro entumecido hoy y mañana (−1 a cuerpo y defensa). Cauterizar sella sangrado e infección al instante a cambio de 1 de vitalidad del paciente; necesita una antorcha (una linterna sirve y no se gasta).",

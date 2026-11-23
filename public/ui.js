@@ -1,4 +1,4 @@
-/* EL UMBRAL — interfaz (v1.13.0) */
+/* EL UMBRAL — interfaz (v1.13.1) */
 (function () {
   "use strict";
 
@@ -584,7 +584,7 @@
     });
     return parts.length ? '<div class="small">Práctica: ' + parts.join(" · ") + '</div>' : "";
   }
-  /* v1.13.0: silueta tocable (3 zonas) de TU cuerpo. Color por gravedad; al tocar una zona se ve su lesión y qué hacer. */
+  /* v1.13.1: silueta tocable (3 zonas) de TU cuerpo. Color por gravedad; al tocar una zona se ve su lesión y qué hacer. */
   const ZADV = { cabeza: "Descansar o unas vendas ayudan; una conmoción grave nubla tus tiradas de mente.", torso: "Descansar, vendas o un botiquín curan; si sangra, que te atiendan.", miembros: "Entablillar (con vendas) quita el estorbo de un brazo o una pierna; Descansar cura el resto." };
   function zoneDetail(z) {
     if (!z) return "Toca una zona de la silueta para ver su lesión.";
@@ -1145,7 +1145,7 @@
     addCancel(box);
   }
 
-  /* v1.13.0: técnica de Atender. Efecto y coste a la vista; lo que no puedes hacer se atenúa con «falta: …». Mismas filas para todos. */
+  /* v1.13.1: técnica de Atender. Efecto y coste a la vista; lo que no puedes hacer se atenúa con «falta: …». Mismas filas para todos. */
   function renderTreatPicker(p) {
     const t = U.getState().players[pendingMode.t], vh = String(U.visibleHealth(t) || "");
     const sign = { presionar: /sangra/.test(vh), torniquete: /sangra/.test(vh), entablillar: /cojea|protege/.test(vh), cauterizar: /sangra|pálido/.test(vh) };
