@@ -39,20 +39,20 @@ test("torniquete: corta cualquier sangrado, entumece un miembro hoy y mañana, n
   assert.strictEqual(m.H.armPen(m.S.players[1]), 0, "sin sangrado no hay coste");
 });
 
-test("entablillar: exige vendas, las gasta siempre y baja una lesión seria de miembros", () => {
+test("entablillar: exige vendas, las gasta solo si hay miembro grave y baja la lesión", () => {
   const { U, D, S, H } = mk(); const v = S.players[1];
   assert.ok(!U.act(0, "atender", 1, "entablillar").ok, "sin vendas no se puede");
   assert.strictEqual(U.treatOptions(0).find((o) => o.id === "entablillar").ok, false);
   S.players[0].items = [item(D, "vendas")];
-  H.damage(v, 5, { zone: "piernas", noBleed: true });
+  H.damage(v, 5, { zone: "miembros", noBleed: true }); v.inj.miembros.part = "piernas";
   assert.strictEqual(H.legPen(v), 1);
   assert.ok(U.act(0, "atender", 1, "entablillar").ok);
   assert.strictEqual(S.players[0].items.length, 0);
   assert.strictEqual(H.legPen(v), 0, "ya no estorba");
-  assert.ok(v.zones.miembros <= 3 && v.inj.miembros.t === "contusion");
-  /* sin nada que alinear: las vendas se gastan igualmente (coste de acertar con lo que se ve) */
+  assert.ok(v.zones.miembros <= 3 && (!v.inj.miembros || v.inj.miembros.t === "contusion"), "baja a contusión o el +3 de cuidados la cierra");
+  /* sin miembro grave que alinear: no se gastan las vendas (v1.14.0) */
   const m = mk(); m.S.players[0].items = [item(m.D, "vendas")];
-  assert.ok(m.U.act(0, "atender", 1, "entablillar").ok); assert.strictEqual(m.S.players[0].items.length, 0);
+  assert.ok(m.U.act(0, "atender", 1, "entablillar").ok); assert.strictEqual(m.S.players[0].items.length, 1);
 });
 
 test("cauterizar: exige fuego; sella sangrado e infección fuertes; cuesta 1 de vitalidad al paciente; la linterna no se gasta", () => {
@@ -62,10 +62,10 @@ test("cauterizar: exige fuego; sella sangrado e infección fuertes; cuesta 1 de 
   bleed(v, 2); v.status.push({ id: "infeccion", left: 2 }); v.hp = 6;
   assert.ok(U.act(0, "atender", 1, "cauterizar").ok);
   assert.ok(!v.status.some((s) => s.id === "sangrado" || s.id === "infeccion"));
-  assert.strictEqual(v.hp, 5);
+  assert.strictEqual(v.hp, 8, "quema −1 y el descanso de cuidados da +3: neto +2");
   assert.strictEqual(S.players[0].items.map((i) => i.id).join(), "linterna");
   const m = mk(); m.S.players[0].items = [item(m.D, "linterna")]; m.S.players[1].hp = 2; bleed(m.S.players[1], 1);
-  assert.ok(m.U.act(0, "atender", 1, "cauterizar").ok); assert.strictEqual(m.S.players[1].hp, 2, "con 2 o menos no quema");
+  assert.ok(m.U.act(0, "atender", 1, "cauterizar").ok); assert.strictEqual(m.S.players[1].hp, 5, "con 2 o menos no quema; sí cura +3");
   assert.strictEqual(m.S.players[0].items.length, 1);
 });
 

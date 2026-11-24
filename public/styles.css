@@ -214,6 +214,8 @@ hr{border:0;border-top:1px solid var(--line);margin:13px 0}
 .meter{height:7px;background:#0d0a10;border-radius:99px;overflow:hidden;margin:5px 0 7px;border:1px solid #2b2330}
 .meter span{display:block;height:100%;border-radius:99px}
 .virtue{background:linear-gradient(90deg,#4b9a6c,#9bdfb4)}
+.meter{position:relative}.meter .vmark{position:absolute;top:0;bottom:0;width:1px;background:#e8d9a0;opacity:.55}
+.vtier.vhi{color:#9bdfb4}.vtier.vlo{color:#e08a7a}
 .corrupt{background:linear-gradient(90deg,#7d4cc0,#d8636d)}
 .meter.hp{margin:3px 0 6px}
 .meter.hp .good{background:var(--green)}.meter.hp .mid{background:var(--gold)}.meter.hp .low{background:var(--red)}

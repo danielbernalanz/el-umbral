@@ -59,7 +59,7 @@ test("balance: defensa de sangre protege sin cobrar vitalidad y las formas débi
   const r = U.cast(0, egida.id, null, "normal");
   assert.ok(r.ok && r.success, JSON.stringify(r));
   assert.strictEqual(caster.hp, hp, "la barrera sangrienta no paga vitalidad");
-  assert.ok(caster.roundDefense >= 8, "la Égida conserva una defensa útil");
+  assert.ok(caster.roundDefense >= 7, "la Égida (+4, +3 con potencia) conserva una defensa útil");
 
   const sanar = spell(U, D, "sanar", { aspect: "hielo", power: 2 });
   caster.hp = Math.max(1, caster.hp - 5); caster.spells = [sanar];
@@ -167,12 +167,12 @@ test("Eco anula el T2 nombrado y el resultado NO depende del orden de turno", ()
   assert.strictEqual(new Set(out).size, 1, out.join(" | "));
 });
 
-test("Eco al vacío mancha (+2 oscuridad); Eco no puede anular un T1 (inmediato)", () => {
+test("Eco al vacío no mancha y revela si lanzó algo esa noche; Eco no puede anular un T1 (inmediato)", () => {
   const { U, D, S } = mk();
   const e = spell(U, D, "eco"); S.players[1].spells = [e];
   round(U, { 1: [e.id, 0] });
-  assert.strictEqual(S.players[1].corr, 2);
-  assert.ok(S.players[1].notes.some((n) => /no encontró ningún conjuro/.test(n)));
+  assert.strictEqual(S.players[1].corr, 0, "v1.14.0: el eco vacío ya no mancha");
+  assert.ok(S.players[1].notes.some((n) => /no encontró ningún conjuro/.test(n) && /tampoco lanzó/.test(n)));
 });
 
 test("Custodia absorbe el primer T2 ofensivo; el aspecto del vacío la atraviesa; sin ataque, se avisa", () => {

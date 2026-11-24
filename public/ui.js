@@ -637,7 +637,8 @@
     const attr = function (k, label, val) { return '<div class="attr f-' + famOf(k) + '"><span style="color:var(--ic)">' + ic(k) + "</span><b>" + val + "</b><span>" + label + "</span></div>"; };
     return '<div class="player">' +
       '<div class="srow"><span class="lab f-heal"><span style="color:var(--ic)">' + ic("st_virtud") + '</span>Virtud <b>' + p.virtue + '</b></span><span class="darkline">' + ic("st_sombra") + darkLine(p) + '</span></div>' +
-      '<div class="meter"><span class="virtue" style="width:' + p.virtue + '%"></span></div>' +
+      '<div class="meter"><span class="virtue" style="width:' + p.virtue + '%"></span><span class="vmark" style="left:70%"></span><span class="vmark" style="left:30%"></span></div>' +
+      '<div class="small vtier ' + (p.virtue >= 70 ? "vhi" : p.virtue <= 30 ? "vlo" : "") + '">' + (p.virtue >= 70 ? "Virtud alta: −1 dificultad a Investigar, Explorar y Proteger." : p.virtue <= 30 ? "Virtud baja: +1 dificultad a Investigar, Explorar y Proteger." : "Marcas en 70 (facilita) y 30 (complica) en Investigar, Explorar y Proteger.") + '</div>' +
       '<div class="srow"><span class="lab f-danger"><span style="color:var(--ic)">' + ic("st_vitalidad") + '</span>Vitalidad <b>' + hi.hp + '/' + hi.max + '</b></span></div>' +
       '<div class="hearts' + (hi.pct <= 30 || hi.dying ? " crit" : "") + '" aria-hidden="true">' + hearts + '</div>' +
       silhouette(hi) +
@@ -1025,7 +1026,7 @@
   }
 
   const MODES = [
-    ["cauto", "Con cautela", "Más fácil (−1 dificultad) y, si falla, no gastas el uso. A cambio, sin extras: potencia base."],
+    ["cauto", "Con cautela", "Más fácil (−1 dificultad). Si falla, no gastas el uso solo si ya practicaste este conjuro. A cambio, sin extras: potencia base."],
     ["normal", "Normal", "Tal cual está escrito."],
     ["desatado", "Desatado", "Más potente (+1) y deja un estallido visible, pero más difícil (+1), te mancha (+3 oscuridad) y si falla te estalla en las manos (2 de daño)."]
   ];
@@ -1134,7 +1135,7 @@
       });
     } else {
       $("actionHint").textContent = "Dale forma a «" + st.opts[st.pick].name + "».";
-      [["potente", "Potente", "Más intensidad, pero te mancha de oscuridad al lanzarlo.", "as_fuego", "danger"], ["estable", "Estable", "Un uso extra.", "a_resistir", "guard"], ["sutil", "Sutil", "No deja rastro público al lanzarlo.", "a_emboscada", "dark"]].forEach(function (o) {
+      [["potente", "Potente", "Más intensidad, pero te mancha de oscuridad al lanzarlo.", "as_fuego", "danger"], ["estable", "Estable", "Un uso extra al ajustarlo; cada lanzamiento te mancha un poco de oscuridad.", "a_resistir", "guard"], ["sutil", "Sutil", "No deja rastro público al lanzarlo.", "a_emboscada", "dark"]].forEach(function (o) {
         const btn = document.createElement("button");
         btn.className = "choice";
         btn.innerHTML = medal(o[3], "md", o[4]) + '<span class="cbody"><b>' + o[1] + '</b><span class="small">' + o[2] + '</span></span>';
@@ -1149,7 +1150,7 @@
   function renderTreatPicker(p) {
     const t = U.getState().players[pendingMode.t], vh = String(U.visibleHealth(t) || "");
     const sign = { presionar: /sangra/.test(vh), torniquete: /sangra/.test(vh), entablillar: /cojea|protege/.test(vh), cauterizar: /sangra|pálido/.test(vh) };
-    $("actionHint").textContent = "¿Cómo atiendes a " + t.name + "? Lo que se ve: " + vh + ". Solo tú sabes si había algo que tratar.";
+    $("actionHint").textContent = "¿Cómo atiendes a " + t.name + "? Lo que se ve: " + vh + ". Solo tú sabes si había algo que tratar. Atender cura 3 de vitalidad al paciente y, si había algo que tratar, te da virtud (+4, como mucho una vez cada 2 rondas por paciente).";
     $("actionHint").classList.remove("hidden");
     const box = $("actionChoices");
     box.className = "actions";

@@ -5,6 +5,12 @@
 (function (w) {
   "use strict";
   w.UMBRAL_NEWS = [
+    { version: "1.14.0", fecha: "2026-11-24", titulo: "Cuidados, acciones flojas y magia más viva", puntos: [
+      "Atender cura 3 de vitalidad al paciente y, si había algo que tratar, da +4 de virtud al que atiende (como mucho una vez cada 2 rondas por paciente).",
+      "Entrenar dura tres rondas, da +1 de foco y, cada tres entrenamientos, sube tu atributo más bajo.",
+      "Magia: cada tres rondas un conjuro recupera un uso, encadenar la misma escuela da +1 de potencia y las pifias tienen efectos al azar.",
+      "Hechizar pasa a llamarse Magia sucia."
+    ] },
     { version: "1.13.2", fecha: "2026-11-23", titulo: "La sospecha responde antes a las pistas", puntos: [
       "Las acusaciones de personas distintas elevan la sospecha con más rapidez.",
       "Presentar una pista verificada puede elevar la sospecha sobre quien dejó ese rastro.",

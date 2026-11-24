@@ -569,7 +569,7 @@
   const BASE_ACTIONS = ["investigar", "explorar", "proteger", "meditar"];
   /* Desbloqueo SOLO por acciones (v1.6.2): contadores fijos, sin reloj. Mismas condiciones para todos. */
   const CORR_GATE = 12;
-  function healCount(p) { return (p.healN || 0) + didN(p, "socorrer") + didN(p, "descansar"); }
+  function healCount(p) { return (p.healN || 0) + didN(p, "socorrer") + didN(p, "descansar") + didN(p, "atender"); } /* v1.14.0: Atender también cura */
   function lvl1Did(p) { return ["descansar", "apostar", "tender", "resistir", "robar", "hechizar", "ceder", "sombra_espia", "sombra_guarda", "sombra_hostiga", "bendecir"].reduce(function (n, id) { return n + didN(p, id); }, 0); }
   function baseDid(p) { return BASE_ACTIONS.reduce(function (n, id) { return n + didN(p, id); }, 0); }
   const UNLOCK = {
@@ -739,7 +739,7 @@
     rayo: { name: "Rayo", kind: "off", attr: "sombra", diff: 5, target: true },
     plaga: { name: "Plaga", kind: "off", attr: "sombra", diff: 4, target: true },
     marchitar: { name: "Marchitar", kind: "off", attr: "sombra", diff: 5, target: true },
-    grillete: { name: "Grillete", kind: "off", attr: "mente", diff: 6, target: true },
+    grillete: { name: "Grillete", kind: "off", attr: "mente", diff: 5, target: true },
     maleficio: { name: "Maleficio", kind: "off", attr: "mente", diff: 5, target: true },
     drenar: { name: "Drenar", kind: "off", attr: "mente", diff: 4, target: true },
     pesadilla: { name: "Pesadilla", kind: "off", attr: "sombra", diff: 4, target: true },
@@ -767,37 +767,42 @@
     p.spells = p.spells || [];
     const w = spellWeight(sp);
     const tot = function () { return p.spells.reduce(function (n, x) { return n + spellWeight(x); }, 0); };
-    while (p.spells.length && (p.spells.length >= SPELL_MAX_N || tot() + w > SPELL_CAP)) { p.spells.sort(function (x, y) { return x.uses - y.uses; }); p.spells.shift(); }
+    while (p.spells.length && (p.spells.length >= SPELL_MAX_N || tot() + w > SPELL_CAP)) {
+      p.spells.sort(function (x, y) { return x.uses - y.uses; });
+      const gone = p.spells.shift();
+      /* v1.14.0: nunca en silencio: se avisa de qué conjuro se olvidó para hacer sitio. */
+      p.notes.push("Ronda " + (state ? state.round : 0) + ": no te cabe más magia: olvidas «" + gone.name + "» (el de menos usos) para dejar sitio a «" + sp.name + "».");
+    }
     p.spells.push(sp);
   }
   const SPELL_ASPECTS = {
     fuego: { adj: "ígneo", roll: 1, selfCorr: 3, text: "más certero, pero te mancha un poco" },
     hielo: { adj: "gélido", dur: 1, text: "sus efectos duran una ronda más" },
-    sangre: { adj: "de sangre", selfWound: 2, power: 1, text: "te cuesta 2 de vitalidad, pero golpea con más fuerza" },
+    sangre: { adj: "de sangre", selfWound: 3, power: 1, text: "te cuesta 3 de vitalidad, pero golpea con más fuerza" },
     sombra: { adj: "umbrío", stealth: true, selfCorr: 2, text: "no deja rastro público, pero te mancha" },
     luz: { adj: "luminoso", roll: -1, selfCorr: -3, text: "limpia algo de tu oscuridad, pero es menos fiable (usa Mente)" },
-    vacio: { adj: "del vacío", pierce: true, text: "atraviesa protecciones y reflejos" }
+    vacio: { adj: "del vacío", pierce: true, selfCorr: 2, text: "atraviesa protecciones y reflejos, pero te mancha" }
   };
   const SPELL_EPITHETS = ["de Vael", "de Orum", "de la Ceniza", "del Cuervo", "de Ithra", "de la Marea Negra", "de Kesh", "del Último Umbral", "de Mor", "de la Aguja"];
   function spellFormText(id, pw, dur) {
     switch (id) {
       case "rayo": return "Una descarga que hiere al objetivo (" + (pw > 1 ? "6-7 de vitalidad" : "4-5 de vitalidad, 6-7 si es crítico") + ").";
-      case "plaga": return "Envenena al objetivo durante " + (2 + dur + (pw > 1 ? 1 : 0)) + " rondas.";
-      case "marchitar": return "Abre un sangrado en el objetivo durante " + (1 + dur + (pw > 1 ? 1 : 0)) + " rondas.";
+      case "plaga": return "Envenena al objetivo durante " + (3 + dur + (pw > 1 ? 1 : 0)) + " rondas: pierde 1 de vitalidad por ronda.";
+      case "marchitar": return "Abre un sangrado en el objetivo durante " + (2 + dur + (pw > 1 ? 1 : 0)) + " rondas.";
       case "grillete": return "Inmoviliza al objetivo: pierde su turno.";
-      case "maleficio": return "Maldice al objetivo: −1 a sus tiradas durante " + (2 + dur + (pw > 1 ? 1 : 0)) + " rondas.";
+      case "maleficio": return "Maldice al objetivo: −1 a sus tiradas durante " + (3 + dur + (pw > 1 ? 1 : 0)) + " rondas.";
       case "drenar": return "Arrebatas " + (pw > 1 ? 16 : 12) + " de virtud al objetivo y recuperas " + (pw > 1 ? 8 : 6) + ".";
       case "pesadilla": return "Siembra una pesadilla: el objetivo gana " + (pw > 1 ? "7-10" : "5-7") + " de oscuridad y una maldición breve.";
-      case "egida": return "Una barrera: +" + (5 + 3 * (pw - 1)) + " de defensa esta ronda.";
-      case "sanar": return "Recuperas " + (pw > 1 ? 8 : 4) + " de vitalidad.";
-      case "velo": return "Un velo: anula la próxima acusación contra ti" + (pw > 1 ? " y debilita las dos próximas pistas sobre ti." : ".");
+      case "egida": return "Una barrera: +" + (4 + 3 * (pw - 1)) + " de defensa esta ronda" + (dur ? " y la siguiente" : "") + ".";
+      case "sanar": return "Recuperas " + (pw > 1 ? 6 : 4) + " de vitalidad y cierras el sangrado.";
+      case "velo": return "Un velo: anula la próxima acusación contra ti" + (pw > 1 ? " y debilita las dos próximas pistas sobre ti." : ".") + " Si no se activa, dura " + (2 + dur) + " rondas.";
       case "purga": return "Expulsa " + (12 + 6 * (pw - 1)) + " de oscuridad y limpia sangrado, veneno, infección y maldición.";
-      case "reflejo": return "Preparas un reflejo: la próxima agresión directa rebota contra su autor.";
+      case "reflejo": return "Preparas un reflejo: la próxima agresión directa rebota contra su autor. Si no se activa, dura " + (2 + dur) + " rondas.";
       case "presagio": return "Una visión: obtienes una pista " + (pw > 1 ? "muy fuerte " : "fuerte ") + "sobre el objetivo.";
-      case "custodia": return "Un amparo sobre otra persona: absorbe el primer conjuro ofensivo de segundo grado que se le lance esta noche. Se resuelve al caer la noche.";
+      case "custodia": return "Un amparo sobre otra persona: absorbe el primer conjuro ofensivo de segundo grado que se le lance esta noche y le da +2 de defensa la ronda siguiente. Se resuelve al caer la noche.";
       case "aurora": return "Cierras " + (pw > 1 ? 9 : 6) + " de vitalidad de heridas ajenas y limpias hasta dos estados (sangrado, veneno, infección o maldición). Se resuelve al caer la noche; no sirve con moribundos.";
       case "zarza": return "Raíces que desgarran: sangrado " + (2 + dur + (pw > 1 ? 1 : 0)) + " rondas y maldición 1 ronda sobre el objetivo. Se resuelve al caer la noche.";
-      case "eco": return "Nombras a alguien: si lanzó un conjuro de segundo grado esta noche, lo deshaces. Si no había nada, el eco se pierde y te mancha (+2 oscuridad). Se resuelve al caer la noche.";
+      case "eco": return "Nombras a alguien: si lanzó un conjuro de segundo grado esta noche, lo deshaces. Si no, te dice si lanzó algún conjuro esa noche. Se resuelve al caer la noche.";
       case "olvido": return "Borras " + (pw > 1 ? "las dos pistas más recientes" : "la pista más reciente") + " que el objetivo tenga sobre ti. Se resuelve al caer la noche.";
       case "mordedura": return "Una dentellada de sombra: " + (pw > 1 ? "7-8" : "5-6") + " de vitalidad y +2 de oscuridad al objetivo. Se resuelve al caer la noche.";
     }
@@ -810,7 +815,7 @@
     sp.stealth = !!(asp.stealth || sp.tune === "sutil");
     const tn = { potente: "mayor", estable: "perdurable", sutil: "silente" };
     sp.name = f.name + " " + asp.adj + (sp.tune ? " " + tn[sp.tune] : "") + " " + sp.epithet;
-    const tuneTxt = sp.tune === "potente" ? " Potenciado: más intensidad, pero te mancha." : sp.tune === "estable" ? " Estable: un uso extra." : sp.tune === "sutil" ? " Sutil: no deja rastro público." : "";
+    const tuneTxt = sp.tune === "potente" ? " Potenciado: más intensidad, pero te mancha." : sp.tune === "estable" ? " Estable: un uso extra al ajustarlo, y cada lanzamiento te mancha un poco." : sp.tune === "sutil" ? " Sutil: no deja rastro público." : "";
     const mastTxt = sp.mastered ? " Dominado: más intensidad." : "";
     const aspectText = sp.aspect === "sangre" && f.kind === "def" ? "más intensa, sin pagar con tu vitalidad" : asp.text;
     sp.desc = spellFormText(sp.form, sp.power, asp.dur || 0) + " " + aspectText.charAt(0).toUpperCase() + aspectText.slice(1) + "." + tuneTxt + mastTxt;
@@ -845,20 +850,20 @@
   function applySpell(p, sp, t, crit, powOv) {
     const pw = powOv || sp.power, dur = SPELL_ASPECTS[sp.aspect].dur || 0, r = state.round;
     switch (sp.form) {
-      case "rayo": { const big = pw > 1 || crit; const res = damage(t, big ? rr(6, 7) : rr(4, 5), { src: "magia" }); t.notes.push("Ronda " + r + ": una descarga te golpeó desde la nada" + hitNote(res) + "."); return t.name + (res.died ? " ya estaba moribundo y la descarga lo remata." : res.dying ? " cae moribundo bajo la descarga." : " recibe la descarga y queda " + (big ? "muy " : "") + "herido."); }
-      case "plaga": giveStatus(t, "veneno", 2 + dur + (pw > 1 ? 1 : 0)); t.notes.push("Ronda " + r + ": un sabor amargo te sube por la garganta."); return t.name + " enferma.";
-      case "marchitar": giveStatus(t, "sangrado", 1 + dur + (pw > 1 ? 1 : 0)); t.notes.push("Ronda " + r + ": una herida se abre sola."); return "Un sangrado se abre en " + t.name + ".";
+      case "rayo": { const big = pw > 1 || crit; const res = damage(t, big ? rr(6, 7) : rr(4, 5), { src: "magia" }); if (spellLevel(sp) >= 3) { const o2 = otherTarget(p, t); if (o2) { const r2 = damage(o2, 2, { src: "magia" }); o2.notes.push("Ronda " + r + ": la descarga de un Maestro salta hasta ti" + hitNote(r2) + "."); } } t.notes.push("Ronda " + r + ": una descarga te golpeó desde la nada" + hitNote(res) + "."); return t.name + (res.died ? " ya estaba moribundo y la descarga lo remata." : res.dying ? " cae moribundo bajo la descarga." : " recibe la descarga y queda " + (big ? "muy " : "") + "herido."); }
+      case "plaga": { giveStatus(t, "veneno", 3 + dur + (pw > 1 ? 1 : 0)); const vn = (t.status || []).find(function (x) { return x.id === "veneno"; }); if (vn && !vn.dmg) vn.dmg = 1; if (spellLevel(sp) >= 3) { const o2 = otherTarget(p, t); if (o2) { giveStatus(o2, "veneno", 2); const v2 = (o2.status || []).find(function (x) { return x.id === "veneno"; }); if (v2 && !v2.dmg) v2.dmg = 1; o2.notes.push("Ronda " + r + ": la plaga de un Maestro se te contagió."); } } } t.notes.push("Ronda " + r + ": un sabor amargo te sube por la garganta."); return t.name + " enferma.";
+      case "marchitar": giveStatus(t, "sangrado", 2 + dur + (pw > 1 ? 1 : 0)); t.notes.push("Ronda " + r + ": una herida se abre sola."); return "Un sangrado se abre en " + t.name + ".";
       case "grillete":
         if (!t.acted) { t.acted = true; state.chronicle.push({ round: r, text: "✖ " + t.name + " pierde su turno de esta ronda." }); t.notes.push("Ronda " + r + ": tus miembros se quedaron rígidos."); return t.name + " pierde su turno de esta ronda."; }
         giveStatus(t, "aturdido", 1); t.notes.push("Ronda " + r + ": tus miembros se quedaron rígidos."); return t.name + " perderá su próximo turno.";
-      case "maleficio": giveStatus(t, "maldito", 2 + dur + (pw > 1 ? 1 : 0)); t.notes.push("Ronda " + r + ": sientes que la suerte te da la espalda."); return t.name + " queda maldito.";
+      case "maleficio": giveStatus(t, "maldito", 3 + dur + (pw > 1 ? 1 : 0)); t.notes.push("Ronda " + r + ": sientes que la suerte te da la espalda."); return t.name + " queda maldito.";
       case "drenar": { const v = pw > 1 ? 16 : 12; const gain = pw > 1 ? 8 : 6; t.virtue = clamp(t.virtue - v, 0, 100); p.virtue = clamp(p.virtue + gain, 0, 100); t.notes.push("Ronda " + r + ": algo bueno se apagó dentro de ti."); return "Le arrebatas virtud a " + t.name + "."; }
       case "pesadilla": { const corr = pw > 1 ? 7 : 5; t.corr = clamp(t.corr + corr, 0, 100); giveStatus(t, "maldito", 1); t.notes.push("Ronda " + r + ": una pesadilla te dejó un regusto oscuro."); return t.name + " tendrá pesadillas y una maldición breve."; }
-      case "egida": p.roundDefense += 5 + 3 * (pw - 1); return "Una barrera te rodea esta ronda.";
-      case "sanar": { const h = heal(p, pw > 1 ? 8 : 4); return h > 0 ? "Tus heridas se cierran (+" + h + " de vitalidad)." : "No tenías heridas que cerrar: el conjuro se pierde."; }
-      case "velo": p.shield = true; if (pw > 1) p.fog = (p.fog || 0) + 2; return "Un velo te cubre.";
+      case "egida": { const amt = 4 + 3 * (pw - 1); p.roundDefense += amt; if (dur) p.defKeep = (p.defKeep || []).concat([{ amt: amt, until: r + dur }]); return "Una barrera te rodea esta ronda" + (dur ? " y la siguiente" : "") + "."; }
+      case "sanar": { const h = heal(p, pw > 1 ? 6 : 4); const bled = hasStatus(p, "sangrado"); dropStatus(p, "sangrado"); if (h > 0) return "Tus heridas se cierran (+" + h + " de vitalidad)." + (bled ? " La sangre deja de salir." : ""); return bled ? "La sangre deja de salir; no tenías más heridas que cerrar." : "No tenías heridas que cerrar: el conjuro se pierde."; }
+      case "velo": p.shield = true; p.shieldUntil = r + 2 + dur; if (pw > 1) p.fog = (p.fog || 0) + 2; return "Un velo te cubre.";
       case "purga": p.corr = clamp(p.corr - (12 + 6 * (pw - 1)), 0, 100); dropStatus(p, "sangrado"); dropStatus(p, "veneno"); dropStatus(p, "infeccion"); dropStatus(p, "maldito"); easeHands(p, 99); return "La oscuridad sale de ti.";
-      case "reflejo": p.reflect = true; return "Un reflejo te protege de la próxima agresión directa.";
+      case "reflejo": p.reflect = true; p.reflectUntil = r + 2 + dur; return "Un reflejo te protege de la próxima agresión directa.";
       case "presagio": { const c = makeClue(t, pw > 1 ? 3 : 2); if (c) p.clues.push(c); return c ? "La visión te revela algo sobre " + t.name + "." : "La visión se desvanece."; }
     }
     return "No ocurre nada.";
@@ -867,7 +872,7 @@
   /* Maestría: 0 Aprendiz, 1 Practicante (1 éxito), 2 Dominado (2), 3 Maestro (4). Compatible con partidas antiguas (mastered = nivel 2). */
   const MASTERY = [
     { name: "Aprendiz", next: "Un éxito más: Practicante (−1 dificultad al lanzarlo)." },
-    { name: "Practicante", next: "Otro éxito: Dominado (+1 potencia y +1 uso)." },
+    { name: "Practicante", next: "Otro éxito: Dominado (+1 potencia y +2 usos)." },
     { name: "Dominado", next: "Dos éxitos más: Maestro (+1 uso y el modo Desatado deja de costarte oscuridad y retroceso)." },
     { name: "Maestro", next: "Maestría máxima." }
   ];
@@ -879,9 +884,9 @@
     sp.wins = Math.max(sp.wins || 0, sp.mastered ? 2 : 0) + add;
     let txt = "";
     if (sp.wins >= 2 && !sp.mastered) {
-      sp.mastered = true; sp.uses += 1;
+      sp.mastered = true; sp.uses += 2;
       const oldName = sp.name; finalizeSpell(sp);
-      txt += " Las palabras de «" + oldName + "» ya no se te resisten: lo has dominado (+1 potencia, +1 uso).";
+      txt += " Las palabras de «" + oldName + "» ya no se te resisten: lo has dominado (+1 potencia, +2 usos).";
       p.notes.push("Ronda " + state.round + ": dominaste «" + oldName + "».");
     }
     if (before < 3 && spellLevel(sp) >= 3) {
@@ -902,7 +907,7 @@
     let diff = f.diff - (asp.roll || 0);
     if (asp.roll > 0) why.push("el aspecto " + asp.adj + " lo hace más certero");
     if (asp.roll < 0) why.push("el aspecto " + asp.adj + " lo hace menos fiable");
-    if (off && t && t.protection !== null && !asp.pierce) { diff += 1; why.push("la víctima está protegida (+1 dificultad)"); }
+    if (off && t && t.protection !== null && !asp.pierce) { why.push("la protección de la víctima apenas estorba a un conjuro ofensivo (+0)"); }
     if (mode === "cauto") { diff -= 1; why.push("lo lanzas con cautela (−1 dificultad)"); }
     if (mode === "desatado") { diff += 1; why.push("lo lanzas desatado (+1 dificultad)"); }
     if (p.corr >= 40) {
@@ -917,7 +922,10 @@
     zoneWhy(p, attr).forEach(function (x) { why.push(x); });
     if (fo) why.push("foco (+" + fo + ")");
     const bonus = p.stats[attr] + cm + zm + sm + fo;
-    const pw = mode === "cauto" ? 1 : sp.power + (mode === "desatado" ? 1 : 0);
+    /* v1.14.0: encadenar dos conjuros de la misma escuela da +1 potencia (no con Cauto). */
+    const chain = mode !== "cauto" && !!p && p.lastSchool === spellSchool(sp);
+    if (chain) why.push("encadenas la escuela de " + (SCH.names[spellSchool(sp)] || "") + " (+1 potencia)");
+    const pw = mode === "cauto" ? 1 : sp.power + (chain ? 1 : 0) + (mode === "desatado" ? 1 : 0);
     return { attr: attr, diff: diff, bonus: bonus, why: why, prob: pSuccess(bonus, diff), power: pw };
   }
   /* Información para la UI: % de éxito, efecto real y precio de cada modo. */
@@ -929,7 +937,7 @@
     const t = SPELL_FORMS[sp.form].target && targetId != null ? state.players[targetId] : null;
     const c = spellCheck(p, sp, t, mode), asp = SPELL_ASPECTS[sp.aspect];
     const cost = [];
-    const master = spellLevel(sp) >= 3, corrCost = (asp.selfCorr || 0) + (SPELL_FORMS[sp.form].selfCorr || 0) + (sp.tune === "potente" ? 3 : 0) + (mode === "desatado" && !master ? 3 : 0);
+    const master = spellLevel(sp) >= 3, corrCost = (asp.selfCorr || 0) + (SPELL_FORMS[sp.form].selfCorr || 0) + (sp.tune === "potente" ? 3 : 0) + (sp.tune === "estable" ? 1 : 0) + (mode === "desatado" && !master ? 3 : 0);
     if (corrCost > 0) cost.push("+" + corrCost + " oscuridad"); else if (corrCost < 0) cost.push(corrCost + " oscuridad");
     const selfWound = spellSelfWound(sp);
     if (selfWound) cost.push("−" + selfWound + " de vitalidad");
@@ -937,6 +945,20 @@
     if (mode === "desatado") cost.push("estallido visible para todos");
     else if (sp.kind === "off" && !sp.stealth) cost.push("deja rastro público (se oyen palabras)");
     return { prob: c.prob, diff: c.diff, bonus: c.bonus, attr: c.attr, mods: c.why, power: c.power, effect: spellFormText(sp.form, c.power, asp.dur || 0), cost: cost.filter(Boolean), uses: sp.uses, kind: sp.kind, target: sp.target, mode: mode, tier: formTier(sp.form), school: SCH.names[spellSchool(sp)] || "", delayed: formTier(sp.form) >= 2 };
+  }
+  /* v1.14.0: pifia de conjuro: 6 efectos al azar (buenos y malos), tras la mancha base. */
+  const FUMBLE_TABLE = [
+    { run: function (p) { damage(p, 1, { noZone: true, noBleed: true, src: "magia" }); return "Una chispa te chamusca: −1 de vitalidad."; } },
+    { run: function (p, sp) { sp.uses += 1; return "El fallo te enseña a sostenerlo: recuperas un uso de «" + sp.name + "»."; } },
+    { run: function (p) { p.focus = Math.min(2, (p.focus || 0) + 1); return "Te quedas con el pulso firme: +1 de foco."; } },
+    { run: function (p) { giveStatus(p, "maldito", 1); return "Tu propio error te persigue: maldito una ronda."; } },
+    { run: function (p) { p.virtue = clamp(p.virtue + 4, 0, 100); return "Te arrepientes de lo que casi has hecho: +4 de virtud."; } },
+    { run: function (p, sp, t) { if (t) { giveStatus(t, "maldito", 1); return "Un fogonazo perdido salpica a " + t.name + ": maldito una ronda."; } return "Nada más ocurre."; } }
+  ];
+  /* Un tercero vivo distinto del lanzador y del objetivo (para efectos de Maestro). */
+  function otherTarget(p, t) {
+    const os = state.players.filter(function (q) { return q !== p && q !== t && !q.dead && !q.dying; });
+    return os.length ? pick(os) : null;
   }
   function cast(actorId, spellId, targetId, modeArg, skill) {
     if (!state || state.phase !== "private") return err("Ahora no puedes actuar.");
@@ -978,15 +1000,19 @@
       res.die = r.die; res.stat = r.stat; res.focus = r.focus; res.status = r.status || 0; res.total = r.total; res.diff = r.diff; res.crit = r.crit; res.fumble = r.fumble; res.success = r.success;
       if ((asp.selfCorr || 0) > 0 || (f.selfCorr || 0) > 0 || sp.tune === "potente" || f.kind === "off") darkAct(p);
       if ((asp.selfCorr || 0) < 0) antiAct(p);
-      p.corr = clamp(p.corr + (asp.selfCorr || 0) + (f.selfCorr || 0) + (sp.tune === "potente" ? 3 : 0) + (mode === "desatado" && spellLevel(sp) < 3 ? 3 : 0), 0, 100);
+      p.corr = clamp(p.corr + (asp.selfCorr || 0) + (f.selfCorr || 0) + (sp.tune === "potente" ? 3 : 0) + (sp.tune === "estable" ? 1 : 0) + (mode === "desatado" && spellLevel(sp) < 3 ? 3 : 0), 0, 100);
       const selfWound = spellSelfWound(sp);
       if (selfWound) { const sw = damage(p, selfWound, { zone: "brazos" }); selfTxt = " Pagas el hechizo con tu sangre (−" + sw.dealt + " de vitalidad)."; p.notes.push("Ronda " + state.round + ": pagaste un conjuro con tu sangre" + hitNote(sw) + "."); }
       if (r.success) {
-        if (formTier(sp.form) >= 2) text = queueArcane(p, sp, t, r.crit, mode === "normal" ? 0 : sc.power);
-        else { text = applySpell(p, sp, t, r.crit, mode === "normal" ? 0 : sc.power); if (off && t) harmSig(t, p, "conjurar", "marca"); }
+        if (formTier(sp.form) >= 2) text = queueArcane(p, sp, t, r.crit, sc.power);
+        else { text = applySpell(p, sp, t, r.crit, sc.power); if (off && t) harmSig(t, p, "conjurar", "marca"); }
         addXp(p, sc.attr, r.crit ? 2 : 1);
       }
-      else if (r.fumble) { p.corr = clamp(p.corr + 3, 0, 100); text = "El conjuro se retuerce entre tus dedos y te mancha."; }
+      else if (r.fumble) {
+        p.corr = clamp(p.corr + 3, 0, 100);
+        const fx = pick(FUMBLE_TABLE);
+        text = "El conjuro se retuerce entre tus dedos y te mancha. " + fx.run(p, sp, t);
+      }
       else text = "El conjuro se deshace sin efecto.";
       if (!r.success && mode === "desatado" && spellLevel(sp) < 3) {
         p.corr = clamp(p.corr + 4, 0, 100);
@@ -994,7 +1020,8 @@
         p.notes.push("Ronda " + state.round + ": un conjuro desatado te estalló en las manos" + hitNote(bl) + ".");
         text += " Desatado y sin control: te estalla en las manos (−" + bl.dealt + " de vitalidad, y más oscuridad).";
       }
-      if (!r.success && mode === "cauto" && !r.fumble) { sp.uses += 1; text += " Por ir con cuidado, no gastas el uso."; }
+      if (!r.success && mode === "cauto" && !r.fumble && spellLevel(sp) >= 1) { sp.uses += 1; text += " Por ir con cuidado, no gastas el uso."; }
+      if (r.success && r.crit && sp.uses < 3) { sp.uses += 1; text += " Un acierto limpio: el conjuro no se agota del todo (+1 uso)."; }
       text += selfTxt;
     }
     if (mode === "desatado") state.chronicle.push({ round: state.round, text: "Un estallido de magia desatada iluminó las ruinas un instante." });
@@ -1008,6 +1035,10 @@
     if (res.success) {
       text += spellRise(p, sp, 1);
     }
+    /* v1.14.0: cambiar de escuela da +1 de foco para la próxima tirada; se recuerda la última escuela usada. */
+    const schoolNow = spellSchool(sp);
+    if (p.lastSchool != null && p.lastSchool !== schoolNow) { p.focus = Math.min(2, (p.focus || 0) + 1); text += " Cambias de escuela: +1 de foco para tu próxima tirada."; }
+    p.lastSchool = schoolNow;
     if (sp.uses <= 0) p.spells = p.spells.filter(function (s) { return s !== sp; });
     p.acted = true; p.action = off ? "conjuro_of" : "conjuro_def"; p.actionTarget = t ? t.id : null;
     state.pendingPush = null;
@@ -1064,13 +1095,13 @@
         arcNote(c, "tu eco deshizo un conjuro de " + v.name + ".");
         arcNote(v, "tu conjuro «" + hit.name + "» se deshizo sin que sepas por qué.");
       } else {
-        c.corr = clamp(c.corr + 2, 0, 100);
-        arcNote(c, "tu eco sobre " + v.name + " no encontró ningún conjuro que deshacer y te manchó (+2 oscuridad).");
+        const cast = (v.deeds || []).some(function (d) { return d.kind === "conjurar" && d.round === state.round; });
+        arcNote(c, "tu eco sobre " + v.name + " no encontró ningún conjuro que deshacer" + (cast ? ", pero sí lanzó algún conjuro esta noche." : ", y tampoco lanzó ningún conjuro esta noche."));
       }
     });
     /* C2: amparos (Custodia): cada uno absorbe un conjuro ofensivo T2 contra su protegido. */
     const wards = {};
-    live(2).forEach(function (e) { (wards[e.target] = wards[e.target] || []).push(e); });
+    live(2).forEach(function (e) { (wards[e.target] = wards[e.target] || []).push(e); const pv = P(e.target); if (pv && !pv.dead) pv.defKeep = (pv.defKeep || []).concat([{ amt: 2, until: state.round + 1 }]); });
     /* C4: ofensivos, por potencia. */
     live(4).forEach(function (e) {
       if (e.canceled) return;
@@ -1324,6 +1355,8 @@
     if (s) s.left = Math.max(s.left, dur); else p.status.push({ id: id, left: dur });
   }
   function dropStatus(p, id) { p.status = (p.status || []).filter(function (s) { return s.id !== id; }); }
+  /* v1.14.0: aturdido = −2 de defensa mientras dure (Aturdir, Cazar y duelos la usan). */
+  function stunDef(p) { return hasStatus(p, "aturdido") ? 2 : 0; }
   function statusMod(p) {
     if (!p) return 0;
     return (hasStatus(p, "fortalecido") ? 1 : 0) - (hasStatus(p, "maldito") ? 1 : 0) - (shockOf(p) ? 1 : 0) - ((state && p.blunder === state.round) ? 1 : 0);
@@ -2107,8 +2140,18 @@
       p.acted = !!p.dead || !!p.dying || hasStatus(p, "aturdido");
       p.usedItem = false; p.protection = null;
       p.roundDefense = 0; p.roundAttack = 0;
+      /* v1.14.0: velo y reflejo duran dos rondas si no se activan (más Hielo); égida y custodia pueden alargar su defensa. */
+      if (p.shieldUntil != null && state.round > p.shieldUntil) { p.shield = false; p.shieldUntil = null; }
+      if (p.reflectUntil != null && state.round > p.reflectUntil) { p.reflect = false; p.reflectUntil = null; }
+      p.defKeep = (p.defKeep || []).filter(function (x) { return state.round <= x.until; });
+      p.defKeep.forEach(function (x) { p.roundDefense += x.amt; });
       p.action = null; p.actionTarget = null;
       if (p.prep) { p.prep.left -= 1; if (p.prep.left <= 0 || !Object.keys(p.prep.acts || {}).length) p.prep = null; }
+      /* v1.14.0: recarga lenta: cada 3 rondas, un conjuro de menos de 3 usos recupera 1 (sin tocar los que ya están llenos). */
+      if (state.round % 3 === 0 && !p.dead && p.spells && p.spells.length) {
+        const lowR = p.spells.filter(function (x) { return x.uses < 3; }).sort(function (x, y) { return x.uses - y.uses; })[0];
+        if (lowR) { lowR.uses += 1; p.notes.push("Ronda " + state.round + ": sin darte cuenta, «" + lowR.name + "» recupera un uso."); }
+      }
     });
     state.players.filter(function (p) { return !p.dead && p.acted && !p.dying; }).forEach(function (p) {
       state.chronicle.push({ round: state.round, text: "✖ " + p.name + " pierde su turno (aturdido)." });
@@ -2269,7 +2312,7 @@
       /* La víctima se defiende con una tirada propia (como al enfrentarse). */
       const dFocus = t.focus > 0 ? t.focus : 0;
       if (dFocus) t.focus = 0;
-      const defBonus = t.stats.cuerpo + Math.floor(t.stats.mente / 2) + t.roundDefense + dFocus + statusMod(t) +
+      const defBonus = t.stats.cuerpo + Math.floor(t.stats.mente / 2) + t.roundDefense + dFocus + statusMod(t) - stunDef(t) +
         (hasPassive(t, "defenseBonus") ? 2 : 0) + (t.protection !== null ? 2 : 0) - t.wounds - legPen(t);
       diff = d6() + defBonus - huntEdge() + p.wounds - (riseCount(p) > 0 ? 1 : 0) + (suspLevel(p) >= 3 ? 2 : suspLevel(p) >= 2 ? 1 : 0);
     }
@@ -2399,7 +2442,7 @@
           p.notes.push("Ronda " + state.round + ": meditando intuiste tu primer conjuro: «" + bs.name + "».");
           rech = " En el silencio, unas palabras sueltas se ordenan solas: aprendes «" + bs.name + "» (un conjuro sencillo, de un uso).";
         }
-        const low = rech ? null : (p.spells || []).filter(function (x) { return x.uses < 2; }).sort(function (x, y) { return x.uses - y.uses; })[0];
+        const low = rech ? null : (p.spells || []).filter(function (x) { return x.uses < 3; }).sort(function (x, y) { return x.uses - y.uses; })[0];
         if (low) { low.uses += 1; rech = " Repasas tus páginas: «" + low.name + "» recupera un uso."; }
         return { text: (isAssassin(p) ? "Un asesino meditando: la oscuridad se ríe un buen rato antes de apartarse un poco. +6 virtud." : p.corr <= 3 ? "Meditas con la conciencia tan limpia que te quedas dormido. Al menos descansas: +6 virtud." : "Meditas y rechazas los susurros: la oscuridad se aleja un poco, +6 virtud.") + rech, log: "Alguien ha pasado la noche en meditación." };
       }
@@ -2436,8 +2479,9 @@
           p.corr = clamp(p.corr + gain, 0, 100);
           p.virtue = clamp(p.virtue - 3, 0, 100);
           t.notes.push("Ronda " + state.round + ": una magia prohibida te ha marcado.");
+          giveStatus(t, "maldito", 1);
           harmSig(t, p, "hechizar", "marca");
-          return { text: "Marcas a " + t.name + " con magia prohibida. Obtienes una pista fuerte. La oscuridad te marca.", log: "Una magia prohibida ha dejado marca en " + t.name + "." };
+          return { text: "Marcas a " + t.name + " con magia prohibida: queda maldita una ronda (−1). Obtienes una pista fuerte. La oscuridad te marca.", log: "Una magia prohibida ha dejado marca en " + t.name + "." };
         }
         p.corr = clamp(p.corr + 8, 0, 100);
         p.virtue = clamp(p.virtue - 5, 0, 100);
@@ -2543,10 +2587,10 @@
       }
       case "maldecir": {
         if (r.success) {
-          giveStatus(t, "maldito", 2);
+          giveStatus(t, "maldito", 3);
           harmSig(t, p, "maldecir", "marca");
           t.notes.push("Ronda " + state.round + ": una maldición pesa sobre tus manos y tu mente.");
-          return { text: "Maldices a " + t.name + ". Sufrirá -1 en sus tiradas durante dos rondas.", log: null };
+          return { text: "Maldices a " + t.name + ". Sufrirá -1 en sus tiradas durante tres rondas.", log: null };
         }
         p.corr = clamp(p.corr + 2, 0, 100);
         return { text: "La maldición se rompe en tus labios.", log: null };
@@ -2613,7 +2657,7 @@
         if (stake === "trampa") p.corr = clamp(p.corr + 5, 0, 100);
         return { text: "Tiendes la mano a " + t.name + " en secreto. Solo " + t.name + " lo sabrá. " + (stake === "trampa" ? "Tu sonrisa esconde algo." : "Tu gesto es sincero."), log: null };
       }
-      case "indagar": return doIndagar(p);
+      case "indagar": p.virtue = clamp(p.virtue + 1, 0, 100); return doIndagar(p);
       case "atender": {
         /* Cuidados sin tirada, con la técnica elegida (v1.13.1). Al actor no se le cuenta qué había (solo lo que ya vería a simple vista);
            el atendido lo sabe en privado. Los objetos se gastan aunque no hicieran falta: el coste es de quien elige sin certeza. */
@@ -2625,13 +2669,14 @@
           if (sg) { if ((sg.sev || 1) >= 2) { sg.sev = 1; did.push("rebajas el sangrado a un goteo"); } else { dropStatus(t, "sangrado"); did.push("cortas el sangrado"); } }
           if (hasStatus(t, "infeccion")) { dropStatus(t, "infeccion"); did.push("frenas la infección"); }
           else if (dirtyAge(t) !== null) { did.push("limpias la herida abierta"); }
+          if (hasStatus(t, "veneno")) { dropStatus(t, "veneno"); did.push("quitas el veneno con un lavado"); }
           t.cleanRound = state.round; t.healRound = state.round;
         } else if (tech === "torniquete") {
           if (sg) { dropStatus(t, "sangrado"); did.push("cortas el sangrado con un torniquete"); t.tournRound = state.round; extra.push("Un miembro te queda entumecido hoy y mañana (−1 a cuerpo/ataque y a defensa)."); }
           if (did.length) { t.cleanRound = state.round; t.healRound = state.round; }
         } else if (tech === "entablillar") {
-          dropItem("vendas");
           if (zoneN(t, "miembros") >= 2) {
+            dropItem("vendas");
             t.zones.miembros = Math.min(t.zones.miembros, 3);
             if (t.inj && t.inj.miembros) t.inj.miembros.t = "contusion";
             did.push("entablillas el miembro lesionado");
@@ -2647,8 +2692,17 @@
             if (t.hp >= 3) { damage(t, 1, { noZone: true, noBleed: true }); extra.push("La brasa te quema: −1 de vitalidad."); }
           }
         }
-        if (did.length) {
-          t.notes.push("Ronda " + state.round + ": " + p.name + " te atendió (" + (D.TREATS.find(function (x) { return x.id === tech; }) || { name: tech }).name.toLowerCase() + "): " + did.join(" y ").replace(/cortas/g, "cortó").replace(/rebajas/g, "rebajó").replace(/frenas/g, "frenó").replace(/limpias/g, "limpió").replace(/entablillas/g, "entablilló").replace(/sellas/g, "selló").replace(/quemas/g, "quemó") + "." + (extra.length ? " " + extra.join(" ") : ""));
+        /* v1.14.0: la técnica va seguida de un descanso de cuidados (+3 vitalidad, igual que Descansar; cauterizar queda en neto +2). */
+        const dh = heal(t, 3, true);
+        if (did.length || dh > 0) {
+          t.notes.push("Ronda " + state.round + ": " + p.name + " te atendió (" + (D.TREATS.find(function (x) { return x.id === tech; }) || { name: tech }).name.toLowerCase() + "): " + (did.join(" y ") || "te cuidó las heridas").replace(/cortas/g, "cortó").replace(/rebajas/g, "rebajó").replace(/frenas/g, "frenó").replace(/limpias/g, "limpió").replace(/entablillas/g, "entablilló").replace(/sellas/g, "selló").replace(/quemas/g, "quemó").replace(/quitas/g, "quitó") + "." + (dh > 0 ? " Recuperas " + dh + " de vitalidad." : "") + (extra.length ? " " + extra.join(" ") : ""));
+        }
+        /* v1.14.0: quien atiende gana +4 virtud, como mucho una vez cada 2 rondas por paciente (anti-farmeo). Sin corrupción. */
+        p.careLog = p.careLog || {};
+        const cared = did.length > 0 || dh > 0;
+        if (cared && state.round - (p.careLog[t.id] !== undefined ? p.careLog[t.id] : -9) >= 2) {
+          p.virtue = clamp(p.virtue + 4 + (hasPassive(p, "protectBonus") ? 4 : 0), 0, 100);
+          p.careLog[t.id] = state.round;
         }
         const how = { presionar: "presionando y limpiando", torniquete: "con un torniquete", entablillar: "con unas vendas a modo de férula", cauterizar: "con fuego" }[tech] || "";
         return { text: "Atiendes a " + t.name + " " + how + ". Si había algo que tratar, ya está hecho.", log: null };
@@ -2693,7 +2747,7 @@
         p.corr = clamp(p.corr + 3, 0, 100);
         p.virtue = clamp(p.virtue - 2, 0, 100);
         if (r.success) {
-          giveStatus(t, "maldito", lv >= 2 ? 2 : 1);
+          giveStatus(t, "maldito", lv >= 2 ? 3 : 2);
           t.corr = clamp(t.corr + 3, 0, 100);
           harmSig(t, p, "sombra_hostiga", "marca");
           t.notes.push("Ronda " + state.round + ": sombras inquietas te rodearon toda la noche, susurrando. Amaneces maldito (−1 a tus tiradas) y algo más manchado.");
@@ -2730,8 +2784,16 @@
         return { text: "Invocas una bendición: la oscuridad se aparta (−" + (before - p.corr) + "), +8 virtud" + (bh > 0 ? ", +" + bh + " de vitalidad" : "") + ", y se va cualquier maldición" + (r.crit ? " y ganas +1 foco" : "") + ".", log: null };
       }
       case "entrenar": {
-        giveStatus(p, "fortalecido", 2);
-        return { text: "Entrenas con rabia contenida. Fortalecido durante dos rondas (+1 a tus tiradas).", log: null };
+        giveStatus(p, "fortalecido", 3);
+        p.focus = Math.min(2, p.focus + 1);
+        /* v1.14.0: cada 3 entrenamientos, +1 al atributo más bajo que no esté al máximo (sin tirada). */
+        p.trained = (p.trained || 0) + 1;
+        let grew = null;
+        if (p.trained % 3 === 0) {
+          const ks = ["cuerpo", "mente", "sombra"].filter(function (k) { return p.stats[k] < MAX_STAT; }).sort(function (a, b) { return p.stats[a] - p.stats[b]; });
+          if (ks.length) { p.stats[ks[0]] += 1; grew = ks[0]; }
+        }
+        return { text: "Entrenas con rabia contenida. Fortalecido durante tres rondas (+1 a tus tiradas) y +1 de foco." + (grew ? " Tras tanto esfuerzo, tu " + grew + " sube +1." : ""), log: null };
       }
       default:
         return { text: "No ocurre nada.", log: null };
@@ -2876,7 +2938,7 @@
         const t = pick(possible);
         const clue = makeClue(t, 2); if (clue) p.clues.push(clue); msg = "Obtienes algo sobre " + t.name + "."; break;
       }
-      case "reflect": p.reflect = true; msg = "Un reflejo plateado te envuelve. La próxima agresión directa rebotará."; break;
+      case "reflect": p.reflect = true; p.reflectUntil = null; msg = "Un reflejo plateado te envuelve. La próxima agresión directa rebotará."; break;
       case "ward": p.ward = true; msg = "Una ceniza invisible te envuelve."; break;
       case "cleanse": dropStatus(p, "sangrado"); dropStatus(p, "veneno"); dropStatus(p, "infeccion"); dropStatus(p, "maldito"); easeHands(p, 99); msg = "Te sientes más limpio por dentro."; break;
       case "purify": p.corr = clamp(p.corr - def.value, 0, 100); p.virtue = clamp(p.virtue + 2, 0, 100); msg = "Algo oscuro se aparta de ti."; break;
@@ -2896,7 +2958,7 @@
         rs.uses += 1; msg = "Tu conjuro «" + rs.name + "» gana un uso."; break;
       }
       case "tome": return err("Estudia el grimorio para aprender un conjuro.");
-      case "shield": p.shield = true; msg = "Una coartada te protegerá de la próxima acusación."; break;
+      case "shield": p.shield = true; p.shieldUntil = null; msg = "Una coartada te protegerá de la próxima acusación."; break;
       default: return err("Ese objeto no se puede usar ahora.");
     }
     if (def.uses && def.uses > 1) { it.left = (it.left === undefined ? def.uses : it.left) - 1; msg += " (" + (it.left > 0 ? (it.left > 1 ? "le quedan " + it.left + " usos" : "le queda 1 uso") : "ya no sirve") + ")"; if (it.left <= 0) p.items.splice(index, 1); }
@@ -2953,7 +3015,7 @@
     sh.last = t.id; sh.strikes += 1;
     const dFocus = t.focus > 0 ? t.focus : 0;
     if (dFocus) t.focus = 0;
-    const defBonus = t.stats.cuerpo + Math.floor(t.stats.mente / 2) + t.roundDefense + dFocus + statusMod(t) +
+    const defBonus = t.stats.cuerpo + Math.floor(t.stats.mente / 2) + t.roundDefense + dFocus + statusMod(t) - stunDef(t) +
       (hasPassive(t, "defenseBonus") ? 2 : 0) + (t.protection !== null ? 2 : 0) - t.wounds - legPen(t);
     const r = rollRaw(3, d6() + defBonus);
     if (r.success) {
@@ -3252,7 +3314,7 @@
     if (defFocus) target.focus = 0;
     const atkBonus = actor.stats.cuerpo + Math.floor(actor.stats.sombra / 2) + actor.roundAttack + atkFocus + statusMod(actor) +
       (actor.corr >= 40 ? 2 : 0) + (hasItem(actor, "daga") ? 2 : 0) + (hasPassive(actor, "attackBonus") ? 1 : 0) + (isAssassin(actor) ? 1 : 0) - actor.wounds - armPen(actor);
-    const defBonus = target.stats.cuerpo + Math.floor(target.stats.mente / 2) + target.roundDefense + defFocus + statusMod(target) + (hasItem(target, "manto") ? 1 : 0) +
+    const defBonus = target.stats.cuerpo + Math.floor(target.stats.mente / 2) + target.roundDefense + defFocus + statusMod(target) - stunDef(target) + (hasItem(target, "manto") ? 1 : 0) +
       (hasPassive(target, "defenseBonus") ? 2 : 0) + (target.protection !== null ? 2 : 0) - target.wounds - legPen(target) -
       (suspLevel(target) >= 2 ? Math.min(2, (state.council.ambushes || []).filter(function (x) { return x.target === target.id && x.attacker !== actor.id; }).length) : 0);
     const a = rollRaw(atkBonus, 0);

@@ -120,6 +120,11 @@
       const lm = al.find(function (x) { return !x.dying && /cojea|protege/.test(String(io.visibleHealth ? io.visibleHealth(x) : "")); });
       if (lm && R() < prof.soc * 0.35 && p.items.some(function (i) { return i.id === "vendas"; }) && act("atender", lm.id, "entablillar")) return finishWith(io, s, p, R, prof, pickOf, "atender");
     }
+    /* v1.14.0: el curandero atiende a quien está malherido (vitalidad ≤ 70%), aunque no se vea sangrar. */
+    if (p.npc === "curandero" && !asesino() && can("atender")) {
+      const hurt = al.find(function (x) { return !x.dying && x.hp <= (x.maxHp || 10) * 0.7; });
+      if (hurt && R() < prof.soc * 0.35 && act("atender", hurt.id, "presionar")) return finishWith(io, s, p, R, prof, pickOf, "atender");
+    }
 
     /* 4) el Asesino cuando lo es (con menos puntería que un humano decidido) */
     if (asesino()) {
