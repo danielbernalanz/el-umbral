@@ -129,6 +129,7 @@
       <p class="small">Si una tirada sale bien puedes <b>forzar el destino</b>: más premio, más riesgo. Y siempre puedes <b>apostar al Umbral</b> con el envite que elijas.</p>
     </details>
     <div class="creditsrow"><span id="verTag" class="vertag"></span><button class="ghost smallbtn creditsbtn" id="btnNews" aria-label="Novedades" title="Novedades" data-ic="ui_historia"><span>Novedades</span><span class="newtag hidden" id="newsNew">nuevo</span></button><button class="ghost smallbtn creditsbtn" id="btnCredits" aria-label="Créditos" title="Créditos" data-ic="ui_creditos"><span>Créditos</span></button></div>
+    <p class="small appdl"><a href="ElUmbral.apk" download>Descargar la app para Android (APK)</a></p>
   </section>
 
   <!-- ============ JUEGO ============ -->
@@ -463,5 +464,27 @@
 <script src="fx.js"></script>
 <script src="ui.js"></script>
 <script src="net.js"></script>
+<div id="appPrompt" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);align-items:center;justify-content:center;z-index:9999;padding:20px">
+  <div style="background:#15121a;color:#ddd;border:1px solid #444;border-radius:10px;max-width:340px;padding:20px;font-family:sans-serif">
+    <p style="margin:0 0 14px;line-height:1.4">Estás en Android: te recomendamos descargar la app para jugar mejor.</p>
+    <a href="ElUmbral.apk" download id="appPromptGo" style="display:block;text-align:center;padding:10px;background:#5a2e8a;color:#fff;border-radius:6px;text-decoration:none;margin-bottom:10px">Descargar la app</a>
+    <button type="button" id="appPromptStay" style="width:100%;padding:10px;background:none;color:#ddd;border:1px solid #666;border-radius:6px">Seguir en el navegador</button>
+  </div>
+</div>
+<script>
+(function () {
+  /* La app de Android (WebView) no muestra ni el aviso ni el enlace de descarga. */
+  var ua = navigator.userAgent || "";
+  var dl = document.querySelector(".appdl");
+  if (/; wv\)/.test(ua)) { if (dl) dl.style.display = "none"; return; }
+  var box = document.getElementById("appPrompt");
+  function close() { box.style.display = "none"; }
+  document.getElementById("appPromptStay").onclick = close;
+  document.getElementById("appPromptGo").onclick = close;
+  var shown = false;
+  try { shown = sessionStorage.getItem("appPromptShown") === "1"; sessionStorage.setItem("appPromptShown", "1"); } catch (e) {}
+  if (/Android/i.test(ua) && !shown) box.style.display = "flex";
+})();
+</script>
 </body>
 </html>
