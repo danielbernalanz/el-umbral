@@ -1,4 +1,4 @@
-/* EL UMBRAL — motor de juego (v1.13.2)
+/* EL UMBRAL — motor de juego (v1.14.0)
    Sin DOM. Toda la lógica vive aquí para poder probarla con Node. */
 (function (g) {
   "use strict";
@@ -168,6 +168,12 @@
     opts = opts || {};
     amount = Math.round(amount);
     if (!p || p.dead || !(amount > 0)) return out;
+    /* v1.14.1: Atadura: la mitad del daño de quien está atado le llega también a su pareja (sin volver a compartirse). */
+    if (!opts.noLink && state && p.status) {
+      const lk = p.status.find(function (x) { return x.id === "atado" && x.with != null; });
+      const q = lk && state.players[lk.with];
+      if (q && q !== p && !q.dead && !q.dying) damage(q, Math.max(1, Math.floor(amount / 2)), { noLink: true, src: opts.src, noBleed: opts.noBleed });
+    }
     const r = state ? state.round : 0;
     p.wasHurt = true; p.hurtRound = r;
     if (p.dying) { finish(p, "heridas"); out.died = true; out.dealt = amount; return out; }
@@ -501,6 +507,8 @@
     const m = maxRounds();
     let g = nonCount <= 4 ? Math.ceil(nonCount / 2) : Math.max(2, Math.ceil(nonCount * BIGGOAL));
     if ((nonCount >= 3 && nonCount <= 5 && m <= 6) || (nonCount >= 6 && m <= 4)) g -= 0.5;
+    /* v1.14.1: mesas de 8+ con partidas de 3 rondas: el Asesino necesita un caído menos (antes 2 y medio → ahora 1 y medio). */
+    if (nonCount >= 6 && m <= 3) g -= 0.5;
     if (nonCount >= 7 && m >= 7) g += 1;
     return g;
   }
@@ -755,8 +763,13 @@
     zarza: { name: "Zarza", kind: "off", attr: "sombra", diff: 6, target: true, tier: 2, layer: 4 },
     eco: { name: "Eco", kind: "def", attr: "mente", diff: 5, target: true, tier: 2, layer: 1 },
     olvido: { name: "Olvido", kind: "def", attr: "mente", diff: 5, target: true, tier: 2, layer: 6 },
-    mordedura: { name: "Mordedura", kind: "off", attr: "sombra", diff: 6, target: true, tier: 2, layer: 4, selfCorr: 3 }
+    mordedura: { name: "Mordedura", kind: "off", attr: "sombra", diff: 6, target: true, tier: 2, layer: 4, selfCorr: 3 },
+    /* v1.14.1: formas exclusivas del Taumaturgo (nivel básico, dificultad 4). Solo aparecen en sus opciones. */
+    atadura: { name: "Atadura", kind: "off", attr: "mente", diff: 4, target: true, excl: true },
+    mensaje: { name: "Mensaje secreto", kind: "def", attr: "mente", diff: 4, target: true, excl: true },
+    revelar: { name: "Revelar", kind: "def", attr: "mente", diff: 4, target: true, excl: true }
   };
+  const EXCL_FORMS = Object.keys(SPELL_FORMS).filter(function (k) { return SPELL_FORMS[k].excl; });
   const SCH = D.SPELL_SCHOOLS || { of: {}, names: {}, weight: { 1: 1, 2: 2 }, cap: 5 };
   function formTier(form) { return (SPELL_FORMS[form] && SPELL_FORMS[form].tier) || 1; }
   function spellSchool(sp) { return SCH.of[sp.form] || "umbral"; }
@@ -804,6 +817,9 @@
       case "zarza": return "Raíces que desgarran: sangrado " + (2 + dur + (pw > 1 ? 1 : 0)) + " rondas y maldición 1 ronda sobre el objetivo. Se resuelve al caer la noche.";
       case "eco": return "Nombras a alguien: si lanzó un conjuro de segundo grado esta noche, lo deshaces. Si no, te dice si lanzó algún conjuro esa noche. Se resuelve al caer la noche.";
       case "olvido": return "Borras " + (pw > 1 ? "las dos pistas más recientes" : "la pista más reciente") + " que el objetivo tenga sobre ti. Se resuelve al caer la noche.";
+      case "atadura": return "Un hilo invisible te ata a la víctima durante " + (2 + dur) + " rondas: la mitad del daño que recibe también te llega a ti, y al revés.";
+      case "mensaje": return "Un susurro cifrado: la víctima recibe, sin que nadie más lo oiga, una frase breve predefinida.";
+      case "revelar": return "Ves el nivel de oscuridad de la víctima. Solo tú lo sabes.";
       case "mordedura": return "Una dentellada de sombra: " + (pw > 1 ? "7-8" : "5-6") + " de vitalidad y +2 de oscuridad al objetivo. Se resuelve al caer la noche.";
     }
     return "";
@@ -822,7 +838,7 @@
     return sp;
   }
   function genSpell(kind, avoidForm, forceForm) {
-    const forms = forceForm ? [forceForm] : Object.keys(SPELL_FORMS).filter(function (k) { return (!kind || SPELL_FORMS[k].kind === kind) && k !== avoidForm && formTier(k) === 1; });
+    const forms = forceForm ? [forceForm] : Object.keys(SPELL_FORMS).filter(function (k) { return (!kind || SPELL_FORMS[k].kind === kind) && k !== avoidForm && formTier(k) === 1 && !SPELL_FORMS[k].excl; });
     const sp = { id: "s" + Date.now().toString(36) + rnd(99999), form: pick(forms), aspect: pick(Object.keys(SPELL_ASPECTS)), epithet: pick(SPELL_EPITHETS), uses: 1 + rnd(2), tune: null };
     return finalizeSpell(sp);
   }
@@ -839,7 +855,9 @@
     const c = genSpell(Math.random() < 0.5 ? "off" : "def", null);
     const third = c.form === a.form || c.form === b.form ? genSpell(c.kind, c.form) : c;
     const el = p ? t2Eligible(p) : [];
-    return [a, b, el.length ? genSpell(null, null, pick(el)) : third];
+    /* v1.14.1: el Taumaturgo puede encontrar en sus páginas una forma exclusiva en vez de la tercera opción. */
+    const exX = p && hasPassive(p, "spellDiscount") && !el.length && Math.random() < 0.5 ? genSpell(null, null, pick(EXCL_FORMS)) : null;
+    return [a, b, el.length ? genSpell(null, null, pick(el)) : (exX || third)];
   }
   function spellAttr(sp) { return sp.aspect === "luz" ? "mente" : SPELL_FORMS[sp.form].attr; }
   function spellSelfWound(sp) {
@@ -847,12 +865,15 @@
     if (!f || f.kind === "def") return 0;
     return SPELL_ASPECTS[sp.aspect].selfWound || 0;
   }
+  /* v1.14.1: frases predefinidas del Mensaje secreto (entre dos jugadores). */
+  const MENSAJES = ["Confía en la vela, no en la voz.", "Esta noche no estás solo.", "Quien calla también ve.", "Busca el agua antes del alba.", "No firmes nada que no leas dos veces.", "Los muertos hablan bajo; escucha."];
   function applySpell(p, sp, t, crit, powOv) {
     const pw = powOv || sp.power, dur = SPELL_ASPECTS[sp.aspect].dur || 0, r = state.round;
     switch (sp.form) {
       case "rayo": { const big = pw > 1 || crit; const res = damage(t, big ? rr(6, 7) : rr(4, 5), { src: "magia" }); if (spellLevel(sp) >= 3) { const o2 = otherTarget(p, t); if (o2) { const r2 = damage(o2, 2, { src: "magia" }); o2.notes.push("Ronda " + r + ": la descarga de un Maestro salta hasta ti" + hitNote(r2) + "."); } } t.notes.push("Ronda " + r + ": una descarga te golpeó desde la nada" + hitNote(res) + "."); return t.name + (res.died ? " ya estaba moribundo y la descarga lo remata." : res.dying ? " cae moribundo bajo la descarga." : " recibe la descarga y queda " + (big ? "muy " : "") + "herido."); }
       case "plaga": { giveStatus(t, "veneno", 3 + dur + (pw > 1 ? 1 : 0)); const vn = (t.status || []).find(function (x) { return x.id === "veneno"; }); if (vn && !vn.dmg) vn.dmg = 1; if (spellLevel(sp) >= 3) { const o2 = otherTarget(p, t); if (o2) { giveStatus(o2, "veneno", 2); const v2 = (o2.status || []).find(function (x) { return x.id === "veneno"; }); if (v2 && !v2.dmg) v2.dmg = 1; o2.notes.push("Ronda " + r + ": la plaga de un Maestro se te contagió."); } } } t.notes.push("Ronda " + r + ": un sabor amargo te sube por la garganta."); return t.name + " enferma.";
-      case "marchitar": giveStatus(t, "sangrado", 2 + dur + (pw > 1 ? 1 : 0)); t.notes.push("Ronda " + r + ": una herida se abre sola."); return "Un sangrado se abre en " + t.name + ".";
+      case "marchitar": { if (spellLevel(sp) >= 3) { const o2 = otherTarget(p, t); if (o2) { giveStatus(o2, "sangrado", 2); o2.notes.push("Ronda " + r + ": una herida se abre sola en ti, sin que nadie la toque."); } } }
+        giveStatus(t, "sangrado", 2 + dur + (pw > 1 ? 1 : 0)); t.notes.push("Ronda " + r + ": una herida se abre sola."); return "Un sangrado se abre en " + t.name + ".";
       case "grillete":
         if (!t.acted) { t.acted = true; state.chronicle.push({ round: r, text: "✖ " + t.name + " pierde su turno de esta ronda." }); t.notes.push("Ronda " + r + ": tus miembros se quedaron rígidos."); return t.name + " pierde su turno de esta ronda."; }
         giveStatus(t, "aturdido", 1); t.notes.push("Ronda " + r + ": tus miembros se quedaron rígidos."); return t.name + " perderá su próximo turno.";
@@ -860,10 +881,20 @@
       case "drenar": { const v = pw > 1 ? 16 : 12; const gain = pw > 1 ? 8 : 6; t.virtue = clamp(t.virtue - v, 0, 100); p.virtue = clamp(p.virtue + gain, 0, 100); t.notes.push("Ronda " + r + ": algo bueno se apagó dentro de ti."); return "Le arrebatas virtud a " + t.name + "."; }
       case "pesadilla": { const corr = pw > 1 ? 7 : 5; t.corr = clamp(t.corr + corr, 0, 100); giveStatus(t, "maldito", 1); t.notes.push("Ronda " + r + ": una pesadilla te dejó un regusto oscuro."); return t.name + " tendrá pesadillas y una maldición breve."; }
       case "egida": { const amt = 4 + 3 * (pw - 1); p.roundDefense += amt; if (dur) p.defKeep = (p.defKeep || []).concat([{ amt: amt, until: r + dur }]); return "Una barrera te rodea esta ronda" + (dur ? " y la siguiente" : "") + "."; }
-      case "sanar": { const h = heal(p, pw > 1 ? 6 : 4); const bled = hasStatus(p, "sangrado"); dropStatus(p, "sangrado"); if (h > 0) return "Tus heridas se cierran (+" + h + " de vitalidad)." + (bled ? " La sangre deja de salir." : ""); return bled ? "La sangre deja de salir; no tenías más heridas que cerrar." : "No tenías heridas que cerrar: el conjuro se pierde."; }
+      case "sanar": { const h = heal(p, pw > 1 ? 6 : 4); const bled = hasStatus(p, "sangrado"); dropStatus(p, "sangrado");
+      if (spellLevel(sp) >= 3) { const o2 = otherTarget(p, null); if (o2) { const h2 = heal(o2, 4); dropStatus(o2, "sangrado"); o2.notes.push("Ronda " + r + ": una sanación de Maestro te cierra heridas" + (h2 > 0 ? " (+" + h2 + ")" : "") + "."); } } if (h > 0) return "Tus heridas se cierran (+" + h + " de vitalidad)." + (bled ? " La sangre deja de salir." : ""); return bled ? "La sangre deja de salir; no tenías más heridas que cerrar." : "No tenías heridas que cerrar: el conjuro se pierde."; }
       case "velo": p.shield = true; p.shieldUntil = r + 2 + dur; if (pw > 1) p.fog = (p.fog || 0) + 2; return "Un velo te cubre.";
       case "purga": p.corr = clamp(p.corr - (12 + 6 * (pw - 1)), 0, 100); dropStatus(p, "sangrado"); dropStatus(p, "veneno"); dropStatus(p, "infeccion"); dropStatus(p, "maldito"); easeHands(p, 99); return "La oscuridad sale de ti.";
       case "reflejo": p.reflect = true; p.reflectUntil = r + 2 + dur; return "Un reflejo te protege de la próxima agresión directa.";
+      case "atadura": {
+        const d = 2 + dur;
+        t.status = (t.status || []).filter(function (x) { return x.id !== "atado"; }).concat([{ id: "atado", left: d, with: p.id }]);
+        p.status = (p.status || []).filter(function (x) { return x.id !== "atado"; }).concat([{ id: "atado", left: d, with: t.id }]);
+        t.notes.push("Ronda " + r + ": un hilo invisible te ata a alguien: parte de lo que recibas le llegará a esa persona.");
+        return "Atas a " + t.name + " con un hilo invisible: el daño se reparte a la mitad durante " + d + " rondas.";
+      }
+      case "mensaje": { const f = pick(MENSAJES); t.notes.push("Ronda " + r + ": un susurro sin dueño te llega: «" + f + "»."); return "Tu susurro cifrado llega a " + t.name + "."; }
+      case "revelar": { const lv = t.corr >= 60 ? 4 : t.corr >= 40 ? 3 : t.corr >= 25 ? 2 : t.corr >= 12 ? 1 : 0; return "Ves en " + t.name + ": " + ["apenas hay oscuridad", "una sombra leve", "una sombra pesada", "una sombra que manda", "casi toda oscuridad"][lv] + "."; }
       case "presagio": { const c = makeClue(t, pw > 1 ? 3 : 2); if (c) p.clues.push(c); return c ? "La visión te revela algo sobre " + t.name + "." : "La visión se desvanece."; }
     }
     return "No ocurre nada.";
@@ -877,7 +908,11 @@
     { name: "Maestro", next: "Maestría máxima." }
   ];
   function spellLevel(sp) { const w = Math.max(sp.wins || 0, sp.mastered ? 2 : 0); return w >= 4 ? 3 : w >= 2 ? 2 : w >= 1 ? 1 : 0; }
-  function spellProgress(sp) { const l = spellLevel(sp); return { level: l, label: MASTERY[l].name, next: MASTERY[l].next, wins: sp.wins || 0 }; }
+  function spellProgress(sp) {
+    const l = spellLevel(sp), w = Math.max(sp.wins || 0, sp.mastered ? 2 : 0);
+    const path = l >= 3 ? "Maestro alcanzado." : "Te faltan " + (4 - w) + " éxitos para Maestro (" + w + "/4). Dominado da +2 usos; Maestro, +1 uso más.";
+    return { level: l, label: MASTERY[l].name, next: MASTERY[l].next, wins: sp.wins || 0, path: path };
+  }
   /* Suma un éxito de práctica y aplica los ascensos de nivel. Devuelve texto extra (o ""). */
   function spellRise(p, sp, add) {
     const before = spellLevel(sp);
@@ -900,6 +935,13 @@
       if (!p.arcAff) { p.arcAff = spellSchool(sp); txt += " Es tu afinidad: −1 dificultad en tus conjuros de segundo grado de esa escuela."; }
     }
     return txt;
+  }
+  /* v1.14.1: coste de oscuridad de lanzar (Vena arcana del Taumaturgo lo reduce en 2 si hay coste). */
+  function spellCorrCost(p, sp, mode) {
+    const asp = SPELL_ASPECTS[sp.aspect], f = SPELL_FORMS[sp.form];
+    let c = (asp.selfCorr || 0) + (f.selfCorr || 0) + (sp.tune === "potente" ? 3 : 0) + (sp.tune === "estable" ? 1 : 0) + (mode === "desatado" && spellLevel(sp) < 3 ? 3 : 0);
+    if (p && c > 0 && hasPassive(p, "spellDiscount")) c = Math.max(0, c - 2);
+    return c;
   }
   function spellMode(m) { return m === "cauto" || m === "desatado" ? m : "normal"; }
   function spellCheck(p, sp, t, mode) {
@@ -937,7 +979,7 @@
     const t = SPELL_FORMS[sp.form].target && targetId != null ? state.players[targetId] : null;
     const c = spellCheck(p, sp, t, mode), asp = SPELL_ASPECTS[sp.aspect];
     const cost = [];
-    const master = spellLevel(sp) >= 3, corrCost = (asp.selfCorr || 0) + (SPELL_FORMS[sp.form].selfCorr || 0) + (sp.tune === "potente" ? 3 : 0) + (sp.tune === "estable" ? 1 : 0) + (mode === "desatado" && !master ? 3 : 0);
+    const master = spellLevel(sp) >= 3, corrCost = spellCorrCost(p, sp, mode);
     if (corrCost > 0) cost.push("+" + corrCost + " oscuridad"); else if (corrCost < 0) cost.push(corrCost + " oscuridad");
     const selfWound = spellSelfWound(sp);
     if (selfWound) cost.push("−" + selfWound + " de vitalidad");
@@ -1000,7 +1042,7 @@
       res.die = r.die; res.stat = r.stat; res.focus = r.focus; res.status = r.status || 0; res.total = r.total; res.diff = r.diff; res.crit = r.crit; res.fumble = r.fumble; res.success = r.success;
       if ((asp.selfCorr || 0) > 0 || (f.selfCorr || 0) > 0 || sp.tune === "potente" || f.kind === "off") darkAct(p);
       if ((asp.selfCorr || 0) < 0) antiAct(p);
-      p.corr = clamp(p.corr + (asp.selfCorr || 0) + (f.selfCorr || 0) + (sp.tune === "potente" ? 3 : 0) + (sp.tune === "estable" ? 1 : 0) + (mode === "desatado" && spellLevel(sp) < 3 ? 3 : 0), 0, 100);
+      p.corr = clamp(p.corr + spellCorrCost(p, sp, mode), 0, 100);
       const selfWound = spellSelfWound(sp);
       if (selfWound) { const sw = damage(p, selfWound, { zone: "brazos" }); selfTxt = " Pagas el hechizo con tu sangre (−" + sw.dealt + " de vitalidad)."; p.notes.push("Ronda " + state.round + ": pagaste un conjuro con tu sangre" + hitNote(sw) + "."); }
       if (r.success) {
@@ -1158,7 +1200,36 @@
   }
   /* Reto de pulso opcional al estudiar (bonus -6..+15): página limpia (≥+8) cuesta −1 oscuridad; pulso torpe (≤−3) la mancha (+1). Sin reto: coste normal. */
   function studyCost(skill) { const d = skillClamp(skill); return STUDY_CORR + (d >= 8 ? -1 : d <= -3 ? 1 : 0); }
-  function learnSpell(pid, optIdx, tune, skill) {
+  /* v1.14.1: el Taumaturgo elige su conjuro inicial entre las tres opciones. */
+  function pickStartSpell(pid, idx) {
+    const p = state && state.players[pid];
+    if (!p || !p.startOpts) return err("No tienes que elegir conjuro inicial.");
+    const sp = p.startOpts[idx];
+    if (!sp) return err("Elige una de las tres opciones.");
+    p.startOpts = null;
+    addSpell(p, sp);
+    p.notes.push("Ronda " + state.round + ": eliges «" + sp.name + "» como tu primer conjuro.");
+    save();
+    return { ok: true, spell: sp, msg: "Tu primer conjuro: «" + sp.name + "»." };
+  }
+  /* v1.14.1: espectadores. Quien ha caído susurra una pista sobre alguien a un vivo (una vez por ronda, en la fase privada). */
+  function whisper(pid, targetId) {
+    if (!state || state.phase !== "private") return err("Ahora no se puede susurrar.");
+    const p = state.players[pid], t = state.players[targetId];
+    if (!p || !p.dead) return err("Solo quien ha caído puede susurrar.");
+    if (!t || t.dead || t.dying || t.id === p.id) return err("Solo puedes susurrar a alguien vivo.");
+    if (p.whisperRound === state.round) return err("Ya susurraste esta ronda.");
+    const pool = state.players.filter(function (q) { return q.id !== t.id && !q.dead; });
+    if (!pool.length) return err("No hay a quién señalar.");
+    const subj = pick(pool);
+    const c = makeClue(subj, 2);
+    if (c) t.clues.push(c);
+    p.whisperRound = state.round;
+    t.notes.push("Ronda " + state.round + ": un susurro llega desde el otro lado: algo sobre " + subj.name + ".");
+    save();
+    return { ok: true, msg: "Susurras a " + t.name + " una pista desde el otro lado." };
+  }
+  function learnSpell(pid, optIdx, tune, skill, forgetIdx) {
     const bad = studyChecks(pid); if (bad) return err(bad);
     const p = state.players[pid];
     const st = p.study;
@@ -1169,7 +1240,24 @@
     const sp = Object.assign({}, base, { tune: tune, id: "s" + Date.now().toString(36) + rnd(99999) });
     if (tune === "estable") sp.uses += 1;
     finalizeSpell(sp);
+    /* v1.14.1: con el tope lleno, quien aprende elige qué olvidar (forgetIdx). "auto" (NPC) olvida el de menos usos que quepa. */
+    const spW = spellWeight(sp);
+    const weightOf = function (list) { return list.reduce(function (n, x) { return n + spellWeight(x); }, 0); };
+    const fitsWithout = function (ix) { const rest = p.spells.filter(function (_, i) { return i !== ix; }); return rest.length < SPELL_MAX_N && weightOf(rest) + spW <= SPELL_CAP; };
+    const full = (p.spells || []).length >= SPELL_MAX_N || weightOf(p.spells || []) + spW > SPELL_CAP;
+    let forgot = null;
+    if (full && p.spells.length) {
+      let ix = NaN;
+      if (forgetIdx === "auto") { let best = -1; p.spells.forEach(function (x, i) { if (fitsWithout(i) && (best < 0 || x.uses < p.spells[best].uses)) best = i; }); ix = best; }
+      else if (forgetIdx != null) ix = Number(forgetIdx);
+      if (!(ix >= 0 && ix < p.spells.length) || !fitsWithout(ix)) {
+        return { ok: false, needForget: true, msg: "Tienes el tope de conjuros: elige cuál olvidar para aprender «" + sp.name + "».",
+          options: p.spells.map(function (x, i) { return { i: i, name: x.name, uses: x.uses, level: spellLevel(x) }; }) };
+      }
+      forgot = p.spells.splice(ix, 1)[0];
+    }
     addSpell(p, sp);
+    if (forgot) p.notes.push("Ronda " + state.round + ": olvidas «" + forgot.name + "» para dejar sitio a «" + sp.name + "».");
     p.items.splice(st.idx, 1);
     p.usedItem = true; p.study = null;
     const sc = studyCost(skill);
@@ -1776,7 +1864,7 @@
     };
     if (opts && Number(opts.endAt) > Date.now()) state.endAt = Math.round(Number(opts.endAt));
     planRounds(true);
-    players.forEach(function (p) { if (hasPassive(p, "spellDiscount")) p.spells.push(genSpell(null)); });
+    players.forEach(function (p) { if (hasPassive(p, "spellDiscount")) p.startOpts = [genSpell(null), genSpell(null), genSpell(null)]; });
     players.forEach(function (p) { unlockNotices(p, true); });
     players.forEach(function (p) {
       if (hasPassive(p, "startClue")) p.clues.push(makeClue(pick(others(p)), 2));
@@ -2147,6 +2235,12 @@
       p.defKeep.forEach(function (x) { p.roundDefense += x.amt; });
       p.action = null; p.actionTarget = null;
       if (p.prep) { p.prep.left -= 1; if (p.prep.left <= 0 || !Object.keys(p.prep.acts || {}).length) p.prep = null; }
+      /* v1.14.1: Taumaturgo: si no eligió conjuro inicial, toma el primero al empezar la ronda 2; en rondas pares recupera 1 uso. */
+      if (p.startOpts && state.round >= 2 && !p.dead) { const first = p.startOpts[0]; p.spells = (p.spells || []).concat([first]); p.startOpts = null; p.notes.push("Ronda " + state.round + ": sin decidir, «" + first.name + "» se queda contigo como primer conjuro."); }
+      if (state.round % 2 === 0 && !p.dead && hasPassive(p, "spellDiscount") && p.spells && p.spells.length) {
+        const lowT = p.spells.filter(function (x) { return x.uses < 3; }).sort(function (x, y) { return x.uses - y.uses; })[0];
+        if (lowT) { lowT.uses += 1; p.notes.push("Ronda " + state.round + ": la vena arcana repone «" + lowT.name + "» (+1 uso)."); }
+      }
       /* v1.14.0: recarga lenta: cada 3 rondas, un conjuro de menos de 3 usos recupera 1 (sin tocar los que ya están llenos). */
       if (state.round % 3 === 0 && !p.dead && p.spells && p.spells.length) {
         const lowR = p.spells.filter(function (x) { return x.uses < 3; }).sort(function (x, y) { return x.uses - y.uses; })[0];
@@ -2348,7 +2442,7 @@
     /* Sabotaje: el frasco/pergamino/porra estropeado por otro falla siempre. */
     let sabX = null;
     if (a.needs && a.risk) { sabX = takeSab(p, a.needs); if (sabX) { r.success = false; r.crit = false; r.sabotaged = true; } }
-    const out = applyAction(p, a, t, r, a.mode ? mode : a.id === "atender" ? tech : stake);
+    const out = applyAction(p, a, t, r, a.mode ? mode : a.id === "atender" ? tech : a.id === "sabotear" ? (stakeId == null ? null : String(stakeId)) : stake);
     if (sabX) out.text += " Además, " + (D.ITEMS[a.needs] ? D.ITEMS[a.needs].name.toLowerCase() : "el objeto") + " " + sabBackfire(p, D.ITEMS[a.needs] ? D.ITEMS[a.needs].name : "El objeto") + ".";
     if (DARK_ACTS.indexOf(a.id) !== -1) darkAct(p);
     else if (ANTI_ACTS.indexOf(a.id) !== -1 || ((a.id === "socorrer" || a.id === "proteger") && r.success)) antiAct(p);
@@ -2436,7 +2530,7 @@
         p.corr = clamp(p.corr - 12, 0, 100);
         p.virtue = clamp(p.virtue + 6, 0, 100);
         let rech = "";
-        if (!(p.spells && p.spells.length) && !p.medSpell && Object.keys(SPELL_FORMS).length) {
+        if (!(p.spells && p.spells.length) && !p.medSpell && !p.startOpts && Object.keys(SPELL_FORMS).length) {
           p.medSpell = true; p.spells = p.spells || [];
           const bs = genSpell("def"); bs.uses = 1; finalizeSpell(bs); p.spells.push(bs);
           p.notes.push("Ronda " + state.round + ": meditando intuiste tu primer conjuro: «" + bs.name + "».");
@@ -2578,8 +2672,10 @@
           t.notes.push("Ronda " + state.round + ": notas que alguien rebuscó en tus cosas, pero no logró estropear nada.");
           return { text: "Te tiemblan las manos: no consigues estropear nada del equipaje de " + t.name + ".", log: null };
         }
-        const cand = t.items.filter(function (i) { const k = D.ITEMS[i.id] && D.ITEMS[i.id].kind; return k && ["passive", "tome", "corruption"].indexOf(k) === -1; });
-        if (!cand.length) return { text: t.name + " no lleva nada que merezca ser estropeado. Pierdes la noche.", log: null };
+        /* v1.14.1: se puede elegir la categoría del objeto a estropear (curación, utilidad o ataque). */
+        const saboCat = function (k) { return ["heal", "elixir", "cleanse", "purify"].indexOf(k) !== -1 ? "curacion" : k === "weapon" ? "ataque" : "utilidad"; };
+        const cand = t.items.filter(function (i) { const k = D.ITEMS[i.id] && D.ITEMS[i.id].kind; return k && ["passive", "tome", "corruption"].indexOf(k) === -1 && (!stake || saboCat(k) === stake); });
+        if (!cand.length) return { text: t.name + (stake ? " no lleva nada de ese tipo" : " no lleva nada que merezca ser estropeado") + ". Pierdes la noche.", log: null };
         const sit = pick(cand), hs = harmSt();
         if (!hs.sabs.some(function (x) { return x.victim === t.id && x.item === sit.id; })) hs.sabs.push({ victim: t.id, item: sit.id, author: p.id, round: state.round });
         harmSig(t, p, "sabotear", "objeto");
@@ -4091,7 +4187,7 @@
     declareOptions: declareOptions, getPactOffers: getPactOffers, answerPact: wrapLog("answerPact", answerPact),
     nextRound: nextRound, computeEnding: computeEnding,
     getEnding: function () { return state ? state.ending : null; },
-    pSuccess: pSuccess, statusMod: statusMod, hasStatus: hasStatus, getOffer: getOffer, answerOffer: wrapLog("answerOffer", answerOffer), getHandOffer: getHandOffer, xpInfo: xpInfo, _makeClue: makeClue, timeUp: timeUp, forceEnd: forceEnd, timeWarn: timeWarn, dismissWarn: dismissWarn, addTime: addTime, answerTime: answerTime, turnSeconds: turnSeconds, cast: wrapLog("cast", cast), studyOptions: studyOptions, learnSpell: wrapLog("learnSpell", learnSpell), improveSpell: wrapLog("improveSpell", improveSpell), spellProgress: spellProgress, isUnlocked: isUnlocked, lockInfo: lockInfo, lockedList: lockedList, activePacts: activePacts, pactTerms: pactTerms, encounterStart: encounterStart, encounterAct: wrapLog("encounterAct", encounterAct), _npcs: NPCS, unlockNotices: unlockNotices, answerHand: wrapLog("answerHand", answerHand),
+    pickStartSpell: pickStartSpell, whisper: whisper, pSuccess: pSuccess, statusMod: statusMod, hasStatus: hasStatus, getOffer: getOffer, answerOffer: wrapLog("answerOffer", answerOffer), getHandOffer: getHandOffer, xpInfo: xpInfo, _makeClue: makeClue, timeUp: timeUp, forceEnd: forceEnd, timeWarn: timeWarn, dismissWarn: dismissWarn, addTime: addTime, answerTime: answerTime, turnSeconds: turnSeconds, cast: wrapLog("cast", cast), studyOptions: studyOptions, learnSpell: wrapLog("learnSpell", learnSpell), improveSpell: wrapLog("improveSpell", improveSpell), spellProgress: spellProgress, isUnlocked: isUnlocked, lockInfo: lockInfo, lockedList: lockedList, activePacts: activePacts, pactTerms: pactTerms, encounterStart: encounterStart, encounterAct: wrapLog("encounterAct", encounterAct), _npcs: NPCS, unlockNotices: unlockNotices, answerHand: wrapLog("answerHand", answerHand),
     elapsedMin: function () { return state ? Math.floor(playedMs() / 60000) : 0; },
     domInfo: domInfo, riseCount: riseCount, aggrSummary: aggrSummary, DOM_NAMES: DOM_NAMES, declare: wrapLog("declare", declare),
     maxRounds: maxRounds, tick: tick, timeLeftMs: timeLeftMs, councilSeconds: councilSeconds, behindSchedule: behindSchedule

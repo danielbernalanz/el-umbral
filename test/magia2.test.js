@@ -124,7 +124,9 @@ test("tope por peso: nunca más de 4 conjuros ni 5 de peso (T2 pesa 2)", () => {
     p.items = [{ id: "grimorio" }]; p.study = null; p.usedItem = false; p.acted = false;
     const so = U.studyOptions(0, 0); assert.ok(so.ok);
     const ix = Math.floor(R.fn() * 3);
-    const lr = U.learnSpell(0, ix, "estable"); assert.ok(lr.ok, lr.msg);
+    let lr = U.learnSpell(0, ix, "estable");
+    if (!lr.ok && lr.needForget) lr = U.learnSpell(0, ix, "estable", null, "auto");   /* v1.14.1: al tope hay que elegir qué olvidar */
+    assert.ok(lr.ok, lr.msg);
     const w = p.spells.reduce((n, x) => n + (x.tier === 2 ? 2 : 1), 0);
     assert.ok(p.spells.length <= 4 && w <= 5, "peso " + w + " n " + p.spells.length);
     p.spells.forEach((x) => { if (!x.wins) x.wins = 1; });   /* mantiene Practicante para seguir viendo T2 */

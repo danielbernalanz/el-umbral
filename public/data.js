@@ -1,4 +1,4 @@
-/* EL UMBRAL — datos del juego (v1.13.2)
+/* EL UMBRAL — datos del juego (v1.14.0)
    Roles, afinidades, objetos, acciones, eventos, secretos y pistas. */
 (function (g) {
   "use strict";
@@ -222,6 +222,7 @@
 
   /* Estados: se aplican con acciones y se resuelven al inicio de cada ronda. */
   const STATUS = {
+    atado: { name: "Atado", desc: "Un hilo invisible te une a otra persona: la mitad del daño que recibes le llega también a ella (dos rondas)." },
     sangrado: { name: "Sangrado", desc: "-2 vitalidad al inicio de cada ronda (dos rondas). Se corta con Descansar, Vendas o Atender." },
     infeccion: { name: "Infección", desc: "Una zona grave sin curar se infecta: -1 vitalidad y +2 corrupción por ronda (3 rondas). La quitan Descansar, Antídoto y Purga." },
     veneno: { name: "Veneno", desc: "Te mancha de oscuridad y, si viene de un frasco, te hiere 2 de vitalidad al inicio de cada ronda (dos rondas). Se corta con Descansar, Atender (presionar), hierbas o antídoto." },

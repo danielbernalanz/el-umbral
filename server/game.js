@@ -227,7 +227,7 @@ class Game {
       act: (id, aid, t, st) => run("act", [aid, t == null ? null : t, st == null ? null : st]),
       cast: (id, sid, t, m) => run("cast", [sid, t == null ? null : t, m || "normal"]),
       useItem: (id, i, t) => run("useItem", [i, t == null ? null : t]),
-      learnSpell: (id, i, tune) => run("learnSpell", [i, tune]),
+      learnSpell: (id, i, tune, sk, forget) => run("learnSpell", [i, tune, null, forget == null ? null : forget]),
       answerOffer: (id, b) => run("answerOffer", [!!b]),
       answerHand: (id, b) => run("answerHand", [!!b]),
       answerPact: (id, idx, b) => run("answerPact", [idx, !!b]),
@@ -515,12 +515,15 @@ const COMMANDS = {
     }),
   study: priv((g, pid, a) => isInt(a[0], 0, 30), (g, pid, a) => g._runAs(pid, () => g.U.studyOptions(pid, a[0]))),
   /* estudiar admite el reto de pulso opcional (a[2] / a[1]): página limpia = −1 oscuridad, pulso torpe = +1 */
-  learnSpell: priv((g, pid, a) => isInt(a[0], 0, 5) && isStr(a[1], 12) && isTaps(a[2]), (g, pid, a) => {
+  learnSpell: priv((g, pid, a) => isInt(a[0], 0, 5) && isStr(a[1], 12) && isTaps(a[2]) && (a[3] == null || a[3] === "auto" || isInt(a[3], 0, 3)), (g, pid, a) => {
     const sk = g.skillFor(pid, a[2]);
-    const r = g._runAs(pid, () => g.U.learnSpell(pid, a[0], a[1], sk.delta));
+    const r = g._runAs(pid, () => g.U.learnSpell(pid, a[0], a[1], sk.delta, a[3] == null ? undefined : a[3]));
     if (r && r.ok) g.endChallenge(pid, sk.c);
     return r;
   }),
+  /* v1.14.1: el Taumaturgo elige su conjuro inicial; quien ha caído susurra una pista a un vivo. */
+  pickStartSpell: priv((g, pid, a) => isInt(a[0], 0, 2), (g, pid, a) => g._runAs(pid, () => g.U.pickStartSpell(pid, a[0]))),
+  whisper: priv((g, pid, a) => isInt(a[0], 0, 5), (g, pid, a) => g._runAs(pid, () => g.U.whisper(pid, a[0]))),
   improveSpell: priv((g, pid, a) => isIdStr(a[0]) && isTaps(a[1]), (g, pid, a) => {
     const sk = g.skillFor(pid, a[1]);
     const r = g._runAs(pid, () => g.U.improveSpell(pid, a[0], sk.delta));

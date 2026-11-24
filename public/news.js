@@ -9,7 +9,10 @@
       "Atender cura 3 de vitalidad al paciente y, si había algo que tratar, da +4 de virtud al que atiende (como mucho una vez cada 2 rondas por paciente).",
       "Entrenar dura tres rondas, da +1 de foco y, cada tres entrenamientos, sube tu atributo más bajo.",
       "Magia: cada tres rondas un conjuro recupera un uso, encadenar la misma escuela da +1 de potencia y las pifias tienen efectos al azar.",
-      "Hechizar pasa a llamarse Magia sucia."
+      "Hechizar pasa a llamarse Magia sucia.",
+      "El Taumaturgo elige su primer conjuro entre tres y puede encontrar Mensaje secreto, Atadura o Revelar.",
+      "Sabotear elige la clase de objeto (curación, utilidad o ataque); quien ha caído puede susurrar una pista a alguien vivo.",
+      "Con el tope de conjuros lleno, eliges qué olvidar."
     ] },
     { version: "1.13.2", fecha: "2026-11-23", titulo: "La sospecha responde antes a las pistas", puntos: [
       "Las acusaciones de personas distintas elevan la sospecha con más rapidez.",

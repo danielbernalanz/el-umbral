@@ -844,6 +844,8 @@
   }
   function renderActions(p) {
     const box = $("actionChoices");
+    if (p.startOpts && p.startOpts.length) { renderStartPicker(p); return; }
+    if (p.dead && U.getState().phase === "private") { renderWhisperPicker(p); return; }
     if (pendingStudy) { renderStudyPicker(p); return; }
     if (pendingSpell) { renderSpellPicker(p); return; }
     if (pendingMode) { renderModePicker(p); return; }
@@ -960,7 +962,7 @@
     const grim = (p.items || []).some(function (i) { return i.id === "grimorio"; });
     const list = (p.spells || []).map(function (sp) {
       const pr = U.spellProgress(sp);
-      return '<div class="spellrow">' + spellMedals(sp) + '<div class="small"><b>' + esc(sp.name) + '</b> <span class="chip mid">' + ic("m_" + pr.level, "ic-sm") + " " + esc(pr.label) + '</span> <span class="chip mid">' + esc(schoolOf(sp)) + '</span> ' + tierChip(sp) + '<br>' + (sp.kind === "off" ? "Ofensivo" : "Defensivo") + ' · ' + sp.uses + ' uso' + (sp.uses > 1 ? "s" : "") + '</div></div>';
+      return '<div class="spellrow">' + spellMedals(sp) + '<div class="small"><b>' + esc(sp.name) + '</b> <span class="chip mid">' + ic("m_" + pr.level, "ic-sm") + " " + esc(pr.label) + '</span> <span class="chip mid">' + esc(schoolOf(sp)) + '</span> ' + tierChip(sp) + '<br><span class="small muted">' + esc(pr.path) + '</span><br>' + (sp.kind === "off" ? "Ofensivo" : "Defensivo") + ' · ' + sp.uses + ' uso' + (sp.uses > 1 ? "s" : "") + '</div></div>';
     }).join("");
     return h3i("Conjuros", "a_conjurar") + (list || '<p class="small">Aún no conoces ninguno.</p>') +
       (grim ? '<p class="small">Tienes un grimorio: púlsalo en Objetos para estudiarlo.</p>' : '') +
@@ -1109,6 +1111,74 @@
     addCancel(box);
   }
 
+  /* v1.14.1: el Taumaturgo elige su primer conjuro entre tres. */
+  function renderStartPicker(p) {
+    $("actionHint").textContent = "Aprendiz de taumaturgia: elige tu primer conjuro entre estos tres. Si no lo haces, se queda el primero al empezar la ronda 2.";
+    $("actionHint").classList.remove("hidden");
+    const box = $("actionChoices");
+    box.className = "actions"; box.innerHTML = "";
+    p.startOpts.forEach(function (sp, i) {
+      const btn = document.createElement("button");
+      btn.className = "choice";
+      btn.innerHTML = medal("a_conjurar", "md") + '<span class="cbody"><b>' + esc(sp.name) + '</b><span class="small">' + esc(sp.desc) + '</span></span>';
+      btn.onclick = function () { mut(U.pickStartSpell(p.id, i)); };
+      box.appendChild(btn);
+    });
+  }
+  /* v1.14.1: quien ha caído susurra una pista a un vivo (una vez por ronda). */
+  function renderWhisperPicker(p) {
+    const s = U.getState();
+    const box = $("actionChoices");
+    box.className = "actions"; box.innerHTML = "";
+    $("actionHint").classList.remove("hidden");
+    if (p.whisperRound === s.round) { $("actionHint").textContent = "Ya susurraste esta ronda. Solo puedes mirar."; return; }
+    $("actionHint").textContent = "Has caído: solo puedes mirar, pero una vez por ronda puedes susurrar una pista a alguien vivo.";
+    s.players.filter(function (x) { return !x.dead && !x.dying && x.id !== p.id; }).forEach(function (x) {
+      const btn = document.createElement("button");
+      btn.className = "choice";
+      btn.innerHTML = medal("a_investigar", "md") + '<span class="cbody"><b>Susurrar a ' + esc(x.name) + '</b><span class="small">Una pista sobre alguien. Nadie sabrá que has sido tú.</span></span>';
+      btn.onclick = function () { mut(U.whisper(p.id, x.id)); };
+      box.appendChild(btn);
+    });
+  }
+  /* v1.14.1: aprender con el tope lleno pide qué olvidar (el motor lo indica con needForget). */
+  function learnWithForget(pid, pk, tune, sk, forget) {
+    run(U.learnSpell(pid, pk, tune, sk, forget), function (r) {
+      if (r && r.needForget && forget == null) { renderForgetPicker(pid, pk, tune, sk, r); return; }
+      toast(r.msg, !r.ok); renderPrivate();
+    });
+  }
+  function renderForgetPicker(pid, pk, tune, sk, r) {
+    $("actionHint").textContent = r.msg;
+    $("actionHint").classList.remove("hidden");
+    const box = $("actionChoices");
+    box.className = "actions"; box.innerHTML = "";
+    (r.options || []).forEach(function (o) {
+      const btn = document.createElement("button");
+      btn.className = "choice";
+      btn.innerHTML = medal("a_conjurar", "md") + '<span class="cbody"><b>Olvidar «' + esc(o.name) + '»</b><span class="small">Tiene ' + o.uses + ' uso(s).</span></span>';
+      btn.onclick = function () { learnWithForget(pid, pk, tune, sk, o.i); };
+      box.appendChild(btn);
+    });
+    addCancel(box);
+  }
+  /* v1.14.1: Sabotear pide la clase de objeto a estropear (curación, utilidad o ataque). */
+  function renderSaboPicker(p) {
+    const pm = pendingMode, t = U.getState().players[pm.t];
+    $("actionHint").textContent = "¿Qué clase de objeto estropeas de " + t.name + "? Sabrás la clase, no el objeto concreto.";
+    $("actionHint").classList.remove("hidden");
+    const box = $("actionChoices");
+    box.className = "actions"; box.innerHTML = "";
+    [["curacion", "Curación", "Vendas, hierbas o elixires: pueden fallar cuando los use."], ["utilidad", "Utilidad", "Herramientas, protecciones y objetos de apoyo."], ["ataque", "Ataque", "Armas: su uso puede salir mal."]].forEach(function (o) {
+      const btn = document.createElement("button");
+      btn.className = "choice";
+      btn.innerHTML = medal("a_sabotear", "md", "dark") + '<span class="cbody"><b>' + o[1] + '</b><span class="small">' + o[2] + '</span></span>';
+      btn.onclick = function () { const a = pm.a; pendingMode = null; doAction(a, pm.t, o[0]); };
+      box.appendChild(btn);
+    });
+    addCancel(box);
+  }
+
   function renderStudyPicker(p) {
     const box = $("actionChoices");
     box.className = "actions";
@@ -1139,7 +1209,7 @@
         const btn = document.createElement("button");
         btn.className = "choice";
         btn.innerHTML = medal(o[3], "md", o[4]) + '<span class="cbody"><b>' + o[1] + '</b><span class="small">' + o[2] + '</span></span>';
-        btn.onclick = function () { const pk = st.pick; withSkill(function (sk) { pendingStudy = null; mut(U.learnSpell(p.id, pk, o[0], sk)); }); };
+        btn.onclick = function () { const pk = st.pick; withSkill(function (sk) { pendingStudy = null; learnWithForget(p.id, pk, o[0], sk, null); }); };
         box.appendChild(btn);
       });
     }
@@ -1169,6 +1239,7 @@
   }
   function renderModePicker(p) {
     if (pendingMode && pendingMode.kind === "treat") { renderTreatPicker(p); return; }
+    if (pendingMode && pendingMode.kind === "sabo") { renderSaboPicker(p); return; }
     $("actionHint").textContent = "¿Cómo es tu mano? Solo tú lo sabrás.";
     $("actionHint").classList.remove("hidden");
     const box = $("actionChoices");
@@ -1214,7 +1285,7 @@
       const btn = document.createElement("button");
       btn.className = "choice";
       btn.innerHTML = playerMedal(t) + '<span class="cbody"><b>' + dn(t) + '</b><span class="small">' + esc(U.visibleHealth(t)) + '</span></span>';
-      btn.onclick = function () { if (pendingAction.mode || pendingAction.id === "atender") { pendingMode = { a: pendingAction, t: t.id, kind: pendingAction.id === "atender" ? "treat" : "mode" }; pendingAction = null; renderPrivate(); return; } doAction(pendingAction, t.id, null); };
+      btn.onclick = function () { if (pendingAction.mode || pendingAction.id === "atender" || pendingAction.id === "sabotear") { pendingMode = { a: pendingAction, t: t.id, kind: pendingAction.id === "atender" ? "treat" : pendingAction.id === "sabotear" ? "sabo" : "mode" }; pendingAction = null; renderPrivate(); return; } doAction(pendingAction, t.id, null); };
       box.appendChild(btn);
     });
     addCancel(box);

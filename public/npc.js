@@ -103,7 +103,7 @@
         const so = io.studyOptions(pid, ti);
         if (so && so.ok) {
           const t2 = so.options.map(function (o, k) { return (o.tier || 1) >= 2 ? k : -1; }).filter(function (k) { return k >= 0; });
-          io.learnSpell(pid, t2.length && R() < 0.6 ? t2[0] : idx(3), "estable");   /* v1.9.1: si asoma un conjuro intermedio, suele elegirlo */
+          io.learnSpell(pid, t2.length && R() < 0.6 ? t2[0] : idx(3), "estable", null, "auto");   /* v1.9.1: si asoma un conjuro intermedio, suele elegirlo */
         }
       }
     }
