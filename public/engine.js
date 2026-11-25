@@ -4018,6 +4018,26 @@
       text = "Nadie ha aceptado convertirse en el Asesino. Habéis resistido las tentaciones y sobrevivido juntos.";
     }
 
+    /* v1.14.1: finales según cómo se jugó. Solo cambian título y texto, nunca el ganador, y nunca pisan los finales estructurales
+       (sin supervivientes, Asesino derrotado, Nunca hubo un Asesino). Prioridad: Sombra servida > El gran engaño > El pacto roto. */
+    (function () {
+      const open = ["La última sombra", "La noche cobró su tributo", "La noche no pudo devorarlos", "La llama que no se apaga"];
+      if (open.indexOf(title) === -1) return;
+      const liveAss = alive.filter(isAssassin);
+      const served = ps.some(function (q) { return q.risenBy !== undefined && q.risenBy !== null && ps[q.risenBy] && isAssassin(ps[q.risenBy]); });
+      const accusedOk = ps.reduce(function (n, q) { return n + (q.successfulAccusations || 0); }, 0);
+      if (winner === "asesino" && served) {
+        title = "Sombra servida";
+        text = names(liveAss.length ? liveAss : assassins) + " no estuvo solo al final: los caídos se levantaron como sombras a su servicio y la noche fue suya.";
+      } else if (winner === "asesino" && accusedOk === 0) {
+        title = "El gran engaño";
+        text = "Nadie llegó a acusar con éxito al Asesino. " + names(liveAss.length ? liveAss : assassins) + " caminó entre vosotros hasta el final sin que la máscara cayera.";
+      } else if (betrayals > 0) {
+        title = "El pacto roto";
+        text = "Hubo " + betrayals + (betrayals > 1 ? " traiciones" : " traición") + " entre quienes se habían dado la palabra. " + (winner === "asesino" ? "La desconfianza dejó el camino libre al Asesino." : "Aun así, los supervivientes llegaron al amanecer.");
+      }
+    })();
+
     const players = ps.map(function (p) {
       const sec = D.SECRETS.find(function (s) { return s.id === p.secret.id; });
       const fulfilled = sec ? !!sec.check(p, state) : false;
