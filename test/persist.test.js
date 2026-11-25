@@ -237,3 +237,13 @@ test("fidelidad: estado del motor y vistas idénticos tras instantánea+restaura
   });
   assert.ok(checks > 40, "comprobaciones: " + checks);
 });
+
+test("v1.14.1: el identificador del motor no depende del contenido de los archivos (un despliegue de reglas no corta partidas)", () => {
+  const fs2 = require("node:fs"), os2 = require("node:os"), path2 = require("node:path");
+  const d = fs2.mkdtempSync(path2.join(os2.tmpdir(), "umbral-eng-"));
+  ["data.js", "engine.js", "npc.js"].forEach((f) => fs2.writeFileSync(path2.join(d, f), "// " + f + " distinto " + Math.random()));
+  const a = makeCodec({ key: KEY, engineDir: ENGINE_DIR, log: quiet }), b = makeCodec({ key: KEY, engineDir: d, log: quiet });
+  assert.strictEqual(a.engine, b.engine, "mismo identificador con archivos de motor distintos");
+  const blob = a.encode({ schema: a.SCHEMA, engine: a.engine, code: "ABCDE", seq: 1 }, "ABCDE");
+  assert.strictEqual(b.decode(blob, "ABCDE").ok, true, "la partida guardada con un motor se restaura con otro compatible");
+});

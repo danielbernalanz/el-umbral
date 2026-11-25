@@ -13,12 +13,13 @@ const SCHEMA = 1;                 /* súbelo si cambia el formato de Room/Game.s
 const PREFIX = "U" + SCHEMA + ".";
 const MAX_PLAIN = 8 * 1024 * 1024;
 
-/* Identificador del motor: hash de data.js + engine.js. Un blob solo se restaura con el MISMO motor (si no, rechazo limpio). */
-function engineId(dir) {
-  const h = crypto.createHash("sha256");
-  ["data.js", "engine.js", "npc.js"].forEach((f) => h.update(fs.readFileSync(path.join(dir, f))));
-  return h.digest("hex").slice(0, 16);
-}
+/* Identificador de compatibilidad del motor (v1.14.1). ANTES era un hash de data.js + engine.js + npc.js, así que CUALQUIER cambio
+   de reglas, balance o textos invalidaba las salas guardadas (error 409) y cortaba las partidas en curso al desplegar.
+   AHORA es un número fijo: una partida guardada se restaura con cualquier motor que lo comparta.
+   SÚBELO SOLO si cambia el FORMATO del estado de la partida de forma que un estado antiguo ya no se pueda leer
+   (campos renombrados o eliminados, o con otro significado). Los campos nuevos deben ser siempre opcionales. */
+const ENGINE_COMPAT = 1;
+function engineId() { return "c" + ENGINE_COMPAT; }
 
 /* opts: { key: string|undefined, engineDir, log } */
 function makeCodec(opts) {
@@ -60,4 +61,4 @@ function makeCodec(opts) {
   return { enabled: hasKey, encode, decode, engine, SCHEMA };
 }
 
-module.exports = { makeCodec, engineId, SCHEMA };
+module.exports = { makeCodec, engineId, SCHEMA, ENGINE_COMPAT };
